@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 Baseline: `123d943`
-Status: core architecture approved; policy benchmarks and reviewer-added tests required before implementation planning
+Status: policy gates complete; implementation planning approved; E4 remains a post-implementation acceptance gate
 
 ## 1. Purpose
 
@@ -42,7 +42,6 @@ A second objective of this revision is to settle policy disagreements with repea
 - Core Image as the main rendering path.
 - Native-detail delivery for oversized images above the 8192 proxy ceiling.
 - A LargeImageBackend for random-access native pixels.
-- Production policy choices for preload/cache and dimension probing until the benchmark gates in §18 complete.
 
 ## 3. Evidence already established
 
@@ -248,7 +247,7 @@ Rules already accepted:
 - Non-current oversized drawer items do not start the expensive full-stream ImageIO thumbnail path in this iteration; they keep a placeholder until a cheaper policy is available.
 - Placeholder behavior must not alter selection-border semantics or hit testing.
 
-The dimension/probe mechanism used to decide whether a non-current drawer item is oversized remains a benchmarked policy choice in §17.3; ordinary folder scanning must not be made globally expensive without evidence.
+The dimension/probe mechanism is **C2 from §14.1**: on-demand header probing for current/preload-candidate/drawer-visible items with a small dimension cache. Byte size may order probes but never classify oversized status. Ordinary folder scanning remains lightweight unless dimension sorting explicitly requests a folder-wide fill.
 
 ## 9. Metal rendering architecture
 
@@ -295,7 +294,7 @@ The transform preserves Fit, Fit Width, 100%, Fit ×2, pointer-centered zoom, no
 
 Large minification must not regress visibly below the current Quartz `.high` intent.
 
-The first candidate is mipmapped textures with a linear min/mag filter and `mipFilter = .linear`. Do not use explicit shader LOD in a way that bypasses the mip chain.
+Use mipmapped textures with a linear min/mag filter and `mipFilter = .linear`. Do not use explicit shader LOD in a way that bypasses the mip chain.
 
 Mipmap memory is budgeted at approximately 4/3 of base texture memory (for example an 8192 proxy is roughly 227 MiB of texture storage rather than 171 MiB base-only).
 
@@ -426,7 +425,9 @@ Evidence (B-series, §17.5):
 - B4 (lower-level preload) is **falsified**: 0 preload hits, navigation latency worse than no preload at all (0.169 s vs 0.151 s), and 2.1× B0's energy.
 - B0 is rejected: it gives up 4–7× navigation latency for no memory benefit.
 
-Working-set consequence — bound it by construction, do not trust `NSCache`. Measured: 8192 + 2×4096 = 256 MB is retained under 384 MiB; native 8192×8192 ×3 = 768 MB was also retained; but current 8192×8192 + neighbour 8192×5461 = 426.7 MB (just over budget) caused `NSCache` to evict **the on-screen entry** while keeping the later one. With a 768 MiB budget and the ≤256 MB per-entry ceiling for native ≤8192 sources, current + 2 neighbours is bounded at ≤768 MB.
+Working-set consequence — bound the **DecodeCache** by construction, do not trust `NSCache`. Measured: 8192 + 2×4096 = 256 MB is retained under 384 MiB; native 8192×8192 ×3 = 768 MB was also retained; but current 8192×8192 + neighbour 8192×5461 = 426.7 MB (just over budget) caused `NSCache` to evict **the on-screen entry** while keeping the later one. With a 768 MiB cache budget and the ≤256 MB per-entry ceiling for native ≤8192 sources, current + 2 neighbours is bounded at ≤768 MiB **inside the bitmap cache**.
+
+The 768 MiB figure is **not** the whole application's large-image working-set ceiling. Metal adds a mipmapped texture for the current image (approximately 4/3 of base texture memory; up to ~341 MiB for an 8192×8192 RGBA8 image), so an extreme current+two-neighbour cache plus current Metal texture can approach ~1.1 GiB before AppKit, metadata, source mmap pages, and other allocations. The integrated cache+GPU working set must therefore pass §15.8 before release; if it causes sustained memory pressure or unacceptable swap growth, the 768 MiB cache limit is revisited with measured evidence rather than assumed safe from the B-series cache-only result.
 
 ## 14. Dimension/oversized detection policy: resolved by the C-series benchmark
 
@@ -503,7 +504,7 @@ Verify:
 - memory-pressure purge semantics remain correct;
 - entries whose individual cost exceeds the cache budget behave explicitly (no tests should assume they remain cached);
 - exact-level preload hit/miss behavior is observable;
-- B-series chosen policy respects its stated working-set limit.
+- B3 respects the 768 MiB **DecodeCache** limit; do not treat that value as a whole-app working-set limit.
 
 ### 15.4 Renderer tests
 
@@ -545,7 +546,7 @@ Test:
 - non-current oversized drawer item remains placeholder and does not call expensive thumbnail decode;
 - placeholder does not change current-item selection border/hit testing;
 - many oversized visible drawer items do not start N parallel full-stream ImageIO decodes;
-- chosen C-series dimension policy identifies oversized items without changing unrelated folder semantics.
+- C2 identifies oversized items without changing unrelated folder semantics.
 
 ### 15.7 Existing regression suite
 
@@ -553,13 +554,38 @@ All existing tests remain green, particularly gesture routing, pointer-centered 
 
 Tests that previously encoded `decoded dimensions == source display dimensions` as a universal invariant must be corrected rather than deleted.
 
+### 15.8 Integrated DecodeCache + Metal working-set acceptance
+
+The B-series chose a 768 MiB bitmap-cache budget before the production Metal renderer existed. Because the current rendered image also owns a mipmapped GPU texture, implementation validation must measure the composed working set rather than assuming the cache-only number is the application limit.
+
+Run at least these local workloads on the 16 GB target Mac:
+
+- three near-threshold native images around 8192×8192;
+- three medium native images around 6000×6000;
+- a mixed near-threshold set that exercises current + previous + next preload while the current image owns its mip chain.
+
+Record:
+
+- DecodeCache retained cost and entry count;
+- current Metal base-texture and mip-chain allocation;
+- process `phys_footprint` and RSS;
+- system memory-pressure state and swap growth across the workload;
+- navigation latency/cache-hit rate, so memory safety is not improved by accidentally disabling the B3 benefit.
+
+Acceptance:
+
+- DecodeCache retained cost stays <=768 MiB;
+- no sustained memory-pressure warning attributable to the viewer workload;
+- system-wide swap growth stays <512 MiB across the workload;
+- navigation still shows the B3 preload benefit rather than silently evicting the on-screen/current entry;
+- if these conditions fail, revise the DecodeCache limit based on the integrated measurement before release. The failure does **not** justify removing mandatory mipmaps, whose quality/performance decision is independently established by D-series data.
+
 ## 16. Real 1.9 GiB PNG acceptance
 
 Using `/Users/dgd/Downloads/万萝图/万萝图.png` locally (never committed):
 
 - verify the source SHA-256 before the run and after the run;
-- main render bitmap long edge <=8192, and within one bucket step below the requested budget, and the first render
-  bitmap is actually present (upper bounds alone would let a permanent-placeholder implementation pass);
+- main render bitmap long edge <=8192, and within one bucket step below the requested budget, and the first render bitmap is actually present (upper bounds alone would let a permanent-placeholder implementation pass);
 - no 48000×32000 full-size native bitmap reaches canvas/renderer;
 - navigator/current sidebar do not independently re-decode the source after the main bitmap exists;
 - oversized neighbor main preload stays disabled;
@@ -614,11 +640,8 @@ Use representative normal/native-sized inputs (for example ~4K, ~6K, and <=8192)
 
 Requirements:
 
-- split the decision by input class: ≤8192 → choose a materialization mechanism; >8192 → the native-materialize
-  candidate must be **asserted unusable**, not scored, so a cheap-but-lazy candidate cannot win an aggregate;
-- the decisive member of the ≤8192 class is an **incompressible 8192-long-edge PNG** (compressible or solid fixtures
-  decode almost instantly and hide the stall); the class must also contain a JPEG (DCT decodes ~10× faster) and
-  results must be reported per format;
+- split the decision by input class: ≤8192 → choose a materialization mechanism; >8192 → the native-materialize candidate must be **asserted unusable**, not scored, so a cheap-but-lazy candidate cannot win an aggregate;
+- the decisive member of the ≤8192 class is an **incompressible 8192-long-edge PNG** (compressible or solid fixtures decode almost instantly and hide the stall); the class must also contain a JPEG (DCT decodes ~10× faster) and results must be reported per format;
 - the giant is a safety negative control only.
 
 Measure:
@@ -629,8 +652,7 @@ Measure:
 - observable `Image IO` regions;
 - color space and pixel layout before/after;
 - whether a second expensive decode occurs during first Quartz/Metal draw;
-- an observable materialization proof (`vmmap` at publication; a `sample` stack during the post-publication draw must
-  contain no `PNGReadPlugin`/`inflate` frames), not a self-reported flag.
+- an observable materialization proof (`vmmap` at publication; a `sample` stack during the post-publication draw must contain no `PNGReadPlugin`/`inflate` frames), not a self-reported flag.
 
 A3 is the frozen mechanism (§5.1); the numbers below are from this gate's run.
 
@@ -665,20 +687,20 @@ Record:
 - number of concurrent decode jobs;
 - swap/memory-pressure symptoms;
 - whether lower-level preload provides any useful page-cache warming despite bitmap-cache miss;
-- per-task CPU/energy measured **inside** each speculative task, so work completed after cancellation is counted
-  (the giant's decode still costs 62.8 J after `Task.cancel()`);
-- results reported **per format and per class** — never aggregated, because preload cannot help oversized images
-  (18 s either way) and helps cheap ones a lot;
+- per-task CPU/energy measured **inside** each speculative task, so work completed after cancellation is counted (the giant's decode still costs 62.8 J after `Task.cancel()`);
+- results reported **per format and per class** — never aggregated, because preload cannot help oversized images (18 s either way) and helps cheap ones a lot;
 - a run with the drawer open, so thumbnail work contends with preload work.
 
 Hard constraints before latency comparison (numeric):
 
 - oversized >8192 gets zero main-image neighbor preload;
-- no swap storm attributable to the policy: system-wide swap growth < 512 MB across the workload;
+- no swap storm attributable to the policy: system-wide swap growth <512 MB across the workload;
 - no policy may rely on immediately-evicted entries as useful cache state (verify with an explicit retention probe);
-- stale speculative decode must not dominate foreground work: speculative CPU < 25 % of foreground CPU;
-- concurrent decode jobs ≤ 2;
-- memory use must remain defensible on the target 16 GB Mac: steady-state working set ≤ 768 MiB.
+- stale speculative decode must not dominate foreground work: speculative CPU <25 % of foreground CPU;
+- concurrent decode jobs <=2;
+- bitmap DecodeCache retained cost <=768 MiB for B3.
+
+The 768 MiB number here applies to the bitmap cache only. The integrated production working set with mandatory Metal mipmaps is validated separately by §15.8; B-series cache-only results must not be used to claim a 768 MiB whole-app ceiling.
 
 A candidate that wins latency while violating any of these is rejected, not ranked.
 
@@ -696,9 +718,7 @@ Compare:
 
 Requirements:
 
-- include an **adversarial mixed folder**: one small-file giant (a few MB that is oversized — e.g. a 12000×12000
-  solid PNG) and one large-file non-oversized image (e.g. a 148 MB 8192×5461 PNG). Byte size must not be able to
-  classify either one; a filter that decides "not oversized" from small bytes must fail this case;
+- include an **adversarial mixed folder**: one small-file giant (a few MB that is oversized — e.g. a 12000×12000 solid PNG) and one large-file non-oversized image (e.g. a 148 MB 8192×5461 PNG). Byte size must not be able to classify either one; a filter that decides "not oversized" from small bytes must fail this case;
 - byte size may be used only to *order* probes, never to decide;
 - folder-open latency must be measured on a cold-ish cache.
 
@@ -727,9 +747,7 @@ Use synthetic checkerboard/fine-line/text fixtures plus real photos at approxima
 
 Requirements:
 
-- alongside any single-frame metric, record a **two-frame shimmer metric** (RMS difference between renders at
-  sub-pixel offsets), because a single-frame metric can be won by a blurrier candidate and aliasing is a temporal
-  artifact;
+- alongside any single-frame metric, record a **two-frame shimmer metric** (RMS difference between renders at sub-pixel offsets), because a single-frame metric can be won by a blurrier candidate and aliasing is a temporal artifact;
 - evaluate at app-reachable minification (Fit ≈ 2.0–4.3×, 0.5× fit, 0.25× fit ≈ 8–17×); 32× is a stress case only;
 - verify the harness is unbiased with a 1.0× sanity check (Metal must match the Quartz reference there).
 
@@ -932,9 +950,10 @@ The eventual implementation plan must respect:
 6. Navigator/current-preview reuse and oversized drawer protection.
 7. Metal renderer, mip/minification policy, and Quartz source-rect fallback.
 8. Non-trapping Metal resource lookup and release-resource packaging.
-9. Full correctness/regression/real-image acceptance validation.
-10. Quick Look spike.
-11. Alternative PNG decoder spike.
+9. Run the integrated DecodeCache + mipmapped-Metal working-set acceptance in §15.8; retain B3 only if the composed memory behaviour is safe.
+10. Full correctness/regression/real-image acceptance validation, including E4.
+11. Quick Look spike.
+12. Alternative PNG decoder spike.
 
 ## 23. Success criteria
 
@@ -947,8 +966,9 @@ The design/implementation is successful only when all are true:
 - Current navigator/sidebar reuse avoids redundant current-source decode.
 - Oversized neighbor preload and oversized non-current drawer thumbnail storms are prevented.
 - Chosen preload/cache and dimension-probe policies are backed by B/C benchmark evidence, not reviewer preference (B3 / 768 MiB, C2 + probe ordering: §13.3, §14.1).
-- An open of the investigation image performs exactly **one** full-stream traversal and ≤ ~70 J of open energy, measured against the §16 baseline (4 traversals, 136.6 J).
-- No main-thread stall > 100 ms (p95) during background decode, zoom, pan, or window resize; the resize policy in §9.5 is honoured.
+- The integrated bitmap-cache + mipmapped-Metal working set passes §15.8; 768 MiB is treated as the DecodeCache limit, not a whole-app memory ceiling.
+- An open of the investigation image performs exactly **one** full-stream traversal and <= ~70 J of open energy, measured against the §16 baseline (4 traversals, 136.6 J).
+- No main-thread stall >100 ms (p95) during background decode, zoom, pan, or window resize; the resize policy in §9.5 is honoured.
 - Large-image interaction uses on-demand Metal when available.
 - Strong minification meets the D-series quality gate.
 - Static images do not run a continuous GPU loop.
