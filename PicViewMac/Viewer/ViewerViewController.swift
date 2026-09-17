@@ -9,6 +9,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public let viewerState = ViewerState()
 
     public var onTitleChanged: ((String?) -> Void)?
+    /// Reports the decoded descriptor so the window can apply the configured
+    /// window-sizing policy (for example sizing the window to the image).
+    public var onDescriptorAvailable: ((ImageDescriptor) -> Void)?
 
     private let canvas = ImageCanvasView()
     private let topBar = TopHoverBarView()
@@ -293,6 +296,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case let .head(head):
             viewerState.apply(head: head)
             errorLabel.isHidden = true
+            onDescriptorAvailable?(head.descriptor)
             if head.descriptor.animated {
                 startAnimation(descriptor: head.descriptor, autoplay: settings.autoplayAnimations)
             }

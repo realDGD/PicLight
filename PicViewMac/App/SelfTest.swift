@@ -83,10 +83,24 @@ enum SelfTest {
         let first = viewer.session.currentItem?.displayName
         viewer.perform(.nextImage)
         waitForDecode(viewer, timeout: 10)
-        let second = viewer.session.currentItem?.displayName
+        var second = viewer.session.currentItem?.displayName
         check("next image navigates", first != second, "\(first ?? "-") -> \(second ?? "-")")
-        check("second image also decodes", viewer.viewerState.currentImage != nil,
-              viewer.viewerState.metadata?.fileName ?? "-")
+
+        // The folder may legitimately contain unreadable files (the corrupt
+        // fixture lives here), so step forward until a decodable image lands.
+        var skipped: [String] = []
+        var attempts = 0
+        while viewer.viewerState.currentImage == nil, attempts < 5 {
+            skipped.append(viewer.session.currentItem?.displayName ?? "?")
+            viewer.perform(.nextImage)
+            waitForDecode(viewer, timeout: 10)
+            second = viewer.session.currentItem?.displayName
+            attempts += 1
+        }
+        check("a decodable neighbour loads", viewer.viewerState.currentImage != nil,
+              skipped.isEmpty
+                ? (viewer.viewerState.metadata?.fileName ?? "-")
+                : "skipped unreadable: \(skipped.joined(separator: ", "))")
 
         // View-only operations must not touch the file on disk.
         let before = try? Data(contentsOf: fileURL)
@@ -98,7 +112,7 @@ enum SelfTest {
         let fitted = viewer.viewerState.viewport.isAtFit
         let after = try? Data(contentsOf: fileURL)
         check("rotate and mirror are view-only", before == after)
-        check("100% then Fit works", zoomedPercent != 0 && fitted,
+        check("100% then Fit works", viewer.viewerState.currentImage != nil && zoomedPercent != 0 && fitted,
               "100% reported \(zoomedPercent)%, Fit restored: \(fitted)")
 
         // Immersive mode changes chrome only.
@@ -125,6 +139,7 @@ enum SelfTest {
         verifyAnimation(viewer, reporter)
         verifyTrash(reporter)
         verifyErrorState(reporter)
+        verifyWindowSizing(reporter)
         verifyAppearance(viewer, reporter)
 
         finish(reporter)
@@ -356,6 +371,50 @@ enum SelfTest {
 
         settings.appearance = original
         viewer.applySettings()
+    }
+
+    /// L3: the alternative window-size policy sizes the window to the image
+    /// within the usable screen bounds, and reminds the remembered size otherwise.
+    private static func verifyWindowSizing(_ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        let settings = AppSettings.shared
+        let original = settings.windowSizing
+        defer { settings.windowSizing = original }
+
+        let controller = AppEnvironment.shared.newViewerWindow()
+        guard let viewer = controller.viewerViewController as ViewerViewController?,
+              let window = controller.window else {
+            check("sizing scenario window", false)
+            return
+        }
+        controller.showWindow(nil)
+        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/static.png"))
+        drainRunLoop(1.5)
+
+        settings.windowSizing = .fitImageToScreen
+        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/static.png"))
+        drainRunLoop(1.5)
+        let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        check("image-sized window stays inside the usable screen",
+              visible.contains(window.frame), "\(window.frame) in \(visible)")
+
+        // An oversized image must fall back to something that fits the screen.
+        settings.windowSizing = .fitImageToScreen
+        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/multipage.tiff"))
+        drainRunLoop(1.5)
+        check("oversized images do not push the window off screen",
+              visible.contains(window.frame), "\(window.frame)")
+
+        let remembered = settings.lastWindowSize
+        settings.windowSizing = .rememberLastSize
+        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/static.jpg"))
+        drainRunLoop(1.5)
+        check("remembered sizing does not resize the window to the image",
+              settings.lastWindowSize == remembered,
+              "remembered \(String(describing: remembered)) -> \(String(describing: settings.lastWindowSize))")
+        controller.close()
     }
 
     private static func drainRunLoop(_ seconds: TimeInterval) {

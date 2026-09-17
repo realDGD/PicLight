@@ -16,6 +16,9 @@ public final class ViewerWindowController: NSWindowController {
         super.init(window: window)
         window.contentViewController = viewerViewController
         window.delegate = self
+        viewerViewController.onDescriptorAvailable = { [weak self] descriptor in
+            self?.applyImageSizedFrameIfNeeded(imagePixels: descriptor.displayPixelSize)
+        }
         window.setFrame(contentRect, display: false)
         window.center()
     }
