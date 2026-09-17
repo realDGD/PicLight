@@ -47,6 +47,16 @@ final class MetalFallbackTests: XCTestCase {
         XCTAssertNil(MetalLibraryLocator.resourceBundle(candidates: []))
     }
 
+    /// The locator must find the SwiftPM resource bundle in the layouts the project
+    /// actually uses. This runs in the xctest layout; `swift run` and the packaged .app
+    /// are checked by `scripts/verify-release.sh` against the real bundle.
+    func testLocatorFindsTheResourceBundleBesideTheTestBinary() throws {
+        let bundle = try XCTUnwrap(MetalLibraryLocator.resourceBundle(),
+                                   "the resource bundle must be findable from the test layout")
+        XCTAssertNotNil(bundle.url(forResource: "ImageShaders", withExtension: "metal"),
+                        "the shader source ships inside the bundle")
+    }
+
     func testCanvasFallsBackToQuartzWhenNoRendererIsAvailable() throws {
         let canvas = ImageCanvasView(frame: NSRect(x: 0, y: 0, width: 1600, height: 1000))
         canvas.metalRendererFactory = { nil }               // as if Metal were unavailable

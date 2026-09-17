@@ -93,6 +93,49 @@ else
 fi
 note "linked libraries: $(echo "$DEPS" | tr '\n' ' ')"
 
+# ------------------------------------------------------------ metal resources
+# The packaged app must be able to reach a compiled Metal library, and a missing
+# resource bundle must select the Quartz fallback instead of crashing.
+BUNDLE_IN_APP="$APP/Contents/Resources/PicViewMac_PicViewMac.bundle"
+if [ -d "$BUNDLE_IN_APP" ]; then
+    pass "Metal resource bundle present in the app"
+else
+    fail "Metal resource bundle missing from the app"
+fi
+if [ -f "$BUNDLE_IN_APP/Contents/Resources/default.metallib" ]; then
+    pass "compiled Metal library packaged ($(stat -f%z "$BUNDLE_IN_APP/Contents/Resources/default.metallib") bytes)"
+    METALLIB_REQUIRED=1
+elif [ "${PICLIGHT_ALLOW_SOURCE_SHADER:-0}" = "1" ]; then
+    echo "SKIPPED: compiled Metal library absent — development build (PICLIGHT_ALLOW_SOURCE_SHADER=1)."
+    echo "         A release must be built where \`xcrun metal\` works."
+    METALLIB_REQUIRED=0
+else
+    fail "compiled Metal library missing (build with the Metal toolchain)"
+    METALLIB_REQUIRED=0
+fi
+
+if [ -x "$BINARY" ]; then
+    PROBE_OUT="$(PICLIGHT_METAL_PROBE=1 "$BINARY" 2>/dev/null || true)"
+    case "$PROBE_OUT" in
+        metal=ok*) pass "packaged app creates a Metal pipeline: $PROBE_OUT" ;;
+        metal=unavailable*) pass "packaged app reports Metal unavailable and falls back: $PROBE_OUT" ;;
+        *) fail "packaged app Metal probe: '$(echo "$PROBE_OUT" | head -1)'" ;;
+    esac
+
+    # The fallback path: with the resource bundle hidden the app must still answer,
+    # select Quartz and exit 0 — never trap.
+    if [ -d "$BUNDLE_IN_APP" ]; then
+        HIDDEN="$APP/Contents/Resources/.hidden-for-probe.bundle"
+        mv "$BUNDLE_IN_APP" "$HIDDEN"
+        FALLBACK_OUT="$(PICLIGHT_METAL_PROBE=1 "$BINARY" 2>/dev/null; echo "exit=$?")"
+        mv "$HIDDEN" "$BUNDLE_IN_APP"
+        case "$FALLBACK_OUT" in
+            *"fallback=quartz"*"exit=0"*) pass "missing Metal resources fall back to Quartz without trapping" ;;
+            *) fail "missing-resource probe did not fall back cleanly: $(echo "$FALLBACK_OUT" | tr '\n' ' ')" ;;
+        esac
+    fi
+fi
+
 # --------------------------------------------------------------- build version
 BUILD_INFO=$(otool -l "$BINARY" | awk '/LC_BUILD_VERSION/{flag=1} flag&&/minos/{print $2; exit}')
 if [ "$BUILD_INFO" = "$EXPECTED_MINOS" ]; then

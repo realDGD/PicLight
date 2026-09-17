@@ -330,13 +330,13 @@ git commit -m "feat: on-demand Metal renderer with mandatory mipmaps and Quartz 
 
 **Files:** `scripts/build-release.sh`, `scripts/verify-release.sh`, `PicViewMacTests/ResourcePackagingTests.swift`.
 
-- [ ] Step 1: `build-release.sh` copies the SwiftPM resource bundle (the compiled `default.metallib`) into
+- [x] Step 1: `build-release.sh` copies the SwiftPM resource bundle (the compiled `default.metallib`) into
       `PicLight.app/Contents/Resources` in addition to the executable.
-- [ ] Step 2: `verify-release.sh` adds two checks: the packaged app can locate/create the Metal pipeline; and a
+- [x] Step 2: `verify-release.sh` adds two checks: the packaged app can locate/create the Metal pipeline; and a
       deliberately missing-resource build still launches and selects Quartz (no trap).
-- [ ] Step 3: Tests — resource lookup paths for `swift run`, xctest and the packaged `.app`; missing bundle → `nil`,
+- [x] Step 3: Tests — resource lookup paths for `swift run`, xctest and the packaged `.app`; missing bundle → `nil`,
       no crash.
-- [ ] Step 4: Verify end to end: `scripts/build-release.sh && scripts/verify-release.sh`, plus a manual launch of the
+- [x] Step 4: Verify end to end: `scripts/build-release.sh && scripts/verify-release.sh`, plus a manual launch of the
       packaged app on the investigation image.
 
 ```bash
