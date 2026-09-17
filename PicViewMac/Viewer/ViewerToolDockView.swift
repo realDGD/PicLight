@@ -22,8 +22,8 @@ public final class ViewerToolDockView: MaterialHostView {
                                   isGroupStart: Bool)] = [
         ("rotate.right", .rotateClockwise, "顺时针旋转", false),
         ("arrow.left.and.right.righttriangle.left.righttriangle.right", .toggleMirror, "水平镜像", false),
-        ("arrow.up.and.down.and.arrow.left.and.right", .zoomToFit, "适应窗口", false),
-        ("rectangle.compress.vertical", .zoomToFitWidth, "适应宽度", false),
+        ("arrow.down.left.and.arrow.up.right.rectangle", .zoomToFit, "适应窗口", false),
+        ("arrow.left.and.right.square", .zoomToFitWidth, "适应宽度", false),
         ("arrow.left", .previousImage, "上一张", true),
         ("arrow.right", .nextImage, "下一张", false),
         ("1.square", .zoomActualPixels, "实际像素 100%", true),
