@@ -36,7 +36,7 @@ This design does **not** attempt to make a 1.9 GiB PNG decode in sub-second time
 - Native-resolution tiled rendering.
 - Custom PNG decoder in production.
 - Core Image as the main rendering path.
-- Multilevel image pyramids beyond the bounded decode buckets needed for cache identity.
+- Image pyramids beyond the bounded decode buckets needed for cache identity.
 - A LargeImageBackend for random-access native pixels.
 
 ## 3. Design principles
@@ -64,8 +64,10 @@ No huge native lazy `CGImage` should reach the main canvas when its long edge ex
 
 The main decoder chooses between:
 
-- Native decode when the source already fits the budget.
-- `CGImageSourceCreateThumbnailAtIndex` with transform enabled when the source exceeds the budget.
+- Native decode only when the source long edge is already <= the selected bucket.
+- `CGImageSourceCreateThumbnailAtIndex` with transform enabled when the source exceeds the selected bucket.
+
+For any source whose long edge exceeds 8192, production code must never request native decode in this iteration.
 
 The decode output must be a real bounded bitmap suitable for direct upload to Metal. The renderer must never trigger a hidden 48000×32000 decode merely because the view is scaled to Fit.
 
@@ -90,26 +92,45 @@ No permanent 60/120 Hz loop is allowed for a static image.
 
 The hard ceiling is **8192 pixels on the longest decoded edge**.
 
-The requested decode budget is derived from the physical canvas requirement, then clamped to 8192. The initial rule is:
+The requested decode budget is derived from the physical canvas requirement:
 
 ```text
-required = ceil(max(canvasWidth, canvasHeight) × backingScale × overscan)
-budget   = min(bucket(required), 8192)
+required = ceil(max(canvasWidth, canvasHeight) × backingScale × 1.5)
+budget   = min(nextBucketAtOrAbove(required), 8192)
 ```
 
-`overscan` should be conservative enough that small zooms above Fit do not instantly reveal softness. Use a fixed implementation constant rather than a user preference in this iteration.
+The overscan factor is fixed at **1.5** in this iteration. It is not a user preference.
 
 ### 4.2 Buckets
 
-Decode/cache identity uses stable buckets rather than arbitrary window-derived dimensions. Initial buckets:
+Stable decode/cache buckets are:
 
 ```text
-1024, 2048, 4096, 8192, native
+1024, 2048, 4096, 8192
 ```
 
-`native` is used only when the actual source long edge is <= 8192 or another safe bounded condition explicitly permits it. This design does not request native decode for sources larger than 8192.
+Selection rule:
 
-The exact bucket selection helper must be pure and unit-tested.
+1. Compute `required` above.
+2. Choose the smallest bucket >= `required`.
+3. Clamp that bucket to 8192.
+4. If the source long edge is <= the selected bucket, decode natively and mark the cache level as native-for-that-source.
+5. Otherwise create a bounded bitmap at the selected bucket.
+
+The bucket-selection helper is pure and unit-tested.
+
+### 4.3 Neighbor preload budget
+
+Neighbor preload is intentionally cheaper than the current item:
+
+```text
+main 8192 -> preload 4096
+main 4096 -> preload 2048
+main 2048 -> preload 1024
+main 1024 -> preload 1024
+```
+
+This is a fixed first-version policy, not a runtime heuristic. When a preloaded image becomes current, the normal current-image request may upgrade it to the current bucket.
 
 ## 5. Data model changes
 
@@ -128,15 +149,15 @@ head.descriptor.displayPixelSize   // logical/source dimensions
 head.image.width / height          // bounded render-bitmap dimensions
 ```
 
-Tests must explicitly exercise the case where these dimensions differ.
+Tests explicitly exercise the case where these dimensions differ.
 
 ### 5.2 `DecodeTarget`
 
 `DecodeTarget.maxPixelSize` changes from a mostly-ICO representation hint into a real decode budget for ordinary still images and TIFF pages.
 
-The decoder must honor it for single-representation JPEG/PNG/TIFF/WebP/BMP where ImageIO supports thumbnail creation.
+The decoder honors it for single-representation JPEG/PNG/TIFF/WebP/BMP where ImageIO supports thumbnail creation.
 
-ICO retains its representation-selection behavior. Multi-page TIFF retains `pageIndex` semantics.
+ICO retains representation selection. Multi-page TIFF retains `pageIndex` semantics.
 
 ### 5.3 Cache identity
 
@@ -150,13 +171,13 @@ URL + pageIndex + decodeLevel
 
 Animation-frame identity also includes frame index.
 
-A 4096 cached bitmap must never satisfy an 8192 request by accident. A larger cached bitmap may only satisfy a smaller request if the implementation explicitly chooses that policy and tests it; the first implementation should prefer exact bucket matching for simplicity.
+A 4096 cached bitmap must never satisfy an 8192 request. The first implementation uses exact level matching; it does not substitute a larger or smaller cached level implicitly.
 
-Cost remains based on the actual decoded bitmap bytes (`bytesPerRow × height`), not the source dimensions.
+Cost remains based on actual decoded bitmap bytes (`bytesPerRow × height`), not source dimensions.
 
 ## 6. ImageIO decode path
 
-For a source larger than the selected budget, `ImageIODecoder` uses a bounded thumbnail path with:
+For a source larger than the selected budget, `ImageIODecoder` uses:
 
 ```text
 kCGImageSourceCreateThumbnailFromImageAlways = true
@@ -167,27 +188,27 @@ kCGImageSourceShouldCacheImmediately = true
 
 The thumbnail transform is responsible for source orientation on the bounded path. The existing full-size CGContext orientation copy must not run after a transformed thumbnail has already been produced.
 
-For small images that are decoded natively, existing orientation correctness remains required.
+For small images decoded natively, existing orientation correctness remains required.
 
-The implementation must preserve color-space information carried by ImageIO. Existing Display-P3 tests remain valid and must not be weakened.
+The implementation preserves color-space information carried by ImageIO. Existing Display-P3 tests remain valid and must not be weakened.
 
 ## 7. Avoid redundant large-PNG decodes
 
 The investigation showed three expensive decode-like activities on first open of the 1.9 GiB PNG: main canvas rasterization, sidebar thumbnail generation, and navigator-preview generation. Each traversed the PNG stream.
 
-The new rule is:
+Rules:
 
 - Once a bounded main bitmap is available, the navigator preview is generated from that bitmap, never from the original file.
-- The current sidebar item should reuse/downsample from the current bounded bitmap where possible instead of opening the source again.
-- Neighbor sidebar thumbnails may continue using the existing thumbnail pipeline, because they do not yet have a main bounded bitmap.
+- Once a bounded main bitmap is available, the current sidebar item is generated/replaced from that bitmap instead of opening the source again.
+- Neighbor sidebar thumbnails may continue using the existing thumbnail pipeline because no main bounded bitmap exists for them yet.
 
-This does not make the first bounded main decode faster, but it prevents PicLight from repeatedly paying the same 18–20 s source-stream cost for UI chrome.
+This does not make the first bounded main decode faster, but prevents PicLight from repeatedly paying the same source-stream cost for current-image UI chrome.
 
 ## 8. Metal rendering architecture
 
 ### 8.1 Component boundaries
 
-Add these components:
+Add:
 
 ```text
 PicViewMac/Viewer/
@@ -216,9 +237,9 @@ The image is uploaded only when the bitmap changes. Zoom/pan/rotate/mirror updat
 
 ### 8.3 Geometry
 
-The shader draws a textured quad representing the full logical source rectangle. UV coordinates address the bounded texture. The existing viewport semantics are translated into a GPU transform matrix.
+The shader draws a textured quad representing the full logical source rectangle. UV coordinates address the bounded texture. Existing viewport semantics are translated into a GPU transform matrix.
 
-The transform must preserve current behavior for:
+The transform preserves:
 
 - Fit
 - Fit Width
@@ -229,20 +250,20 @@ The transform must preserve current behavior for:
 - quarter-turn rotation
 - horizontal mirror
 
-The mathematical source of truth remains `ViewportState`; do not create a second independent Metal-specific viewport model.
+`ViewportState` remains the mathematical source of truth; there is no second Metal-specific viewport model.
 
 ### 8.4 Sampling
 
-Initial behavior should match current visible semantics as closely as practical:
+Sampling policy is explicit:
 
-- minification: filtered sampling
-- magnification around/above source 100%: preserve current crisp intent; renderer tests define the accepted behavior
+- If the render bitmap is a bounded proxy (`bitmap dimensions != source display dimensions`), use linear filtering for both minification and magnification in this iteration. This avoids exposing proxy texels as large hard blocks at high zoom.
+- If the render bitmap is native-size, use linear filtering while `zoomScale < 1` and nearest sampling when `zoomScale >= 1`, matching the existing CGContext intent.
 
-Mipmaps may be used if they improve quality/performance without changing geometry semantics. They are not required for the first functional cut if direct sampling meets the acceptance tests.
+Mipmaps are optional and may be added only if tests show they improve quality/performance without changing geometry semantics.
 
 ## 9. On-demand draw lifecycle
 
-`MTKView` must be event-driven:
+`MTKView` is event-driven:
 
 ```swift
 isPaused = true
@@ -265,24 +286,24 @@ A static image must not generate a continuous render loop.
 
 The renderer must not silently flatten Display-P3 images to unmanaged device RGB.
 
-The bounded `CGImage` retains its ImageIO color space. The Metal pipeline must choose a texture/drawable strategy that preserves normal sRGB and Display-P3 behavior on macOS.
+The bounded `CGImage` retains its ImageIO color space. The Metal surface must configure a compatible drawable color space for supported 8-bit RGB inputs. If the input color space/pixel configuration cannot be represented correctly by the Metal path, the renderer falls back to Quartz.
 
-This design does not introduce HDR editing or Core Image filters. If the renderer cannot correctly support an input format/color configuration, it must fall back to the Quartz path rather than display incorrect color.
+This iteration does not add HDR editing, tone mapping, or Core Image filters.
 
 ## 11. Quartz fallback
 
 The existing CGContext renderer remains available as a fallback.
 
-Fallback conditions include, but are not limited to:
+Fallback conditions include:
 
 - no usable `MTLDevice`
 - shader/pipeline library failure
 - texture creation failure
 - unsupported pixel/color configuration
 
-Fallback must display the bounded bitmap, not a huge native lazy source. Failure of Metal must never reintroduce the original 5.86 GiB native-bitmap problem.
+Fallback displays the bounded bitmap, not a huge native lazy source. Metal failure must never reintroduce the original full-size allocation problem.
 
-The user should not see a blank canvas simply because Metal setup failed.
+The user must not see a blank canvas because Metal setup failed.
 
 ## 12. Shader packaging and release bundle
 
@@ -290,22 +311,21 @@ Use a real `.metal` source file compiled as a Swift Package resource. Do not com
 
 Because the existing release script copies only the SwiftPM executable into the `.app`, the build/release path must also copy the generated resource bundle containing the Metal library into `Contents/Resources`.
 
-`verify-release.sh` must include a packaged-app check proving the Metal resource can be located and a render pipeline can be created from the assembled `.app`/DMG path.
+`verify-release.sh` adds a packaged-app check proving the Metal resource can be located and a render pipeline can be created from the assembled `.app`/DMG path.
 
 Development-only success under `swift run` is insufficient.
 
 ## 13. Controller integration
 
-`ViewerViewController` computes the decode target from the actual canvas/backing-scale requirement before asking `DecodeCoordinator` to show the item.
+`ViewerViewController` computes the current decode target from the actual canvas/backing-scale requirement before asking `DecodeCoordinator` to show the item.
 
-Important behaviors:
+Rules:
 
-- Main decode target is a stable bucket <= 8192.
-- Neighbor preload target must not exceed the main bucket and may be intentionally lower if tests show that is beneficial.
-- A cached decode at the requested bucket may be reused.
-- Image change publishes descriptor and bounded image together so geometry never briefly uses the bitmap size as source size.
-
-Navigator sizing uses `descriptor.displayPixelSize`, not `currentImage.width/height`.
+- Current decode target follows the bucket policy in §4.
+- Previous/next preload target follows §4.3.
+- Cache lookups require the exact requested level.
+- Image change publishes descriptor and bounded bitmap together so geometry never briefly uses bitmap dimensions as source dimensions.
+- Navigator sizing uses `descriptor.displayPixelSize`, not `currentImage.width/height`.
 
 ## 14. Testing strategy
 
@@ -314,7 +334,7 @@ Navigator sizing uses `descriptor.displayPixelSize`, not `currentImage.width/hei
 Add tests proving:
 
 - single-representation PNG/JPEG/TIFF honor `DecodeTarget.maxPixelSize`
-- a source larger than the budget produces a bounded output
+- a source larger than the budget produces bounded output
 - `descriptor.displayPixelSize` remains the original logical size
 - orientation remains correct on bounded output
 - Display-P3 remains tagged correctly
@@ -323,18 +343,7 @@ Add tests proving:
 
 ### 14.2 Geometry tests
 
-Construct cases where source size and bitmap size differ substantially. Verify:
-
-- Fit
-- Fit Width
-- 100%
-- Fit ×2
-- pointer-centered zoom
-- panning/clamping
-- navigator rect
-- rotation/mirror
-
-all behave according to source geometry.
+Construct cases where source size and bitmap size differ substantially. Verify Fit, Fit Width, 100%, Fit ×2, pointer-centered zoom, panning/clamping, navigator rect, rotation, and mirror all behave according to source geometry.
 
 ### 14.3 Cache tests
 
@@ -343,7 +352,7 @@ Verify:
 - 4096 and 8192 entries are distinct
 - page index participates in identity
 - actual decoded byte size drives cost
-- memory-pressure purge still keeps the intended current entry semantics
+- memory-pressure purge still keeps intended current-entry semantics
 
 ### 14.4 Renderer tests
 
@@ -358,22 +367,13 @@ Where deterministic rendering is available, compare Metal and Quartz on small fi
 - sRGB
 - Display-P3 handling
 
-Tests should prefer geometry/pixel invariants over brittle screenshot hashes.
+Prefer geometry/pixel invariants over brittle screenshot hashes.
 
-Add a forced-failure injection path so tests can prove automatic Quartz fallback.
+Add a forced-failure injection path so tests prove automatic Quartz fallback.
 
 ### 14.5 Existing regression suite
 
-All existing tests must continue passing, particularly:
-
-- gesture routing
-- pointer-centered zoom
-- drawer pin/unpin geometry
-- navigator layering/viewport updates
-- animated images
-- multi-page TIFF
-- thumbnail selection border
-- window/layout behavior
+All existing tests must continue passing, particularly gesture routing, pointer-centered zoom, drawer pin/unpin geometry, navigator behavior, animated images, multi-page TIFF, thumbnail selection border, and window/layout behavior.
 
 ### 14.6 Real 1.9 GiB PNG acceptance
 
@@ -386,7 +386,7 @@ Using `/Users/dgd/Downloads/万萝图/万萝图.png` locally (never committed):
 - static Metal renderer does not continuously draw
 - zoom/pan remain responsive after the bounded image is available
 
-The known baseline is approximately:
+Known baseline:
 
 ```text
 first real pixels: ~19.6 s
@@ -395,11 +395,11 @@ peak RSS: 7.8–9.0 GiB
 lazy-native interaction: ~0.05 fps
 ```
 
-The first implementation is expected primarily to reduce memory/swap and interaction cost, not the ~18 s first bounded PNG decode itself.
+This implementation is expected primarily to reduce memory/swap and interaction cost, not the ~18 s first bounded PNG decode itself.
 
 ## 15. Quick Look spike
 
-This spike is exploratory only and must not become a production dependency in this implementation.
+Exploratory only; it does not become a production dependency in this implementation.
 
 Question:
 
@@ -407,7 +407,7 @@ Question:
 
 Measure:
 
-- cold cache vs warm cache
+- cold vs warm cache
 - before and after Finder/Quick Look has viewed the file
 - 2048 and 4096 requests
 - wall time
@@ -415,15 +415,13 @@ Measure:
 - process footprint
 - whether the request itself appears to trigger a full PNG decode
 
-Success criterion:
-
-A repeatable, materially sub-second or otherwise clearly earlier warm-cache preview. If the API simply repeats the 18 s decode, do not integrate it.
+Success criterion: repeatable, materially sub-second or otherwise clearly earlier warm-cache preview. If the API simply repeats the ~18 s decode, do not integrate it.
 
 Output: benchmark/report only.
 
 ## 16. Alternative PNG decoder spike
 
-This spike is exploratory only.
+Exploratory only.
 
 Candidates:
 
@@ -437,28 +435,28 @@ Use the same 1.9 GiB PNG and compare against ImageIO for:
 - CPU time
 - peak memory/footprint
 - decode-to-4096/8192 behavior
-- feasibility of row-by-row downsampling
+- row-by-row downsampling feasibility
 - cancellation/checkpoint behavior
 
-Do not treat a small single-digit percentage speedup as sufficient justification for a new dependency. The result must be clearly material and repeatable to justify production consideration.
+A small single-digit percentage speedup is insufficient justification for a production dependency; the result must be clearly material and repeatable.
 
-The spike must not assume that decoding only the first N% of a non-interlaced PNG can produce a complete whole-image preview. The PNG stream is sequential; row-wise incremental decode may improve memory and cancellation behavior but still requires the complete stream for a complete full-image downsample.
+The spike must not assume that decoding only the first N% of a non-interlaced PNG can produce a complete whole-image preview. Row-wise incremental decode may improve memory and cancellation behavior but still requires the complete stream for a complete full-image downsample.
 
 Output: benchmark/report only.
 
 ## 17. Error handling
 
-- Decode failure continues to surface through the existing compact viewer error path.
+- Decode failure continues through the existing compact viewer error path.
 - Metal initialization failure is non-fatal and selects Quartz fallback.
-- Resource-bundle/shader lookup failure is treated as Metal-unavailable, not an app-launch failure.
-- A bounded decode that fails may fall back to the existing native path only when the source is already within the safe <=8192 range. Huge sources must not silently fall back to an unbounded native render.
+- Shader/resource lookup failure is treated as Metal-unavailable, not an app-launch failure.
+- A bounded decode failure may fall back to native decode only when the source long edge is <=8192. Oversized sources must not silently fall back to unbounded native rendering.
 
 ## 18. Implementation order
 
-The later implementation plan should preserve this dependency order:
+The implementation plan must preserve this dependency order:
 
 1. Source-vs-bitmap geometry separation in consumers.
-2. Pure decode-budget/bucket helpers and cache identity.
+2. Decode-budget/bucket helpers and cache identity.
 3. ImageIO bounded main decode.
 4. Navigator/current-preview reuse.
 5. Metal renderer and Quartz fallback.
@@ -467,14 +465,14 @@ The later implementation plan should preserve this dependency order:
 8. Quick Look spike.
 9. Alternative decoder spike.
 
-The spikes may run independently once the production architecture work is stable, but their results do not gate the bounded-image + Metal implementation.
+The spikes may run independently once production architecture work is stable, but their results do not gate bounded-image + Metal implementation.
 
 ## 19. Success criteria
 
-The design is successful when all of the following are true:
+The design is successful when all are true:
 
 - A huge source cannot force a native-size canvas bitmap merely to display at Fit.
-- The first-version decoded long edge never exceeds 8192 for oversized sources.
+- The decoded long edge never exceeds 8192 for oversized sources.
 - Source geometry remains exact and existing zoom semantics are preserved.
 - Large-image interaction uses on-demand Metal when available.
 - Static images do not run a continuous GPU loop.
