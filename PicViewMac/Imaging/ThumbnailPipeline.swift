@@ -36,7 +36,8 @@ public actor ThumbnailPipeline {
     /// resample of pixels the viewer already holds, not a second decoder, and it
     /// runs off the main actor.
     public func preview(from image: CGImage, maxPixelSize: Int) async -> CGImage? {
-        await Task.detached(priority: .utility) {
+        ThumbnailPipelineMetrics.notePreview()
+        return await Task.detached(priority: .utility) {
             let width = image.width
             let height = image.height
             guard width > 0, height > 0, maxPixelSize > 0 else { return nil }
@@ -66,6 +67,7 @@ public actor ThumbnailPipeline {
 
     static func makeThumbnail(url: URL, maxPixelSize: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        ThumbnailPipelineMetrics.noteFileDecode(url)
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -80,4 +82,39 @@ public actor ThumbnailPipeline {
 final class CGImageBox: @unchecked Sendable {
     let image: CGImage
     init(_ image: CGImage) { self.image = image }
+}
+
+/// Counting seams for the large-image tests and diagnostics.
+///
+/// Separate from the actor so the counters stay plain process-wide values: what the
+/// drawer-safety tests assert is "this file was never read from disk" and "this
+/// bitmap was resampled from one already in hand", not actor state.
+public enum ThumbnailPipelineMetrics {
+    // Drawer cells are filled by several concurrent tasks, so these counters need a
+    // lock: an unsynchronised `Set` insert from two threads corrupts the set (this
+    // crashed the drawer-safety test with an unrecognised-selector exception before
+    // the lock was added).
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var paths: Set<String> = []
+    nonisolated(unsafe) private static var previews = 0
+
+    /// Files whose thumbnail was actually decoded from disk.
+    public static var decodedFilePaths: Set<String> {
+        lock.lock(); defer { lock.unlock() }
+        return paths
+    }
+
+    /// Resamples of an already-decoded bitmap (navigator, current drawer cell).
+    public static var previewCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return previews
+    }
+
+    static func noteFileDecode(_ url: URL) {
+        lock.lock(); paths.insert(url.path); lock.unlock()
+    }
+
+    static func notePreview() {
+        lock.lock(); previews += 1; lock.unlock()
+    }
 }

@@ -20,7 +20,19 @@ public enum BitmapMaterializer {
     /// tests that prove the delivered bitmap is not re-materialized later; it is
     /// deliberately not a flag on the produced image, which would only assert
     /// itself.
-    private(set) nonisolated(unsafe) static var materializations = 0
+    private static let counterLock = NSLock()
+    nonisolated(unsafe) private static var count = 0
+
+    /// Decodes are concurrent, so the counter is lock-protected rather than a bare
+    /// static increment.
+    public static var materializations: Int {
+        counterLock.lock(); defer { counterLock.unlock() }
+        return count
+    }
+
+    private static func noteMaterialization() {
+        counterLock.lock(); count += 1; counterLock.unlock()
+    }
 
     /// Draws `image` into a fresh bitmap and returns it.
     ///
@@ -37,7 +49,7 @@ public enum BitmapMaterializer {
             context.interpolationQuality = .none          // 1:1 copy, no resampling
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
             if let materialized = context.makeImage() {
-                materializations += 1
+                noteMaterialization()
                 return materialized
             }
         }

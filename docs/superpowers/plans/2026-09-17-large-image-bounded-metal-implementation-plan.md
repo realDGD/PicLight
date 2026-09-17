@@ -263,15 +263,15 @@ git commit -m "feat: bounded main decode with explicit background materializatio
 
 **Files:** `ViewerViewController.swift`, `ThumbnailPipeline.swift`, `PicViewMacTests/DrawerSafetyTests.swift` (new).
 
-- [ ] Step 1: Navigator preview and the current item's drawer thumbnail are generated from the current render bitmap
+- [x] Step 1: Navigator preview and the current item's drawer thumbnail are generated from the current render bitmap
       (`ThumbnailPipeline.preview(from:)`), never by re-opening the source. Keep the file-based thumbnail path for
       non-current items at or below the pixel budget.
-- [ ] Step 2: Non-current oversized drawer items render a placeholder; `OversizedPolicy` decides before any decode is
+- [x] Step 2: Non-current oversized drawer items render a placeholder; `OversizedPolicy` decides before any decode is
       requested. Placeholder must not touch selection-border semantics or hit testing.
-- [ ] Step 3: Tests — with a counting decoder seam: opening an oversized image performs **exactly one** full-stream
+- [x] Step 3: Tests — with a counting decoder seam: opening an oversized image performs **exactly one** full-stream
       traversal; navigator and current drawer item contribute none; N oversized drawer items launch zero full-stream
       decodes.
-- [ ] Step 4: Checkpoint with the app harness (Metal does not exist yet, so this isolates the decode-side win):
+- [x] Step 4: Checkpoint with the app harness (Metal does not exist yet, so this isolates the decode-side win):
       `benchmarks/LargeImagePolicyBench/run-e4.sh <rev>` on the investigation image. Expect traversals to drop from
       the 4 in the recorded baseline toward 1, the main-thread stall to fall well below 20.9 s, and energy toward
       ~60 J. Record the numbers in the PR; the formal E4 gate runs in Task 8.

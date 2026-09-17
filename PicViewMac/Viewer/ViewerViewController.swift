@@ -25,6 +25,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private let coordinator: DecodeCoordinator
     private let thumbnails: ThumbnailPipeline
+    private let probe: DimensionProbing
     private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
 
@@ -50,9 +51,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The decoder and thumbnail pipeline are injectable so tests can drive the
     /// real viewer with a counting or deliberately slow implementation.
     public init(decoder: ImageDecoding = ImageIODecoder(),
-                thumbnails: ThumbnailPipeline = ThumbnailPipeline()) {
-        self.coordinator = DecodeCoordinator(decoder: decoder)
+                thumbnails: ThumbnailPipeline = ThumbnailPipeline(),
+                probe: DimensionProbing = DimensionProbe()) {
+        // One probe instance is shared with the coordinator so the drawer's
+        // oversized decision and the preload decision cannot disagree, and so both
+        // reuse a single dimension cache.
+        self.coordinator = DecodeCoordinator(decoder: decoder, probe: probe)
         self.thumbnails = thumbnails
+        self.probe = probe
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -592,10 +598,35 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         Task { [weak self] in
             guard let self else { return }
             defer { self.inFlightThumbnails[item.url] = nil }
-            guard let image = try? await self.thumbnails.thumbnail(for: item.url, maxPixelSize: 300) else { return }
+            // `nil` leaves the cell as a placeholder: an oversized neighbour is not
+            // worth a full-stream decode for a 300 px cell.
+            guard let image = await self.thumbnailImage(for: item) else { return }
             self.thumbnailCache[item.url] = image
             self.drawer.updateThumbnail(at: index, image: image)
         }
+    }
+
+    /// Row size for a drawer cell thumbnail.
+    static let drawerThumbnailPixelSize = 300
+
+    /// Where a drawer cell's thumbnail comes from.
+    ///
+    /// The item on screen is served from the bitmap already decoded for the canvas:
+    /// re-opening the source for its own cell would re-read the entire compressed
+    /// stream (measured 18.7–19.9 s for the investigation image) to fill a cell a few
+    /// dozen points wide. Non-current items keep the file-based pipeline, except
+    /// oversized ones, which stay placeholders — a 300 px thumbnail of such a file
+    /// costs the same whole-stream decode, and a drawer full of them would start one
+    /// per visible row.
+    /// Internal rather than private so the policy can be tested without a laid-out
+    /// drawer: a windowless test never creates cells, so it would never issue a
+    /// thumbnail request and could "pass" while proving nothing.
+    func thumbnailImage(for item: FolderItem) async -> CGImage? {
+        if item.url == session.currentItem?.url, let bitmap = viewerState.currentImage {
+            return await thumbnails.preview(from: bitmap, maxPixelSize: Self.drawerThumbnailPixelSize)
+        }
+        if await probe.isOversized(item.url) { return nil }
+        return try? await thumbnails.thumbnail(for: item.url, maxPixelSize: Self.drawerThumbnailPixelSize)
     }
 
     private var thumbnailCache: [URL: CGImage] = [:]

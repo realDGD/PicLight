@@ -15,7 +15,7 @@ public actor ThumbnailPipeline {
 
     public func thumbnail(for url: URL, maxPixelSize: Int) async throws -> CGImage {
         BenchTrace.markFromAnyThread("ThumbnailPipeline.thumbnail(maxPixelSize: \(maxPixelSize)) START")
-        BenchTrace.noteTraversal("thumbnail(maxPx:\(maxPixelSize))")
+        BenchTrace.noteTraversal("drawer file thumbnail(maxPx:\(maxPixelSize))")
         defer { BenchTrace.markFromAnyThread("ThumbnailPipeline.thumbnail(\(maxPixelSize)) END") }
         let key = "\(url.path)|\(maxPixelSize)" as NSString
         if let cached = cache.object(forKey: key) { return cached.image }
@@ -39,10 +39,13 @@ public actor ThumbnailPipeline {
     /// resample of pixels the viewer already holds, not a second decoder, and it
     /// runs off the main actor.
     public func preview(from image: CGImage, maxPixelSize: Int) async -> CGImage? {
-        BenchTrace.markFromAnyThread("ThumbnailPipeline.preview(from: \(image.width)x\(image.height), maxPixelSize: \(maxPixelSize)) START")
-        if max(image.width, image.height) > 8192 { BenchTrace.noteTraversal("preview(oversized:\(image.width)x\(image.height))") }
-        defer { BenchTrace.markFromAnyThread("ThumbnailPipeline.preview END") }
-        return await Task.detached(priority: .utility) {
+        BenchTrace.markFromAnyThread("ThumbnailPipeline.preview(from: \(image.width)x\(image.height), maxPixelSize: \(maxPixelSize))")
+        if max(image.width, image.height) > DecodeBudget.maximumLongEdge {
+            // Tripwire: a preview of an *oversized* bitmap means something upstream
+            // failed to bound it, and that read would be a full-stream decode.
+            BenchTrace.noteTraversal("preview(oversized:\(image.width)x\(image.height))")
+        }
+        await Task.detached(priority: .utility) {
             let width = image.width
             let height = image.height
             guard width > 0, height > 0, maxPixelSize > 0 else { return nil }
@@ -60,7 +63,6 @@ public actor ThumbnailPipeline {
             return context.makeImage()
         }.value
     }
-
 
     public func cancelAll() {
         for task in inFlight.values { task.cancel() }

@@ -14,6 +14,14 @@ public protocol DimensionProbing: Sendable {
     func longEdge(of url: URL) async -> Int?
 }
 
+extension DimensionProbing {
+    /// Convenience for policy decisions, which must fail safe: an unreadable header
+    /// counts as oversized, so nothing speculative starts for it.
+    public func isOversized(_ url: URL) async -> Bool {
+        OversizedPolicy.isOversized(sourceLongEdge: await longEdge(of: url))
+    }
+}
+
 public actor DimensionProbe: DimensionProbing {
     private var longEdges: [String: Int] = [:]
     private var inFlight: [String: Task<Int?, Never>] = [:]
@@ -33,11 +41,6 @@ public actor DimensionProbe: DimensionProbing {
         inFlight[url.path] = nil
         if let value { longEdges[url.path] = value }
         return value
-    }
-
-    /// Convenience for policy decisions, which must fail safe.
-    public func isOversized(_ url: URL) async -> Bool {
-        OversizedPolicy.isOversized(sourceLongEdge: await longEdge(of: url))
     }
 
     public func forget(_ url: URL) { longEdges[url.path] = nil }

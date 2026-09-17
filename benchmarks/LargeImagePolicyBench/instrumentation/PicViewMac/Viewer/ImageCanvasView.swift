@@ -1,12 +1,23 @@
 import AppKit
 
-/// Layer-backed canvas that draws the current `CGImage` with the viewport
+/// Layer-backed canvas that draws the current `RenderImage` with the viewport
 /// transform. Color-space information travels with the image; nothing is
 /// flattened to unmanaged device RGB.
+///
+/// Geometry comes from the render image's descriptor, never from the bitmap: a
+/// bounded proxy is smaller than the source it represents, so `bitmap.width/height`
+/// must not leak into Fit, pan clamping, rotation or the navigator.
 public final class ImageCanvasView: NSView {
-    public var image: CGImage? {
-        didSet { needsDisplay = true }
+    public var renderImage: RenderImage? {
+        didSet {
+            guard renderImage != oldValue else { return }
+            needsDisplay = true
+        }
     }
+
+    /// The bitmap currently on screen. Read-only on purpose: pixels cannot be
+    /// published without the geometry they belong to.
+    public var image: CGImage? { renderImage?.bitmap }
 
     public var viewport = ViewportState() {
         didSet { needsDisplay = true; onViewportChange?(viewport) }
@@ -47,13 +58,11 @@ public final class ImageCanvasView: NSView {
 
     // MARK: - Geometry helpers
 
-    public var imagePixelSize: CGSize {
-        guard let image else { return .zero }
-        return CGSize(width: image.width, height: image.height)
-    }
+    /// Logical source size of the image being shown. Zero when nothing is loaded.
+    public var imagePixelSize: CGSize { renderImage?.sourcePixelSize ?? .zero }
 
     public func refit() {
-        guard image != nil, bounds.width > 0, bounds.height > 0 else { return }
+        guard renderImage != nil, bounds.width > 0, bounds.height > 0 else { return }
         var updated = viewport
         updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
         updated.clampCenter(imagePixels: imagePixelSize, viewPoints: bounds.size, backingScale: backingScale)
@@ -61,7 +70,7 @@ public final class ImageCanvasView: NSView {
     }
 
     public func setZoomToFit() {
-        guard image != nil else { return }
+        guard renderImage != nil else { return }
         var updated = viewport
         updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
         updated.zoomScale = updated.fitScale
@@ -71,7 +80,7 @@ public final class ImageCanvasView: NSView {
     }
 
     public func setZoomToFitWidth() {
-        guard image != nil else { return }
+        guard renderImage != nil else { return }
         var updated = viewport
         updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
         updated.zoomScale = ViewportState.fitWidthScale(imagePixels: imagePixelSize,
@@ -90,7 +99,7 @@ public final class ImageCanvasView: NSView {
     }
 
     public func toggleFitAndDoubleFit() {
-        guard image != nil else { return }
+        guard renderImage != nil else { return }
         var updated = viewport
         let fit = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
         if updated.isAtFit {
@@ -132,7 +141,7 @@ public final class ImageCanvasView: NSView {
     }
 
     private func canPan(deltaX: CGFloat) -> Bool {
-        guard image != nil else { return false }
+        guard renderImage != nil else { return false }
         let rect = viewport.visibleNormalizedRect(imagePixels: imagePixelSize,
                                                   viewPoints: bounds.size)
         return deltaX > 0 ? rect.minX > 0.001 : rect.maxX < 0.999
@@ -142,13 +151,10 @@ public final class ImageCanvasView: NSView {
 
     public override func draw(_ dirtyRect: NSRect) {
         let benchT0 = benchNow()
-        let benchHadImage = image != nil
-        if let img = image, max(img.width, img.height) > 8192 {
-            BenchTrace.noteTraversal("canvas rasterization(oversized:\(img.width)x\(img.height))")
-        }
-        BenchTrace.markFromAnyThread(String(format: "canvas draw ENTER image=%@ zoom=%.4f bounds=%.0fx%.0f dirty=%.0fx%.0f",
+        let benchHadImage = renderImage != nil
+        BenchTrace.markFromAnyThread(String(format: "canvas draw ENTER image=%@ zoom=%.4f bounds=%.0fx%.0f",
                                            benchHadImage ? "yes" : "nil", viewport.zoomScale,
-                                           bounds.width, bounds.height, dirtyRect.width, dirtyRect.height))
+                                           bounds.width, bounds.height))
         defer {
             BenchTrace.noteDraw(duration: benchNow() - benchT0, dirty: dirtyRect,
                                 bounds: bounds, hasImage: benchHadImage)
@@ -156,10 +162,15 @@ public final class ImageCanvasView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         backgroundColor.setFill()
         bounds.fill()
-        guard let image else { return }
+        guard let renderImage else { return }
+        if max(renderImage.bitmap.width, renderImage.bitmap.height) > DecodeBudget.maximumLongEdge {
+            // Tripwire: an oversized bitmap reaching the canvas is the original bug.
+            BenchTrace.noteTraversal("canvas rasterization(oversized:\(renderImage.bitmap.width)x\(renderImage.bitmap.height))")
+        }
 
-        let pixelWidth = CGFloat(image.width)
-        let pixelHeight = CGFloat(image.height)
+        // The bitmap is mapped over the source rectangle: a bounded proxy and a
+        // native bitmap must produce identical geometry for the same source.
+        let source = renderImage.sourcePixelSize
         let quarterTurns = viewport.normalizedQuarterTurns
         let displayed = ViewportState.displayedPixelSize(imagePixelSize, quarterTurns: quarterTurns)
         let zoom = viewport.zoomScale
@@ -173,8 +184,8 @@ public final class ImageCanvasView: NSView {
         let offsetX = (viewport.normalizedCenter.x - 0.5) * displayed.width
         let offsetY = (viewport.normalizedCenter.y - 0.5) * displayed.height
         context.translateBy(x: -offsetX, y: -offsetY)
-        context.draw(image, in: CGRect(x: -pixelWidth / 2, y: -pixelHeight / 2,
-                                       width: pixelWidth, height: pixelHeight))
+        context.draw(renderImage.bitmap, in: CGRect(x: -source.width / 2, y: -source.height / 2,
+                                                    width: source.width, height: source.height))
         context.restoreGState()
     }
 
