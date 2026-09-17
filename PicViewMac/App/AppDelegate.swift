@@ -16,7 +16,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: false)
 
         if let path = SelfTest.requestedFilePath {
-            _ = environment.newViewerWindow()
+            // No window is created here on purpose: the runner opens the file
+            // through the same production path Finder uses, so the window it
+            // checks is the one a real file open produces.
             SelfTest.run(fileURL: URL(fileURLWithPath: path), environment: environment)
             return
         }
@@ -29,15 +31,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isDefaultWindowPending else { return }
                 self.isDefaultWindowPending = false
-                if !self.environment.hasVisibleViewer { _ = self.environment.newViewerWindow() }
+                if !self.environment.hasVisibleViewer {
+                    _ = self.environment.presentNewViewerWindow()
+                }
             }
         }
     }
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// Dock click: restore whatever is on screen, otherwise present a new viewer.
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { _ = environment.newViewerWindow() }
+        if !flag { _ = environment.presentNewViewerWindow() }
         return true
     }
 

@@ -24,7 +24,11 @@ public final class AppEnvironment {
         windowControllers.last { $0.window?.isVisible == true } ?? windowControllers.last
     }
 
-    public func newViewerWindow() -> ViewerWindowController {
+    /// Creates a viewer window and, by default, presents it. Callers never have
+    /// to remember `showWindow` themselves; pass `show: false` only when the
+    /// window is about to be opened with a file, which presents it anyway.
+    @discardableResult
+    public func newViewerWindow(show: Bool = true) -> ViewerWindowController {
         let controller = ViewerWindowController()
         // Deterministic cascade so new windows never exactly overlap.
         if let window = controller.window,
@@ -35,20 +39,29 @@ public final class AppEnvironment {
             window.setFrame(frame, display: false)
         }
         windowControllers.append(controller)
+        if show { controller.present() }
         return controller
+    }
+
+    /// Bare launch and Dock reopen: always end up with a visible viewer.
+    @discardableResult
+    public func presentNewViewerWindow() -> ViewerWindowController {
+        newViewerWindow(show: true)
     }
 
     public func open(url: URL, behavior: OpenBehavior? = nil) {
         let resolved = behavior ?? openBehaviorOverride ?? settings.openBehavior
         switch resolved {
         case .newWindow:
-            let controller = newViewerWindow()
+            // Created without showing: `open(url:)` presents it, so a file open
+            // never flashes an empty window first.
+            let controller = newViewerWindow(show: false)
             controller.open(url: url)
         case .reuseCurrent:
             if let controller = mostRecentViewer {
                 controller.open(url: url)
             } else {
-                let controller = newViewerWindow()
+                let controller = newViewerWindow(show: false)
                 controller.open(url: url)
             }
         }

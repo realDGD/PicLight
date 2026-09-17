@@ -25,9 +25,17 @@ public final class ViewerWindowController: NSWindowController {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// Makes an existing viewer visible and key. Creating a controller is not the
+    /// same thing as showing it: a bare launch, a Dock reopen and a file open all
+    /// end here, so the "is there a window on screen?" question has one answer.
+    public func present() {
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     public func open(url: URL) {
         viewerViewController.open(url: url)
-        window?.makeKeyAndOrderFront(nil)
+        present()
     }
 
     /// Remembers the content size only; a transient full-screen frame is never stored.
