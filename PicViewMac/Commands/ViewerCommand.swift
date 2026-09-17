@@ -11,6 +11,7 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
     case firstImage
     case lastImage
     case zoomToFit
+    case zoomToFitWidth
     case zoomActualPixels
     case zoomDoubleFit
     case rotateClockwise
@@ -36,6 +37,7 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
         case .firstImage: return "第一张图像"
         case .lastImage: return "最后一张图像"
         case .zoomToFit: return "适应窗口"
+        case .zoomToFitWidth: return "适应宽度"
         case .zoomActualPixels: return "实际像素 100%"
         case .zoomDoubleFit: return "适应 ×2"
         case .rotateClockwise: return "顺时针旋转"

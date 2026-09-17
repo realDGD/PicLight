@@ -103,16 +103,28 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             + "bounds=\(minimap.bounds.size) canvasPixels=\(canvas.imagePixelSize)")
     }
 
-    /// Drives the pin button the way the drawer's button does.
-    func toggleDrawerPinForTesting() {
-        toggleDrawerPin()
-    }
+    /// Reports the drawer's pinned state so the window can reflect it.
+    public var onDrawerPinnedChanged: ((Bool) -> Void)?
 
-    private func toggleDrawerPin() {
+    /// Opens or closes the drawer: the titlebar button and the ⇧⌘T command both land
+    /// here, and the drawer itself no longer carries a pin control.
+    public func setDrawerPinned(_ pinned: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.setDrawerPinned(!hover.drawerPinned, at: now)
+        hover.setDrawerPinned(pinned, at: now)
         hover.update(at: now)
         applyChromeVisibility()
+        onDrawerPinnedChanged?(hover.drawerPinned)
+    }
+
+    public func toggleDrawerPinned() {
+        setDrawerPinned(!hover.drawerPinned)
+    }
+
+    /// Whether the drawer is currently held open.
+    public var isDrawerPinned: Bool { hover.drawerPinned }
+
+    func toggleDrawerPinForTesting() {
+        toggleDrawerPinned()
     }
 
     public override func loadView() {
@@ -291,13 +303,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.pendingDirection = index > (self.session.currentIndex ?? 0) ? .forward : .backward
             self.session.select(index: index)
         }
-        drawer.onTogglePin = { [weak self] in
-            guard let self else { return }
-            let now = Date().timeIntervalSinceReferenceDate
-            self.hover.setDrawerPinned(!self.hover.drawerPinned, at: now)
-            self.hover.update(at: now)
-            self.applyChromeVisibility()
-        }
+
         minimap.onCenterRequested = { [weak self] center in
             guard let self else { return }
             var viewport = self.canvas.viewport
@@ -617,7 +623,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // Leaving immersive mode restores whatever the user had open.
             infoCardSuppressed = false
         }
-        drawer.setPinned(hover.drawerPinned)
         applyDrawerLayout()
     }
 
@@ -769,6 +774,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             session.goLast()
         case .zoomToFit:
             canvas.setZoomToFit()
+        case .zoomToFitWidth:
+            canvas.setZoomToFitWidth()
         case .zoomActualPixels:
             canvas.setZoomToActualPixels()
         case .zoomDoubleFit:
@@ -797,14 +804,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             viewerState.toggleImmersive()
             applyChromeVisibility()
         case .toggleThumbnailDrawer:
-            let now = Date().timeIntervalSinceReferenceDate
-            if hover.drawerVisible {
-                hover.pointerExitedDrawer(at: now)
-            } else {
-                hover.pointerEnteredDrawer(at: now)
-            }
-            hover.update(at: now)
-            applyChromeVisibility()
+            toggleDrawerPinned()
         case .showImageInfo:
             showImageInfo()
         case .toggleSortDirection:

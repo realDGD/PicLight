@@ -70,6 +70,17 @@ public final class ImageCanvasView: NSView {
         onZoomChanged?()
     }
 
+    public func setZoomToFitWidth() {
+        guard image != nil else { return }
+        var updated = viewport
+        updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
+        updated.zoomScale = ViewportState.fitWidthScale(imagePixels: imagePixelSize,
+                                                       viewPoints: bounds.size)
+        updated.normalizedCenter = CGPoint(x: 0.5, y: 0.5)
+        viewport = updated
+        onZoomChanged?()
+    }
+
     public func setZoomToActualPixels() {
         var updated = viewport
         updated.zoomScale = ViewportState.actualPixelScale(backingScale: backingScale)
@@ -183,32 +194,16 @@ public final class ImageCanvasView: NSView {
         let isMomentum = origin == .trackpadMomentum
         let isTrackpad = origin != .mouseWheel
 
-        // While the image is zoomed, a trackpad gesture moves the image. Routing each
-        // event by whichever axis happened to be larger split one two-finger gesture
-        // into pans for some events and zooms or image switches for others, so
-        // panning appeared to change the picture.
-        if isTrackpad, viewport.isZoomedIn {
-            if !isMomentum, event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
-            // Only a clearly horizontal gesture may reach the edge and switch; a
-            // diagonal one pans on both axes.
-            let horizontalDominant = abs(deltaX) > abs(deltaY) * 1.5
-            let intent = horizontalDominant
-                ? router.routeSwipe(deltaX: deltaX, deltaY: deltaY, viewWidth: bounds.width,
-                                    isZoomedIn: true, canPanInDirection: canPan(deltaX: deltaX),
-                                    canSwitch: !isMomentum)
-                : .pan(CGSize(width: deltaX, height: deltaY))
-            apply(intent)
-            if !isMomentum, event.phase == .ended || event.phase == .cancelled { router.endGesture() }
-            return
-        }
-
-        // At Fit, or with a real mouse wheel, the configured behavior applies. A
-        // clearly horizontal trackpad gesture is still a swipe.
+        // A clearly horizontal gesture pans, or reaches the edge and switches; the
+        // vertical axis keeps the configured wheel behaviour in every state, so
+        // zooming does not turn into panning once the image is enlarged.
         if abs(deltaX) > abs(deltaY) * 1.5 {
             if !isMomentum, event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
             let intent = router.routeSwipe(
-                deltaX: deltaX, viewWidth: bounds.width,
-                isZoomedIn: false, canPanInDirection: false, canSwitch: !isMomentum
+                deltaX: deltaX, deltaY: deltaY, viewWidth: bounds.width,
+                isZoomedIn: viewport.isZoomedIn,
+                canPanInDirection: canPan(deltaX: deltaX),
+                canSwitch: !isMomentum
             )
             apply(intent)
             if !isMomentum, event.phase == .ended || event.phase == .cancelled { router.endGesture() }

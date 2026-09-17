@@ -11,16 +11,13 @@ public final class ThumbnailDrawerView: MaterialHostView {
     public static let hotZoneWidth: CGFloat = 24
 
     public var onSelect: ((Int) -> Void)?
-    /// Toggles the pinned state; the drawer never decides this itself.
-    public var onTogglePin: (() -> Void)?
     /// Asks the owner to produce a thumbnail for a row that just became visible.
     public var onThumbnailNeeded: ((Int, FolderItem) -> Void)?
     public var thumbnailProvider: ((FolderItem) -> CGImage?)?
 
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
-    private let pinButton = NSButton()
-    private let headerStrip = NSView()
+
     private var items: [FolderItem] = []
     private var currentIndex: Int?
     private var isApplyingSelectionProgrammatically = false
@@ -58,33 +55,11 @@ public final class ThumbnailDrawerView: MaterialHostView {
 
         scrollView.documentView = tableView
 
-        headerStrip.translatesAutoresizingMaskIntoConstraints = false
-        pinButton.image = NSImage(systemSymbolName: "pin", accessibilityDescription: "固定左栏")
-        pinButton.imagePosition = .imageOnly
-        pinButton.isBordered = false
-        pinButton.bezelStyle = .texturedRounded
-        pinButton.toolTip = "固定左栏"
-        pinButton.target = self
-        pinButton.action = #selector(togglePin)
-        pinButton.translatesAutoresizingMaskIntoConstraints = false
-        headerStrip.addSubview(pinButton)
-
         addSubview(scrollView)
-        addSubview(headerStrip)
         NSLayoutConstraint.activate([
-            headerStrip.leadingAnchor.constraint(equalTo: leadingAnchor),
-            headerStrip.trailingAnchor.constraint(equalTo: trailingAnchor),
-            headerStrip.topAnchor.constraint(equalTo: topAnchor),
-            headerStrip.heightAnchor.constraint(equalToConstant: 30),
-
-            pinButton.trailingAnchor.constraint(equalTo: headerStrip.trailingAnchor, constant: -8),
-            pinButton.centerYAnchor.constraint(equalTo: headerStrip.centerYAnchor),
-            pinButton.widthAnchor.constraint(equalToConstant: 22),
-            pinButton.heightAnchor.constraint(equalToConstant: 20),
-
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: headerStrip.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
@@ -120,17 +95,7 @@ public final class ThumbnailDrawerView: MaterialHostView {
 
     public var visibleRowCount: Int { items.count }
 
-    /// Reflects the pinned state; the drawer only reports that it was tapped.
-    public func setPinned(_ pinned: Bool) {
-        pinButton.image = NSImage(systemSymbolName: pinned ? "pin.fill" : "pin",
-                                 accessibilityDescription: pinned ? "取消固定左栏" : "固定左栏")
-        pinButton.toolTip = pinned ? "取消固定左栏" : "固定左栏"
-        pinButton.contentTintColor = pinned ? .controlAccentColor : nil
-    }
 
-    @objc private func togglePin() {
-        onTogglePin?()
-    }
 
     private func applySelection() {
         guard let currentIndex, items.indices.contains(currentIndex) else {

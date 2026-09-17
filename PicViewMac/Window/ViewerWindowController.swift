@@ -6,6 +6,9 @@ import AppKit
 public final class ViewerWindowController: NSWindowController {
     public let viewerViewController: ViewerViewController
 
+    private var drawerButton: NSButton?
+    private var drawerAccessory: NSTitlebarAccessoryViewController?
+
     public init() {
         let contentRect = WindowPlacementStore.defaultFrame(
             size: AppSettings.shared.lastWindowSize ?? CGSize(width: 960, height: 680),
@@ -22,11 +25,65 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onTitleChanged = { [weak self] name in
             self?.window?.title = name ?? "PicLight"
         }
+        viewerViewController.onDrawerPinnedChanged = { [weak self] pinned in
+            self?.updateDrawerButton(pinned: pinned)
+        }
+        installDrawerTitlebarButton()
         window.setFrame(contentRect, display: false)
         window.center()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    // MARK: - Drawer control in the titlebar
+
+    /// The drawer opens and closes from a button beside the traffic lights, the way
+    /// a sidebar does in a document window.
+    private func installDrawerTitlebarButton() {
+        let button = NSButton()
+        button.isBordered = false
+        button.bezelStyle = .texturedRounded
+        button.imagePosition = .imageOnly
+        button.target = self
+        button.action = #selector(toggleDrawerFromTitlebar)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 26),
+            button.heightAnchor.constraint(equalToConstant: 20),
+        ])
+        drawerButton = button
+
+        let container = NSView()
+        container.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            button.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
+            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .leading
+        accessory.view = container
+        window?.addTitlebarAccessoryViewController(accessory)
+        drawerAccessory = accessory
+        updateDrawerButton(pinned: viewerViewController.isDrawerPinned)
+    }
+
+    fileprivate func updateDrawerButton(pinned: Bool) {
+        drawerButton?.image = NSImage(
+            systemSymbolName: pinned ? "rectangle.lefthalf.inset.filled" : "sidebar.left",
+            accessibilityDescription: pinned ? "关闭左栏" : "打开左栏"
+        )
+        drawerButton?.toolTip = pinned ? "关闭左栏" : "打开左栏"
+        drawerButton?.setAccessibilityLabel(pinned ? "关闭左栏" : "打开左栏")
+        drawerButton?.contentTintColor = pinned ? .controlAccentColor : nil
+    }
+
+    @objc private func toggleDrawerFromTitlebar() {
+        viewerViewController.toggleDrawerPinned()
+    }
+
+    /// The titlebar drawer button, for tests.
+    var drawerTitlebarButton: NSButton? { drawerButton }
 
     /// Makes an existing viewer visible and key. Creating a controller is not the
     /// same thing as showing it: a bare launch, a Dock reopen and a file open all

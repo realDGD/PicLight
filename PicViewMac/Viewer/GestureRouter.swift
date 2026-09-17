@@ -41,6 +41,14 @@ public struct GestureRouter: Sendable {
 
     private var accumulated: CGFloat = 0
     private var didSwitchInGesture = false
+    /// Which gesture armed the switch, so the arming can only be redeemed by a
+    /// *later* one. While zoomed, one swipe at the edge is not enough: it arms, and
+    /// the next swipe performs it - a pan that runs out of image does not navigate.
+    private var armedAtGesture: Int?
+    private var gestureSerial = 0
+
+    /// `true` when a swipe has armed the switch and the next one will carry it out.
+    public var zoomedSwitchArmed: Bool { armedAtGesture != nil }
 
     public init(wheelMode: WheelMode = .zoom, swipeMode: SwipeMode = .smart,
                 switchThreshold: CGFloat = 0.12) {
@@ -52,6 +60,15 @@ public struct GestureRouter: Sendable {
     public mutating func beginGesture() {
         accumulated = 0
         didSwitchInGesture = false
+        gestureSerial += 1
+        // The arming deliberately survives a gesture boundary: one swipe arms, the
+        // next one switches.
+    }
+
+    /// Clears the armed state, for example when the image changes.
+    public mutating func disarmZoomedSwitch() {
+        armedAtGesture = nil
+        accumulated = 0
     }
 
     public mutating func endGesture() { beginGesture() }
@@ -107,15 +124,38 @@ public struct GestureRouter: Sendable {
             return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         case .smart:
             if isZoomedIn && canPanInDirection {
+                // Moving away from the edge disarms: the user is looking around again.
                 accumulated = 0
+                armedAtGesture = nil
                 return .pan(CGSize(width: deltaX, height: deltaY))
             }
             // Coasting inertia is allowed to finish a pan but never to navigate.
             guard canSwitch else {
                 return isZoomedIn ? .pan(CGSize(width: deltaX, height: deltaY)) : .none
             }
+            if isZoomedIn {
+                return armedSwitchIntent(deltaX: deltaX, viewWidth: viewWidth)
+            }
             return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         }
+    }
+
+    /// The zoomed-state rule: the swipe that reaches the threshold arms the switch,
+    /// and only a later gesture redeems it. Continuing the *same* swipe cannot switch,
+    /// however far it travels.
+    private mutating func armedSwitchIntent(deltaX: CGFloat, viewWidth: CGFloat) -> GestureIntent {
+        guard !didSwitchInGesture else { return .none }
+        if let armedAtGesture, armedAtGesture < gestureSerial {
+            self.armedAtGesture = nil
+            didSwitchInGesture = true
+            accumulated = 0
+            return deltaX > 0 ? .previousImage : .nextImage
+        }
+        accumulated += deltaX
+        guard abs(accumulated) >= viewWidth * switchThreshold else { return .none }
+        accumulated = 0
+        armedAtGesture = gestureSerial
+        return .none
     }
 
     private mutating func switchIntent(deltaX: CGFloat, viewWidth: CGFloat) -> GestureIntent {

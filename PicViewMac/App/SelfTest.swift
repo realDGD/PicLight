@@ -347,6 +347,12 @@ enum SelfTest {
         }
     }
 
+    /// Any button inside a view hierarchy.
+    private static func containsButton(in view: NSView) -> Bool {
+        if view is NSButton { return true }
+        return view.subviews.contains { containsButton(in: $0) }
+    }
+
     /// The viewer layout refactor: standard titlebar, fixed dock, canvas-anchored
     /// panels, and an information card instead of a separate window.
     private static func verifyViewerLayout(_ viewer: ViewerViewController,
@@ -364,10 +370,30 @@ enum SelfTest {
             return
         }
 
+        // The drawer opens from the titlebar; its own pin control is gone.
+        let viewerWindow = viewer.view.window
+        check("titlebar carries the drawer control",
+              viewerWindow?.titlebarAccessoryViewControllers.count == 1
+                && viewerWindow?.titlebarAccessoryViewControllers.first?.layoutAttribute == .leading,
+              "accessories: \(viewerWindow?.titlebarAccessoryViewControllers.count ?? 0)")
+        check("drawer has no pin control of its own",
+              !Self.containsButton(in: chrome["drawer"] ?? NSView()),
+              "the drawer is content only")
+
         check("tool dock carries the viewer commands",
-              dock.commands == [.rotateClockwise, .toggleMirror, .zoomToFit,
-                                .zoomActualPixels, .moveToTrash, .showImageInfo],
+              dock.commands == [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomToFitWidth,
+                                .previousImage, .nextImage, .zoomActualPixels,
+                                .moveToTrash, .showImageInfo],
               "\(dock.commands.count) commands")
+        let pairIndexes = dock.commands.indices.filter {
+            [.previousImage, .nextImage].contains(dock.commands[$0])
+        }
+        let pairCentre = pairIndexes.isEmpty ? -1
+            : Double(pairIndexes.reduce(0, +)) / Double(pairIndexes.count)
+        check("previous/next sit in the middle of the dock",
+              pairIndexes.count == 2
+                && abs(pairCentre - Double(dock.commands.count - 1) / 2) <= 1.0,
+              "pair centre \(pairCentre) of \(dock.commands.count)")
         check("tool dock is a viewer subview, not a window",
               dock.isDescendant(of: viewer.view))
 

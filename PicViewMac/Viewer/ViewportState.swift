@@ -40,6 +40,12 @@ public struct ViewportState: Equatable, Sendable {
         return min(viewPoints.width / imagePixels.width, viewPoints.height / imagePixels.height)
     }
 
+    /// Fit to the view's width, allowing the image to be taller than the view.
+    public static func fitWidthScale(imagePixels: CGSize, viewPoints: CGSize) -> CGFloat {
+        guard imagePixels.width > 0, viewPoints.width > 0 else { return 1 }
+        return viewPoints.width / imagePixels.width
+    }
+
     /// `100%` means one image pixel per physical display pixel.
     public static func actualPixelScale(backingScale: CGFloat) -> CGFloat {
         backingScale > 0 ? 1 / backingScale : 1

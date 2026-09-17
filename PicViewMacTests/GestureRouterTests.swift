@@ -71,7 +71,7 @@ final class GestureRouterTests: XCTestCase {
         }
     }
 
-    func testZoomedAtEdgeContinuesToSwitchAfterHysteresis() {
+    func testZoomedAtEdgeArmsAfterHysteresisAndSwitchesOnTheNextSwipe() {
         var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
         router.beginGesture()
         let viewWidth: CGFloat = 1000
@@ -81,12 +81,19 @@ final class GestureRouterTests: XCTestCase {
                                       isZoomedIn: true, canPanInDirection: false)
         XCTAssertEqual(small, .none, "10 % threshold was not reached")
 
-        var result: GestureIntent = .none
-        for _ in 0..<10 where result == .none {
-            result = router.routeSwipe(deltaX: -30, viewWidth: viewWidth,
-                                       isZoomedIn: true, canPanInDirection: false)
+        // The first qualifying swipe arms instead of switching.
+        for _ in 0..<10 {
+            XCTAssertEqual(router.routeSwipe(deltaX: -30, viewWidth: viewWidth,
+                                             isZoomedIn: true, canPanInDirection: false),
+                           .none)
         }
-        XCTAssertEqual(result, .nextImage)
+        XCTAssertTrue(router.zoomedSwitchArmed)
+
+        // The next gesture carries it out.
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -30, viewWidth: viewWidth,
+                                         isZoomedIn: true, canPanInDirection: false),
+                       .nextImage)
     }
 
     func testOnlyOneSwitchPerGesture() {
@@ -184,16 +191,19 @@ final class ZoomedTrackpadPanningTests: XCTestCase {
         }
     }
 
-    func testSwitchingStillWorksAfterARealHorizontalOverscroll() {
+    func testSwitchingNeedsTwoDeliberateSwipesWhileZoomed() {
         var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
         router.beginGesture()
-        var result: GestureIntent = .none
-        for _ in 0..<20 where result == .none {
-            result = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
-                                       isZoomedIn: true, canPanInDirection: false)
+        for _ in 0..<20 {
+            XCTAssertEqual(router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                             isZoomedIn: true, canPanInDirection: false),
+                           .none, "the first swipe only arms")
         }
-        XCTAssertEqual(result, .nextImage,
-                       "a deliberate horizontal overscroll at the edge still switches")
+        XCTAssertTrue(router.zoomedSwitchArmed)
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                         isZoomedIn: true, canPanInDirection: false),
+                       .nextImage, "the second swipe switches")
     }
 
     /// A portrait image in a wide window cannot pan horizontally at all, which is the
@@ -263,16 +273,19 @@ final class MomentumCoastingTests: XCTestCase {
         }
     }
 
-    func testAFingerGestureCanStillSwitchWhileFingersAreDown() {
+    func testFingerGesturesStillNavigateWhileZoomed() {
         var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
         router.beginGesture()
-        var result: GestureIntent = .none
-        for _ in 0..<20 where result == .none {
-            result = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
-                                       isZoomedIn: true, canPanInDirection: false,
-                                       canSwitch: true)
+        for _ in 0..<20 {
+            _ = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                  isZoomedIn: true, canPanInDirection: false, canSwitch: true)
         }
-        XCTAssertEqual(result, .nextImage, "a deliberate finger swipe still navigates")
+        XCTAssertTrue(router.zoomedSwitchArmed, "fingers arm the switch")
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                         isZoomedIn: true, canPanInDirection: false,
+                                         canSwitch: true),
+                       .nextImage, "and a second finger swipe performs it")
     }
 
     func testAlwaysSwitchModeAlsoRespectsTheCoastRule() {

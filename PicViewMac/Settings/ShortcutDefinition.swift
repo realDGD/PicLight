@@ -107,6 +107,7 @@ public final class ShortcutStore {
         .firstImage: ShortcutDefinition(key: String(UnicodeScalar(NSHomeFunctionKey)!), modifiers: []),
         .lastImage: ShortcutDefinition(key: String(UnicodeScalar(NSEndFunctionKey)!), modifiers: []),
         .zoomToFit: ShortcutDefinition(key: "0", modifiers: [.command]),
+        .zoomToFitWidth: ShortcutDefinition(key: "3", modifiers: [.command]),
         .zoomActualPixels: ShortcutDefinition(key: "1", modifiers: [.command]),
         .zoomDoubleFit: ShortcutDefinition(key: "2", modifiers: [.command]),
         .rotateClockwise: ShortcutDefinition(key: "r", modifiers: [.command]),

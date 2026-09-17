@@ -78,8 +78,33 @@ final class ViewerLayoutTests: XCTestCase {
         defer { controller.close() }
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
         XCTAssertEqual(dock.commands,
-                       [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomActualPixels,
-                        .moveToTrash, .showImageInfo])
+                       [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomToFitWidth,
+                        .previousImage, .nextImage, .zoomActualPixels, .moveToTrash,
+                        .showImageInfo])
+    }
+
+    /// Adjustments first, then moving through the folder, then the zoom and file
+    /// actions - with the navigation pair sitting in the middle of the dock.
+    func testNavigationSitsInTheMiddleOfTheDock() throws {
+        let dock = ViewerToolDockView()
+        dock.frame = NSRect(x: 0, y: 0, width: 400, height: 38)
+        dock.layoutSubtreeIfNeeded()
+        let commands = dock.commands
+        let previousIndex = try XCTUnwrap(commands.firstIndex(of: .previousImage))
+        let nextIndex = try XCTUnwrap(commands.firstIndex(of: .nextImage))
+        XCTAssertEqual(nextIndex, previousIndex + 1, "the navigation pair is adjacent")
+
+        let centre = Double(commands.count - 1) / 2
+        let pairCentre = Double(previousIndex + nextIndex) / 2
+        XCTAssertLessThanOrEqual(abs(pairCentre - centre), 1.0,
+                                 "the pair sits within one slot of the dock's centre "
+                                   + "(\(pairCentre) vs \(centre))")
+
+        // Group separators, drawn as arranged subviews that are not buttons.
+        let separators = dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.filter { $0 is NSBox } }
+        XCTAssertEqual(separators.count, 2, "one separator before the pair, one before the zoom group")
+        _ = centre
     }
 
     /// Presence and enabled state are not enough: a button with no icon renders as
@@ -89,9 +114,8 @@ final class ViewerLayoutTests: XCTestCase {
         dock.frame = NSRect(x: 0, y: 0, width: 300, height: 38)
         dock.layoutSubtreeIfNeeded()
 
-        let buttons = dock.subviews.compactMap { $0 as? NSStackView }
-            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
-        XCTAssertEqual(buttons.count, 7)
+        let buttons = dockButtonsForTesting(dock)
+        XCTAssertEqual(buttons.count, dock.commands.count + 1)
 
         for button in buttons where !button.isHidden {
             let image = try XCTUnwrap(button.symbolImage,
@@ -103,11 +127,32 @@ final class ViewerLayoutTests: XCTestCase {
         // The playback button only appears for animated content, and then it must
         // carry an icon too.
         dock.setAnimated(true, isPlaying: false)
-        XCTAssertFalse(dock.subviews.compactMap { $0 as? NSStackView }
-            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
-            .last!.isHidden)
-        XCTAssertNotNil(dock.subviews.compactMap { $0 as? NSStackView }
-            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }.last?.symbolImage)
+        XCTAssertEqual(dockButtonsForTesting(dock).last?.isHidden, false)
+        XCTAssertNotNil(dockButtonsForTesting(dock).last?.symbolImage)
+    }
+
+    /// Fit width binds the image to the view's width and lets the height overflow.
+    func testFitWidthMatchesTheViewWidthAndKeepsTheHorizontalCentre() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        controller.window?.setContentSize(NSSize(width: 400, height: 600))
+        loadImage(viewer)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"] as? ImageCanvasView)
+
+        viewer.perform(.zoomToFitWidth)
+        settle()
+        let viewport = viewer.viewerState.viewport
+        XCTAssertEqual(viewport.zoomScale,
+                       canvas.bounds.width / canvas.imagePixelSize.width, accuracy: 0.001,
+                       "fit width uses the canvas width")
+        XCTAssertEqual(viewport.normalizedCenter.x, 0.5, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(viewport.zoomScale, viewport.fitScale - 0.001,
+                                    "fitting the width of a tall image zooms in further than Fit")
+
+        // The image now fills the width, so that axis cannot pan.
+        let visible = viewport.visibleNormalizedRect(imagePixels: canvas.imagePixelSize,
+                                                    viewPoints: canvas.bounds.size)
+        XCTAssertEqual(visible.width, 1, accuracy: 0.01)
     }
 
     func testToolDockIsFixedChromeCentredOnTheCanvas() throws {
@@ -134,10 +179,8 @@ final class ViewerLayoutTests: XCTestCase {
         let dock = ViewerToolDockView()
         dock.frame = NSRect(x: 0, y: 0, width: 300, height: 38)
         dock.layoutSubtreeIfNeeded()
-        let buttons = dock.subviews.compactMap { $0 as? NSStackView }
-            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
-        XCTAssertEqual(buttons.count, 7)
-
+        let buttons = dockButtonsForTesting(dock)
+        XCTAssertEqual(buttons.count, dock.commands.count + 1)
         let framesBefore = buttons.map(\.frame)
         let positionsBefore = buttons.map { $0.layer?.position }
         let anchorsBefore = buttons.map { $0.layer?.anchorPoint }
@@ -173,7 +216,7 @@ final class ViewerLayoutTests: XCTestCase {
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
         let buttons = dock.subviews.compactMap { $0 as? NSStackView }
             .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
-        XCTAssertEqual(buttons.count, 7, "six tools plus the playback button")
+        XCTAssertEqual(buttons.count, dockButtonsForTesting(dock).count)
 
         XCTAssertEqual(buttons[0].currentScale, 1, accuracy: 0.001)
         buttons[1].onHoverChanged?(true)
@@ -461,6 +504,13 @@ final class ImageInfoCardTests: XCTestCase {
     }
 }
 
+/// Every button in a dock, in layout order.
+@MainActor
+func dockButtonsForTesting(_ dock: ViewerToolDockView) -> [DockButton] {
+    dock.subviews.compactMap { $0 as? NSStackView }
+        .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+}
+
 /// The dock's surface and icon treatment.
 @MainActor
 final class ToolDockAppearanceTests: XCTestCase {
@@ -470,8 +520,7 @@ final class ToolDockAppearanceTests: XCTestCase {
     }
 
     private func dockButtons(_ dock: ViewerToolDockView) -> [DockButton] {
-        dock.subviews.compactMap { $0 as? NSStackView }
-            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+        dockButtonsForTesting(dock)
     }
 
     /// The dock is a glass pill on macOS 26+, and a plain system material before
@@ -492,7 +541,7 @@ final class ToolDockAppearanceTests: XCTestCase {
     func testDockIconsAreTemplateImagesWithADynamicTint() {
         let dock = ViewerToolDockView()
         let buttons = dockButtons(dock)
-        XCTAssertEqual(buttons.count, 7)
+        XCTAssertEqual(buttons.count, dock.commands.count + 1)
 
         for button in buttons where !button.isHidden {
             XCTAssertNotNil(button.symbolImage, "every visible dock button has an icon")
@@ -631,5 +680,160 @@ final class NavigatorSizingTests: XCTestCase {
                        "and its shape matches the displayed image")
         XCTAssertEqual(navigator.frame.maxX, canvas.frame.maxX - 14, accuracy: 2)
         XCTAssertEqual(navigator.frame.minY, canvas.frame.minY + 34, accuracy: 2)
+    }
+}
+
+
+/// The drawer is opened and closed from the titlebar, beside the traffic lights.
+@MainActor
+final class DrawerTitlebarButtonTests: XCTestCase {
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
+
+    private func makeViewer() throws -> (controller: ViewerWindowController, viewer: ViewerViewController) {
+        TestAppKit.ensureApplication()
+        let controller = ViewerWindowController()
+        TestAppKit.presentOffScreen(controller)
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        return (controller, viewer)
+    }
+
+    func testTitlebarCarriesADrawerButton() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        let button = try XCTUnwrap(controller.drawerTitlebarButton,
+                                   "the titlebar needs the drawer control")
+        XCTAssertTrue(button.isDescendant(of: controller.window!.contentView!)
+                      || controller.window?.titlebarAccessoryViewControllers.isEmpty == false,
+                      "the button lives in a titlebar accessory, not in the content area")
+        XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.count, 1)
+        XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.first?.layoutAttribute,
+                       .leading, "it sits next to the traffic lights")
+        XCTAssertNotNil(button.image)
+        XCTAssertEqual(button.toolTip, "打开左栏")
+        _ = viewer
+    }
+
+    func testTitlebarButtonOpensAndClosesTheDrawer() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+
+        XCTAssertFalse(viewer.chromeSnapshot.drawer, "the drawer starts closed")
+        button.performClick(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(viewer.isDrawerPinned, "clicking opens the drawer and holds it")
+        XCTAssertTrue(viewer.chromeSnapshot.drawer)
+        XCTAssertEqual(button.toolTip, "关闭左栏")
+        XCTAssertEqual(button.contentTintColor, .controlAccentColor)
+
+        button.performClick(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(viewer.isDrawerPinned, "clicking again closes it")
+        XCTAssertEqual(button.toolTip, "打开左栏")
+    }
+
+    /// The drawer no longer carries a pin control of its own.
+    func testDrawerHasNoPinControlOfItsOwn() throws {
+        let drawer = ThumbnailDrawerView(style: .drawer)
+        drawer.frame = NSRect(x: 0, y: 0, width: 200, height: 400)
+        func buttons(in view: NSView) -> [NSButton] {
+            var found = view.subviews.compactMap { $0 as? NSButton }
+            for subview in view.subviews { found.append(contentsOf: buttons(in: subview)) }
+            return found
+        }
+        XCTAssertTrue(buttons(in: drawer).isEmpty,
+                      "the open/close control moved to the titlebar")
+    }
+
+    func testCommandAndTitlebarButtonAgree() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        viewer.perform(.toggleThumbnailDrawer)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(viewer.isDrawerPinned)
+        XCTAssertEqual(controller.drawerTitlebarButton?.toolTip, "关闭左栏")
+        viewer.perform(.toggleThumbnailDrawer)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(viewer.isDrawerPinned)
+    }
+}
+
+/// While zoomed, one swipe at the edge arms the switch and the next performs it.
+final class ArmedSwitchTests: XCTestCase {
+    func testOneSwipeAtTheEdgeOnlyArmsWhileZoomed() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        var results: [GestureIntent] = []
+        for _ in 0..<20 { results.append(router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                                          isZoomedIn: true, canPanInDirection: false)) }
+        XCTAssertFalse(results.contains(.nextImage), "the first swipe must not switch")
+        XCTAssertTrue(router.zoomedSwitchArmed, "it arms instead")
+
+        // A second gesture carries it out.
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                         isZoomedIn: true, canPanInDirection: false),
+                       .nextImage)
+        XCTAssertFalse(router.zoomedSwitchArmed, "the arming is used up")
+    }
+
+    func testArmingSurvivesBetweenGesturesButNotPanningAway() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        for _ in 0..<20 { _ = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                                isZoomedIn: true, canPanInDirection: false) }
+        XCTAssertTrue(router.zoomedSwitchArmed)
+        router.endGesture()
+        XCTAssertTrue(router.zoomedSwitchArmed, "the second swipe is a separate gesture")
+
+        // Panning away from the edge means the user is looking around again.
+        _ = router.routeSwipe(deltaX: 40, deltaY: 0, viewWidth: 900,
+                              isZoomedIn: true, canPanInDirection: true)
+        XCTAssertFalse(router.zoomedSwitchArmed)
+    }
+
+    func testAtFitASingleSwipeStillSwitches() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        var result: GestureIntent = .none
+        for _ in 0..<20 where result == .none {
+            result = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                       isZoomedIn: false, canPanInDirection: false)
+        }
+        XCTAssertEqual(result, .nextImage, "the two-step rule applies only while zoomed")
+    }
+
+    func testArmingCanBeCleared() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        for _ in 0..<20 { _ = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                                isZoomedIn: true, canPanInDirection: false) }
+        XCTAssertTrue(router.zoomedSwitchArmed)
+        router.disarmZoomedSwitch()
+        XCTAssertFalse(router.zoomedSwitchArmed)
+
+        // The same swipe still cannot switch after a disarm.
+        router.beginGesture()
+        for _ in 0..<3 { _ = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                               isZoomedIn: true, canPanInDirection: false) }
+        XCTAssertTrue(router.zoomedSwitchArmed, "it arms again rather than switching")
+    }
+
+    /// Continuing the *same* swipe must not redeem the arming, however far it goes.
+    func testOneLongSwipeArmsButDoesNotSwitch() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        for _ in 0..<80 {
+            XCTAssertEqual(router.routeSwipe(deltaX: -60, deltaY: 0, viewWidth: 900,
+                                             isZoomedIn: true, canPanInDirection: false),
+                           .none,
+                           "one swipe only arms, no matter how far it travels")
+        }
+        XCTAssertTrue(router.zoomedSwitchArmed)
     }
 }

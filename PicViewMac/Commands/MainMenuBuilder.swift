@@ -43,6 +43,7 @@ public enum MainMenuBuilder {
         let item = NSMenuItem()
         let menu = NSMenu(title: "显示")
         add(menu, .zoomToFit, in: shortcutStore)
+        add(menu, .zoomToFitWidth, in: shortcutStore)
         add(menu, .zoomActualPixels, in: shortcutStore)
         add(menu, .zoomDoubleFit, in: shortcutStore)
         menu.addItem(.separator())

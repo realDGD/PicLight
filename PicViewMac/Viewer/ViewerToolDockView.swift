@@ -12,13 +12,23 @@ public final class ViewerToolDockView: MaterialHostView {
 
     public var onCommand: ((ViewerCommand) -> Void)?
 
-    static let toolDefinitions: [(symbol: String, command: ViewerCommand, tooltip: String)] = [
-        ("rotate.right", .rotateClockwise, "顺时针旋转"),
-        ("arrow.left.and.right.righttriangle.left.righttriangle.right", .toggleMirror, "水平镜像"),
-        ("arrow.up.left.and.arrow.down.right", .zoomToFit, "适应窗口"),
-        ("1.square", .zoomActualPixels, "实际像素 100%"),
-        ("trash", .moveToTrash, "移到废纸篓"),
-        ("info.circle", .showImageInfo, "图像信息"),
+    /// Layout: image adjustments and zoom on the left, the folder navigation pair in
+    /// the middle, file and information actions on the right. `isGroupStart` draws a
+    /// hairline separator before the entry.
+    ///
+    /// The pair is centred deliberately: four tools precede it and three follow, so it
+    /// sits within half a slot of the dock's middle.
+    static let toolDefinitions: [(symbol: String, command: ViewerCommand, tooltip: String,
+                                  isGroupStart: Bool)] = [
+        ("rotate.right", .rotateClockwise, "顺时针旋转", false),
+        ("arrow.left.and.right.righttriangle.left.righttriangle.right", .toggleMirror, "水平镜像", false),
+        ("arrow.up.and.down.and.arrow.left.and.right", .zoomToFit, "适应窗口", false),
+        ("rectangle.compress.vertical", .zoomToFitWidth, "适应宽度", false),
+        ("arrow.left", .previousImage, "上一张", true),
+        ("arrow.right", .nextImage, "下一张", false),
+        ("1.square", .zoomActualPixels, "实际像素 100%", true),
+        ("trash", .moveToTrash, "移到废纸篓", false),
+        ("info.circle", .showImageInfo, "图像信息", false),
     ]
 
     private let stack = NSStackView()
@@ -45,6 +55,7 @@ public final class ViewerToolDockView: MaterialHostView {
         addSubview(stack)
 
         for definition in Self.toolDefinitions {
+            if definition.isGroupStart { stack.addArrangedSubview(Self.separator()) }
             let button = DockButton(symbol: definition.symbol, command: definition.command,
                                     tooltip: definition.tooltip)
             toolButtons.append(button)
@@ -72,6 +83,15 @@ public final class ViewerToolDockView: MaterialHostView {
 
     /// Commands the dock exposes, for tests and for the acceptance runner.
     public var commands: [ViewerCommand] { Self.toolDefinitions.map(\.command) }
+
+    /// A hairline between tool groups.
+    private static func separator() -> NSBox {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        return box
+    }
 
     public var isInfoVisible: Bool { !infoButton.isHidden }
 

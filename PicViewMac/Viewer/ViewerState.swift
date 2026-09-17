@@ -135,6 +135,13 @@ public final class ViewerState {
         viewport.normalizedCenter = CGPoint(x: 0.5, y: 0.5)
     }
 
+    public func setZoomToFitWidth(imagePixels: CGSize, viewPoints: CGSize) {
+        updateFitScale(imagePixels: imagePixels, viewPoints: viewPoints)
+        viewport.zoomScale = ViewportState.fitWidthScale(imagePixels: imagePixels,
+                                                        viewPoints: viewPoints)
+        viewport.normalizedCenter = CGPoint(x: 0.5, y: 0.5)
+    }
+
     public func setZoomToActualPixels(backingScale: CGFloat) {
         viewport.zoomScale = ViewportState.actualPixelScale(backingScale: backingScale)
     }
