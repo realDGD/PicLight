@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 /// Headless-ish acceptance runner used to verify the real AppKit app on machines
 /// where the screen cannot be captured (CI, remote shells). It drives the exact
@@ -266,17 +267,11 @@ enum SelfTest {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {
             reporter.check(name, condition, detail)
         }
-        let scratch = FileManager.default.temporaryDirectory
-            .appendingPathComponent("picviewmac-selftest-\(UUID().uuidString)", isDirectory: true)
-        guard (try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else {
+        guard let scratch = makeScratchFolder("trash", names: ["a.png", "b.png"]) else {
             check("trash scenario folder", false)
             return
         }
         defer { try? FileManager.default.removeItem(at: scratch) }
-        let source = URL(fileURLWithPath: "/tmp/picview-demo/static.png")
-        for name in ["a.png", "b.png"] {
-            try? FileManager.default.copyItem(at: source, to: scratch.appendingPathComponent(name))
-        }
 
         let controller = AppEnvironment.shared.newViewerWindow()
         guard let viewer = controller.viewerViewController as ViewerViewController? else {
@@ -331,17 +326,12 @@ enum SelfTest {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {
             reporter.check(name, condition, detail)
         }
-        let scratch = FileManager.default.temporaryDirectory
-            .appendingPathComponent("picviewmac-error-\(UUID().uuidString)", isDirectory: true)
-        guard (try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)) != nil else {
+        guard let scratch = makeScratchFolder("error", names: ["b-good.png"],
+                                              corruptNames: ["a-corrupt.png"]) else {
             check("error scenario folder", false)
             return
         }
         defer { try? FileManager.default.removeItem(at: scratch) }
-        try? FileManager.default.copyItem(at: URL(fileURLWithPath: "/tmp/picview-demo/corrupt.png"),
-                                         to: scratch.appendingPathComponent("a-corrupt.png"))
-        try? FileManager.default.copyItem(at: URL(fileURLWithPath: "/tmp/picview-demo/static.png"),
-                                         to: scratch.appendingPathComponent("b-good.png"))
 
         let controller = AppEnvironment.shared.newViewerWindow()
         guard let viewer = controller.viewerViewController as ViewerViewController? else {
@@ -414,12 +404,21 @@ enum SelfTest {
             check("sizing scenario window", false)
             return
         }
+        guard let scratch = makeScratchFolder("sizing", names: ["small.png", "large.png"],
+                                             corruptNames: []) else {
+            check("sizing scenario folder", false)
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        // `large.png` is deliberately bigger than a laptop screen.
+        writeTestImage(named: "large.png", in: scratch, width: 6000, height: 4000)
+
         controller.showWindow(nil)
-        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/static.png"))
+        viewer.open(url: scratch.appendingPathComponent("small.png"))
         drainRunLoop(1.5)
 
         settings.windowSizing = .fitImageToScreen
-        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/static.png"))
+        viewer.open(url: scratch.appendingPathComponent("small.png"))
         drainRunLoop(1.5)
         let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         check("image-sized window stays inside the usable screen",
@@ -427,19 +426,62 @@ enum SelfTest {
 
         // An oversized image must fall back to something that fits the screen.
         settings.windowSizing = .fitImageToScreen
-        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/multipage.tiff"))
-        drainRunLoop(1.5)
+        viewer.open(url: scratch.appendingPathComponent("large.png"))
+        drainRunLoop(2.0)
         check("oversized images do not push the window off screen",
               visible.contains(window.frame), "\(window.frame)")
 
         let remembered = settings.lastWindowSize
         settings.windowSizing = .rememberLastSize
-        viewer.open(url: URL(fileURLWithPath: "/tmp/picview-demo/static.jpg"))
+        viewer.open(url: scratch.appendingPathComponent("small.png"))
         drainRunLoop(1.5)
         check("remembered sizing does not resize the window to the image",
               settings.lastWindowSize == remembered,
               "remembered \(String(describing: remembered)) -> \(String(describing: settings.lastWindowSize))")
         controller.close()
+    }
+
+    /// Writes a small PNG (or a corrupt file) so the runner is self-contained and
+    /// never depends on a folder outside the repository.
+    @discardableResult
+    private static func writeTestImage(named name: String, in directory: URL,
+                                       width: Int = 64, height: Int = 48,
+                                       corrupt: Bool = false) -> URL {
+        let url = directory.appendingPathComponent(name)
+        if corrupt {
+            try? Data("this is not an image".utf8).write(to: url)
+            return url
+        }
+        guard let context = CGContext(data: nil, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return url
+        }
+        context.setFillColor(CGColor(red: 0.85, green: 0.2, blue: 0.25, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width / 2, height: height))
+        context.setFillColor(CGColor(red: 0.15, green: 0.35, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: width / 2, y: 0, width: width - width / 2, height: height))
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            return url
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return url
+    }
+
+    /// Creates a scratch folder with real images, generated on the spot.
+    private static func makeScratchFolder(_ label: String, names: [String],
+                                          corruptNames: [String] = []) -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("picviewmac-\(label)-\(UUID().uuidString)", isDirectory: true)
+        guard (try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)) != nil else {
+            return nil
+        }
+        for name in names { writeTestImage(named: name, in: directory) }
+        for name in corruptNames { writeTestImage(named: name, in: directory, corrupt: true) }
+        return directory
     }
 
     private static func drainRunLoop(_ seconds: TimeInterval) {
