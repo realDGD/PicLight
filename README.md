@@ -98,6 +98,23 @@ Folder order and decode state are deliberately separate: a rescan or a sort
 change can move the current file to a new index without the viewer losing its
 place, and a superseded decode can never publish over a newer one.
 
+## Privacy before publishing
+
+The repository is self-contained and carries no personal data: no credentials or
+tokens, no personal email addresses, no home-directory paths, no private network
+addresses, and no machine-specific paths in scripts (`make-fixtures.swift`
+resolves the webp tools through `PATH`). Commits use a GitHub noreply address.
+
+Re-check any time with:
+
+```bash
+./scripts/privacy-audit.sh
+```
+
+Note that git history always publishes the author identity. If you are publishing
+yourself, decide which name and address you want in the commits and tag **before
+the first push**, because rewriting history afterwards is far more disruptive.
+
 ## Known gaps
 
 Tracked in `docs/release/v0.1-checklist.md`. In short: the visual/interaction

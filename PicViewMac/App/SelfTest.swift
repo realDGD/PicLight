@@ -153,7 +153,13 @@ enum SelfTest {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {
             reporter.check(name, condition, detail)
         }
+        // The window is still settling right after the first image appears (first
+        // layout pass, backing scale). Wait for the canvas geometry to stop
+        // changing so the comparison below isolates the drawer's effect.
+        let settled = waitForStableCanvas(viewer)
         let before = viewer.chromeSnapshot
+        check("canvas geometry settles before the drawer check", settled,
+              "frame \(before.canvasFrame.size), zoom \(before.zoomScale)")
         check("drawer lists the whole folder", before.drawerRows == viewer.session.items.count,
               "\(before.drawerRows) rows")
 
@@ -175,7 +181,8 @@ enum SelfTest {
               snapshot.drawerRows == viewer.session.items.count)
         check("opening the drawer never changes canvas geometry",
               snapshot.canvasFrame == before.canvasFrame && snapshot.zoomScale == before.zoomScale,
-              "frame \(snapshot.canvasFrame.size), zoom \(snapshot.zoomScale)")
+              "before frame \(before.canvasFrame.size) zoom \(before.zoomScale); "
+                + "after frame \(snapshot.canvasFrame.size) zoom \(snapshot.zoomScale)")
 
         // The minimap is only permitted while zoomed past Fit.
         viewer.perform(.zoomToFit)
@@ -482,6 +489,24 @@ enum SelfTest {
         for name in names { writeTestImage(named: name, in: directory) }
         for name in corruptNames { writeTestImage(named: name, in: directory, corrupt: true) }
         return directory
+    }
+
+    /// Drains the run loop until the canvas frame and zoom stop changing.
+    private static func waitForStableCanvas(_ viewer: ViewerViewController,
+                                            timeout: TimeInterval = 3) -> Bool {
+        var previous = viewer.chromeSnapshot
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            drainRunLoop(0.1)
+            let current = viewer.chromeSnapshot
+            if current.canvasFrame == previous.canvasFrame
+                && current.zoomScale == previous.zoomScale
+                && current.isAnimationTimerActive == previous.isAnimationTimerActive {
+                return true
+            }
+            previous = current
+        }
+        return false
     }
 
     private static func drainRunLoop(_ seconds: TimeInterval) {

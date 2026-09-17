@@ -39,8 +39,8 @@ never appear in production code.
 
 ## Manual verification still required (MANUAL-PENDING)
 
-These need a human in front of a display; they were **not** executed in this
-environment and are therefore *not* claimed as verified. They are tracked as
+These need a human in front of a display; they were **not** executed in the
+automated environment and are therefore *not* claimed as verified. They are tracked as
 M1–M5 in `docs/release/v0.1-checklist.md`.
 
 1. **Mission Control / native tiling** with 1, 2 and 3 viewer windows: each must

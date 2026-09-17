@@ -149,9 +149,26 @@ try Data("%PDF-1.4 not an image".utf8).write(to: outputDirectory.appendingPathCo
 print("wrote not-an-image.pdf")
 
 // WebP through the webp tools, since ImageIO cannot encode WebP here.
+// The tools are located through PATH first, then the usual Homebrew prefixes, so
+// this works on Intel and Apple-silicon Macs without hardcoding one layout.
+func locate(_ tool: String) -> URL? {
+    let searchPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+        .split(separator: ":").map(String.init)
+        + ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+    for directory in searchPaths {
+        let candidate = URL(fileURLWithPath: directory).appendingPathComponent(tool)
+        if FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate }
+    }
+    return nil
+}
+
 func run(_ tool: String, _ arguments: [String]) -> Int32 {
+    guard let executable = locate(tool) else {
+        print("skip (\(tool) not installed; WebP fixtures are optional)")
+        return -1
+    }
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/\(tool)")
+    process.executableURL = executable
     process.arguments = arguments
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice

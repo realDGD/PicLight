@@ -271,3 +271,89 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertFalse(viewer.viewerState.isImmersive)
     }
 }
+
+/// The drawer must be a pure overlay: opening and closing it may never move the
+/// canvas or change zoom. This is the deterministic form of the acceptance
+/// runner's equivalent check, which can only sample the live window afterwards.
+@MainActor
+final class DrawerOverlayInvarianceTests: XCTestCase {
+    /// Drains the main run loop so timers and main-actor jobs can run, which is
+    /// how the chrome state machine is driven in a synchronous test.
+    private func settle(_ seconds: TimeInterval = 0.25) {
+        _ = RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    private func waitForImage(_ viewer: ViewerViewController) -> Bool {
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline { settle(0.05) }
+        settle(0.4)   // first layout pass and refit
+        return viewer.viewerState.currentImage != nil
+    }
+
+    func testDrawerOpenAndCloseCyclesNeverChangeCanvasGeometry() throws {
+        let directory = try Fixtures.makeScratchDirectory("drawer")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for name in ["a.png", "b.png", "c.png"] {
+            try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                             to: directory.appendingPathComponent(name))
+        }
+
+        let controller = ViewerWindowController()
+        defer { controller.close() }
+        let viewer = controller.viewerViewController
+        controller.showWindow(nil)
+        _ = viewer.view
+        viewer.open(url: directory.appendingPathComponent("b.png"))
+        XCTAssertTrue(waitForImage(viewer), "the fixture image must load")
+
+        let baseline = viewer.chromeSnapshot
+        var sawDrawerOpen = false
+
+        for _ in 0..<5 {
+            // Pointer into the ~12 px left-edge hot zone.
+            viewer.simulatePointer(atWindowPoint: NSPoint(x: 2, y: viewer.view.bounds.midY))
+            settle(0.4)
+            if viewer.chromeSnapshot.drawer { sawDrawerOpen = true }
+            XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
+                           "opening the drawer must not move the canvas")
+            XCTAssertEqual(viewer.chromeSnapshot.zoomScale, baseline.zoomScale, accuracy: 0.0001,
+                           "opening the drawer must not change zoom")
+
+            // Pointer away from the hot zone closes it again.
+            viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
+                                                         y: viewer.view.bounds.midY))
+            settle(0.5)
+            XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
+                           "closing the drawer must not move the canvas")
+            XCTAssertEqual(viewer.chromeSnapshot.zoomScale, baseline.zoomScale, accuracy: 0.0001)
+        }
+
+        XCTAssertTrue(sawDrawerOpen,
+                      "the check is only meaningful if the drawer actually opened")
+        XCTAssertEqual(viewer.chromeSnapshot.drawerRows, viewer.session.items.count,
+                       "the drawer still lists the whole folder afterwards")
+    }
+
+    func testMinimapVisibilityNeverChangesCanvasGeometry() throws {
+        let controller = ViewerWindowController()
+        defer { controller.close() }
+        let viewer = controller.viewerViewController
+        controller.showWindow(nil)
+        _ = viewer.view
+        viewer.open(url: Fixtures.url("static.png"))
+        XCTAssertTrue(waitForImage(viewer), "the fixture image must load")
+
+        let baseline = viewer.chromeSnapshot
+        viewer.perform(.zoomDoubleFit)
+        viewer.simulateZoomActivity()
+        settle(0.3)
+        XCTAssertTrue(viewer.chromeSnapshot.minimap, "zooming past Fit must reveal the minimap")
+        XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
+                       "the minimap must not resize the canvas it describes")
+
+        viewer.perform(.zoomToFit)
+        settle(0.3)
+        XCTAssertFalse(viewer.chromeSnapshot.minimap, "the minimap hides at Fit")
+        XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame)
+    }
+}
