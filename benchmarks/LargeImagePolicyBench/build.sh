@@ -32,6 +32,10 @@ for f in Imaging/ImageDecoder.swift \
          Imaging/BitmapMaterializer.swift \
          Imaging/ImageHeaderProbe.swift \
          Imaging/ThumbnailPipeline.swift \
+         Viewer/RenderImage.swift \
+         Viewer/ViewportState.swift \
+         Viewer/MetalImageRenderer.swift \
+         Viewer/MetalLibraryLocator.swift \
          Metadata/MetadataReader.swift; do
     if [ "$IN_GIT" = "1" ]; then
         git -C "$ROOT" show "$REF:PicViewMac/$f" > "$VENDOR/$(basename "$f")"

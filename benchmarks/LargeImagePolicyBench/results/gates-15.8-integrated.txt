@@ -1,0 +1,29 @@
+### integrated DecodeCache + mipmapped-Metal working set (budget 768.0 MiB)
+### §15.8 integrated · near-threshold (solid-8192x8192.png, noise-8192x8192.png, noise-8192x5461.png)
+images = 3
+decoded_count = 3 (preload hits: 2)
+cache_budget = 768.0 MiB
+cache_stored_bytes = 682.7 MiB
+cache_retained_entries = 3/3
+current_entry_retained = yes
+current_texture_bytes = 227.5 MiB (base+mips), mipmaps=true
+navigation_latency_p50 = 0.164 s
+peakFootprint = 1.475 GiB
+peakRSS = 2.421 GiB
+swap_growth = 0.0 MiB
+system_memory = phys=16.000 GiB free=364.5 MiB active=5237.8 MiB inactive=5214.9 MiB wired=2779.3 MiB compressed=2182.8 MiB swapUsed=4100.0 MiB/5120.0 MiB
+
+### §15.8 integrated · medium (solid-6000x6000.png, noise-6000x4000.png, solid-5500x5500.png)
+images = 3
+decoded_count = 3 (preload hits: 2)
+cache_budget = 768.0 MiB
+cache_stored_bytes = 344.4 MiB
+cache_retained_entries = 3/3
+current_entry_retained = yes
+current_texture_bytes = 153.9 MiB (base+mips), mipmaps=true
+navigation_latency_p50 = 0.064 s
+peakFootprint = 1.283 GiB
+peakRSS = 2.421 GiB
+swap_growth = 0.0 MiB
+system_memory = phys=16.000 GiB free=326.9 MiB active=5386.4 MiB inactive=5378.0 MiB wired=2503.2 MiB compressed=2182.8 MiB swapUsed=4100.0 MiB/5120.0 MiB
+

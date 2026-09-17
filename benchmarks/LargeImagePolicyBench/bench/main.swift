@@ -1114,6 +1114,133 @@ func runShipPath(_ args: [String]) async {
     sampler.stop()
 }
 
+
+// MARK: - §15.8 integrated working set: DecodeCache + mipmapped Metal texture
+//
+// The B-series picked a 768 MiB *bitmap cache* budget before the renderer existed. The
+// current image also owns a mipmapped GPU texture, so this measures the composed
+// working set with the production decoder, cache and renderer, and checks that the
+// cache still retains what it should (a silent eviction of the on-screen entry would
+// look like a memory win while destroying the navigation benefit).
+
+func swapUsedBytes() -> Int64 {
+    var swap = xsw_usage()
+    var size = MemoryLayout<xsw_usage>.size
+    guard sysctlbyname("vm.swapusage", &swap, &size, nil, 0) == 0 else { return 0 }
+    return Int64(swap.xsu_used)
+}
+
+/// The harness binary lives in `benchmarks/LargeImagePolicyBench/.work/`, so walk up to
+/// the repository root to find the shader rather than depending on the caller's cwd.
+func findShaderSource() -> String? {
+    var directory = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+    for _ in 0..<6 {
+        let candidate = directory.appendingPathComponent("PicViewMac/Shaders/ImageShaders.metal")
+        if FileManager.default.fileExists(atPath: candidate.path) { return candidate.path }
+        directory = directory.deletingLastPathComponent()
+    }
+    return nil
+}
+
+func runIntegrated(_ args: [String]) async {
+    let sets: [(String, [String])] = [
+        ("near-threshold", ["solid-8192x8192.png", "noise-8192x8192.png", "noise-8192x5461.png"]),
+        ("medium", ["solid-6000x6000.png", "noise-6000x4000.png", "solid-5500x5500.png"]),
+    ]
+    // The harness is not an .app, so it has no SwiftPM resource bundle next to it: it
+    // compiles the repo's shader source directly. The packaged bundle layout is
+    // verify-release.sh's job, not this gate's.
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        print("### integrated working set\nno Metal device on this machine"); return
+    }
+    let shaderPath = arg("--shader", args)
+        ?? ProcessInfo.processInfo.environment["PICLIGHT_BENCH_SHADER"]
+        ?? findShaderSource()
+    guard let shaderPath, let source = try? String(contentsOfFile: shaderPath, encoding: .utf8),
+          let library = try? await device.makeLibrary(source: source, options: nil),
+          let renderer = MetalImageRenderer(device: device, library: library) else {
+        print("### integrated working set\ncannot build the renderer (shader: \(shaderPath))"); return
+    }
+    print("### integrated DecodeCache + mipmapped-Metal working set (budget \(fmtM(Int64(DecodeCache().budgetBytes))))")
+
+    for (name, files) in sets {
+        let urls = files.map { URL(fileURLWithPath: "\(benchFixtureDir)/\($0)") }
+        let cache = DecodeCache()
+        let decoder = ImageIODecoder()
+        let probe = DimensionProbe()
+        let sampler = MemSampler(); sampler.start()
+        let s0 = Proc.snapshot()
+        let swapBefore = swapUsedBytes()
+        var keys: [DecodeCacheKey] = []
+        var latencies: [Double] = []
+        var storedBytes: Int64 = 0
+        var preloadHits = 0
+        var decodeCount = 0
+
+        for (index, url) in urls.enumerated() {
+            let longEdge = await probe.longEdge(of: url)
+            let level = DecodeBudget.level(sourceLongEdge: longEdge, budget: nil)
+            let key = DecodeCacheKey(url: url, level: level)
+            cache.setCurrent(key)
+
+            let t0 = now()
+            var head = cache.head(for: key)
+            let fromPreload = head != nil
+            if head == nil {
+                head = try? await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
+                decodeCount += 1
+                if let head {
+                    cache.store(head: head, for: key)
+                    storedBytes += Int64(head.image.bytesPerRow) * Int64(head.image.height)
+                }
+            } else {
+                preloadHits += 1
+            }
+            // The current image owns its mip chain, as it does in the app.
+            if let head { _ = renderer.prepareTexture(for: head.image) }
+            latencies.append(now() - t0)
+            keys.append(key)
+            _ = fromPreload
+
+            // Preload the neighbours exactly as the coordinator does: skip oversized.
+            for neighbour in [urls.indices.contains(index + 1) ? urls[index + 1] : nil,
+                              urls.indices.contains(index - 1) ? urls[index - 1] : nil].compactMap({ $0 }) {
+                let neighbourEdge = await probe.longEdge(of: neighbour)
+                guard !OversizedPolicy.isOversized(sourceLongEdge: neighbourEdge) else { continue }
+                let neighbourLevel = DecodeBudget.level(sourceLongEdge: neighbourEdge, budget: nil)
+                let neighbourKey = DecodeCacheKey(url: neighbour, level: neighbourLevel)
+                guard cache.head(for: neighbourKey) == nil else { continue }
+                if let head = try? await decoder.decodeFirstDisplayableFrame(neighbour, target: .fullResolution) {
+                    cache.store(head: head, for: neighbourKey)
+                    storedBytes += Int64(head.image.bytesPerRow) * Int64(head.image.height)
+                    decodeCount += 1
+                }
+            }
+        }
+
+        let s1 = Proc.snapshot()
+        sampler.stop()
+        let retained = keys.filter { cache.head(for: $0) != nil }.count
+        let currentRetained = cache.head(for: keys.last!) != nil
+        let sorted = latencies.sorted()
+
+        var m = Measurement(name: "§15.8 integrated · \(name) (\(files.joined(separator: ", ")))")
+        m.add("images", "\(urls.count)")
+        m.add("decoded_count", "\(decodeCount) (preload hits: \(preloadHits))")
+        m.add("cache_budget", fmtM(Int64(cache.budgetBytes)))
+        m.add("cache_stored_bytes", fmtM(storedBytes))
+        m.add("cache_retained_entries", "\(retained)/\(keys.count)")
+        m.add("current_entry_retained", currentRetained ? "yes" : "NO — NSCache evicted the on-screen bitmap")
+        m.add("current_texture_bytes", "\(fmtM(Int64(renderer.textureBytes))) (base+mips), mipmaps=\(renderer.hasMipmaps)")
+        m.add("navigation_latency_p50", ms(sorted[sorted.count / 2]))
+        m.add("peakFootprint", fmtG(sampler.peakFootprint(after: sampler.all().first?.t ?? now())))
+        m.add("peakRSS", fmtG(sampler.peakRSS()))
+        m.add("swap_growth", fmtM(swapUsedBytes() - swapBefore))
+        m.add("system_memory", Proc.systemMemory())
+        m.emit()
+    }
+}
+
 // MARK: - dispatch
 
 let argv = Array(CommandLine.arguments.dropFirst())
@@ -1138,6 +1265,7 @@ case "rotcost": await runRotCost(rest)
 case "texup": await runTexUp(rest)
 case "drawseq": await runDrawSeq(rest)
 case "shippath": await runShipPath(rest)
+case "integrated": await runIntegrated(rest)
 case "subsample": await runSubsample(rest)
 case "matbench": await runMatBench(rest)
 case "cacheplan": await runCachePlan(rest)

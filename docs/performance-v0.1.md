@@ -72,3 +72,22 @@ empirically recorded. Run before making performance claims in a release note:
 xcrun xctrace record --template 'Time Profiler' --launch -- \
   dist/PicViewMac.app/Contents/MacOS/PicViewMac /path/to/large/photo.jpg
 ```
+
+## Large-image working set (integrated DecodeCache + mipmapped Metal texture)
+
+Measured 2026-09-18 on the 16 GB target Mac with the production decoder, cache and
+renderer (`benchmarks/LargeImagePolicyBench`, command `picbench integrated`; raw output
+in `results/gates-15.8-integrated.txt`):
+
+| set | bitmap cache | current texture (base+mips) | peak footprint | swap growth | entries retained | preload hits |
+| --- | --- | --- | --- | --- | --- | --- |
+| three ~8192-class images | 682.7 MiB | 227.5 MiB | 1.475 GiB | 0 MiB | 3/3 (current retained) | 2 |
+| three ~6000-class images | 344.4 MiB | 153.9 MiB | 1.283 GiB | 0 MiB | 3/3 (current retained) | 2 |
+
+The 768 MiB figure is the **DecodeCache** budget, not a whole-app ceiling: the composed
+working set with the current image's mip chain peaks at ~1.5 GiB of footprint, with no
+swap growth attributable to the workload. The acceptance in the design spec (cache
+within budget, no sustained memory pressure, swap growth < 512 MiB, and the preload
+benefit still visible) passes on this evidence, so the cache budget stands as chosen and
+mipmaps stay mandatory — at 384 MiB the same scenario silently evicted the on-screen
+entry, which is why the budget was raised.

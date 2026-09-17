@@ -348,15 +348,15 @@ git commit -m "build: ship and verify Metal shader resources in the release bund
 
 **Files:** `benchmarks/LargeImagePolicyBench/` (extend), `docs/performance-v0.1.md` (record).
 
-- [ ] Step 1: Extend the harness with an integrated workload runner: open a folder of 3 near-threshold 8192-class
+- [x] Step 1: Extend the harness with an integrated workload runner: open a folder of 3 near-threshold 8192-class
       images and a folder of 3 × 6000-class images, navigating current → prev → next with preload enabled while the
       current image owns its mip chain; report DecodeCache retained cost and entry count, current base+mip texture
       bytes, `phys_footprint`, RSS, system swap growth, hit rate and navigation latency.
-- [ ] Step 2: Run on the 16 GB target Mac and record raw output under `results/`.
-- [ ] Step 3: Acceptance: cache cost ≤ 768 MiB; no sustained memory-pressure warning attributable to the viewer;
+- [x] Step 2: Run on the 16 GB target Mac and record raw output under `results/`.
+- [x] Step 3: Acceptance: cache cost ≤ 768 MiB; no sustained memory-pressure warning attributable to the viewer;
       swap growth < 512 MiB across the workload; the B3 preload benefit still visible (no silent eviction of the
       current entry). If it fails, re-tune the **cache** limit with this measurement and re-run — **mipmaps stay**.
-- [ ] Step 4: Record the measured working set (cache + textures + footprint) in `docs/performance-v0.1.md` so the
+- [x] Step 4: Record the measured working set (cache + textures + footprint) in `docs/performance-v0.1.md` so the
       768 MiB figure is never quoted as a whole-app ceiling again.
 
 ```bash
