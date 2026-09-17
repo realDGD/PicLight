@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 Baseline: `123d943`
-Status: policy gates complete; implementation planning approved; E4 remains a post-implementation acceptance gate
+Status: policy gates complete; implementation underway (plan Tasks 1–2 landed: source-vs-bitmap geometry, decode budget + oversized predicate + C2 probe + key-based cache identity); E4 and §15.8 remain acceptance gates to be run against the implementation
 
 ## 1. Purpose
 
@@ -121,7 +121,7 @@ A normal image up to and including 8192 pixels on its long edge keeps native res
 
 However, the app must not publish the lazy `CGImageSourceCreateImageAtIndex` result directly to the canvas. Cache flags alone are not considered proof of materialization.
 
-The intended candidate path is:
+The frozen materialization path is:
 
 ```text
 CGImageSourceCreateImageAtIndex
@@ -207,7 +207,7 @@ ICO retains representation-selection semantics. If no ICO representation satisfi
 
 Multi-page TIFF retains `pageIndex` semantics.
 
-Animated giant GIF/WebP frame budgeting is explicitly not solved in this iteration and must be documented as a known limitation.
+Animated giant GIF/WebP frame budgeting is explicitly out of scope for this iteration; the ordinary animation path's measured behaviour and non-regression requirement are stated below.
 
 Measured so the limitation is not hypothetical (E5, §17.5): playing a 1 MPixel, 30-frame GIF in the current app runs at **15.9 fps** against a nominal 25 fps, frame periods p95 = 121 ms, **249 mJ per drawn frame** (3.9 W over a 20 s window), main-thread ping p95 = 98 ms / max 107 ms. Frame decoding stays off the main thread, but the animation path is not free and must not regress.
 
@@ -452,7 +452,7 @@ The 768 MiB figure is **not** the whole application's large-image working-set ce
 
 Current ordinary folder scanning intentionally leaves `FolderItem.pixelSize` unset unless dimension sorting asks for it. Measurement (§17.5) shows the header probe is cheap: 0.08 ms per small file, 0.71 ms per 1.9 GB file (warm page cache), 0.373 s for a 5000-file folder, all off the main thread.
 
-Policy candidates:
+Policy candidates evaluated (C1–C3):
 
 **C1 — eager folder-wide dimension fill (simplicity control; no reviewer advocated it)**
 
@@ -964,10 +964,10 @@ All A/B/C/D and E-series decisions needed by an implementation plan are resolved
 The eventual implementation plan must respect:
 
 1. ~~Run/complete the A/B/C/D policy benchmark gates required to freeze disputed policies.~~ **Done — see §17.5. Policies frozen: A3 materialization, B3 preload/cache (768 MiB), C2 dimension probe, mandatory mipmaps, E1a bucket formula, E2 resize policy.**
-2. Source-vs-bitmap geometry separation.
-3. Shared oversized predicate and chosen dimension-probe policy.
+2. ~~Source-vs-bitmap geometry separation.~~ **Done — `RenderImage` carries the descriptor, the canvas maps the bitmap over the source rectangle, and `LargeImageGeometryTests` pins the matrix.**
+3. ~~Shared oversized predicate and chosen dimension-probe policy.~~ **Done — `DecodeBudget`, `OversizedPolicy`, `DimensionProbe` (C2).**
 4. Native materialization path and oversized bounded decode.
-5. Cache identity plus chosen preload/cache policy.
+5. Cache identity plus chosen preload/cache policy. **Partially done — `DecodeCacheKey` (url + page + level), level-aware purge and the 768 MiB budget landed with Task 2; the preload wiring (exact-level preload, oversized neighbour skip) lands with Tasks 3–4.**
 6. Navigator/current-preview reuse and oversized drawer protection.
 7. Metal renderer, mip/minification policy, and Quartz source-rect fallback.
 8. Non-trapping Metal resource lookup and release-resource packaging.
