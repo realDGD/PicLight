@@ -660,7 +660,7 @@ enum SelfTest {
     }
 
     private static func finish(_ reporter: SelfTestReporter) {
-        print("=== PicViewMac self-test ===")
+        print("=== PicLight self-test ===")
         reporter.lines.forEach { print($0) }
         print("=== \(reporter.failures.isEmpty ? "ALL PASSED" : "FAILURES: \(reporter.failures.joined(separator: ", "))") ===")
         NSApp.terminate(nil)

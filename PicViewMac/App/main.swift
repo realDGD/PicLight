@@ -1,6 +1,6 @@
 import AppKit
 
-// PicViewMac — a native, minimalist macOS image viewer.
+// PicLight — a native, minimalist macOS image viewer.
 // AppKit owns the app/window lifecycle; decode, folder and viewport logic live in
 // focused types covered by XCTest.
 let application = NSApplication.shared

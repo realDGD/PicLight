@@ -9,7 +9,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Native window tabbing is disabled app-wide; the viewer never uses tabs.
         NSWindow.allowsAutomaticWindowTabbing = false
-        NSApp.mainMenu = MainMenuBuilder.build(appName: "PicViewMac", shortcutStore: environment.shortcuts)
+        NSApp.mainMenu = MainMenuBuilder.build(appName: "PicLight", shortcutStore: environment.shortcuts)
         environment.fileOpener.openHandler = { [weak self] url, behavior in
             self?.environment.open(url: url, behavior: behavior)
         }

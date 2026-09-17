@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds PicViewMac.app as an independent bundle (no App Store, no paid
+# Builds PicLight.app as an independent bundle (no App Store, no paid
 # Developer Program required) and ad-hoc signs it for structural integrity.
 set -euo pipefail
 
@@ -10,7 +10,8 @@ VERSION="${VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 CONFIGURATION="${CONFIGURATION:-release}"
 DIST="$ROOT/dist"
-APP="$DIST/PicViewMac.app"
+APP_NAME="PicLight"
+APP="$DIST/$APP_NAME.app"
 BUNDLE_ID="com.example.picviewmac"
 
 echo "==> Building $CONFIGURATION binary"
@@ -21,7 +22,7 @@ test -x "$BIN"
 echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/PicViewMac"
+cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 
 cp "$ROOT/Resources/Assets.xcassets/Contents.json" "$APP/Contents/Resources/Assets.json" 2>/dev/null || true
 
@@ -30,9 +31,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>PicViewMac</string>
-    <key>CFBundleDisplayName</key><string>PicViewMac</string>
-    <key>CFBundleExecutable</key><string>PicViewMac</string>
+    <key>CFBundleName</key><string>PicLight</string>
+    <key>CFBundleDisplayName</key><string>PicLight</string>
+    <key>CFBundleExecutable</key><string>PicLight</string>
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>

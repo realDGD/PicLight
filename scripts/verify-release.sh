@@ -9,9 +9,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-APP="${APP:-$ROOT/dist/PicViewMac.app}"
-BINARY="$APP/Contents/MacOS/PicViewMac"
-DMG="${DMG:-$(ls "$ROOT"/dist/PicViewMac-*.dmg 2>/dev/null | head -1 || true)}"
+APP_NAME="${APP_NAME:-PicLight}"
+APP="${APP:-$ROOT/dist/$APP_NAME.app}"
+BINARY="$APP/Contents/MacOS/$APP_NAME"
+DMG="${DMG:-$(ls "$ROOT"/dist/"$APP_NAME"-*.dmg 2>/dev/null | head -1 || true)}"
 SELFTEST_IMAGE="${1:-}"
 EXPECTED_VERSION="${EXPECTED_VERSION:-0.1.0}"
 EXPECTED_MINOS="${EXPECTED_MINOS:-14.0}"
@@ -123,8 +124,8 @@ if [ -n "$DMG" ] && [ -f "$DMG" ]; then
 
     MOUNT_POINT=$(hdiutil attach "$DMG" -nobrowse -readonly 2>/dev/null | grep -o '/Volumes/.*' | head -1 || true)
     if [ -n "$MOUNT_POINT" ]; then
-        if [ -d "$MOUNT_POINT/PicViewMac.app" ]; then
-            pass "DMG contains PicViewMac.app"
+        if [ -d "$MOUNT_POINT/$APP_NAME.app" ]; then
+            pass "DMG contains $APP_NAME.app"
         else
             fail "DMG does not contain the app"
         fi
@@ -133,14 +134,14 @@ if [ -n "$DMG" ] && [ -f "$DMG" ]; then
         else
             fail "DMG is missing the Applications shortcut"
         fi
-        if codesign --verify --deep --strict "$MOUNT_POINT/PicViewMac.app" 2>/dev/null; then
+        if codesign --verify --deep --strict "$MOUNT_POINT/$APP_NAME.app" 2>/dev/null; then
             pass "mounted bundle signature verifies"
         else
             fail "mounted bundle signature does not verify"
         fi
 
         MOUNTED_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-            "$MOUNT_POINT/PicViewMac.app/Contents/Info.plist" 2>/dev/null || echo "")
+            "$MOUNT_POINT/$APP_NAME.app/Contents/Info.plist" 2>/dev/null || echo "")
         if [ "$MOUNTED_VERSION" = "$EXPECTED_VERSION" ]; then
             pass "mounted bundle version is $EXPECTED_VERSION"
         else
@@ -149,7 +150,7 @@ if [ -n "$DMG" ] && [ -f "$DMG" ]; then
 
         if [ -n "$SELFTEST_IMAGE" ] && [ -f "$SELFTEST_IMAGE" ]; then
             SELFTEST_OUTPUT=$(PICVIEW_SELFTEST="$SELFTEST_IMAGE" \
-                "$MOUNT_POINT/PicViewMac.app/Contents/MacOS/PicViewMac" 2>&1 || true)
+                "$MOUNT_POINT/$APP_NAME.app/Contents/MacOS/$APP_NAME" 2>&1 || true)
             if echo "$SELFTEST_OUTPUT" | grep -q "=== ALL PASSED ==="; then
                 CHECKS=$(echo "$SELFTEST_OUTPUT" | grep -cE "^(PASS|FAIL)")
                 pass "acceptance runner passes from the mounted DMG ($CHECKS checks)"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Creates dist/PicViewMac-<version>.dmg containing the app and an Applications
+# Creates dist/PicLight-<version>.dmg containing the app and an Applications
 # shortcut, so installation is a single drag.
 set -euo pipefail
 
@@ -8,8 +8,9 @@ cd "$ROOT"
 
 VERSION="${VERSION:-0.1.0}"
 DIST="$ROOT/dist"
-APP="$DIST/PicViewMac.app"
-DMG="$DIST/PicViewMac-$VERSION.dmg"
+APP_NAME="PicLight"
+APP="$DIST/$APP_NAME.app"
+DMG="$DIST/$APP_NAME-$VERSION.dmg"
 STAGING="$DIST/dmg-staging"
 
 if [ ! -d "$APP" ]; then
@@ -24,7 +25,7 @@ cp -R "$APP" "$STAGING/"
 ln -s /Applications "$STAGING/Applications"
 
 echo "==> Creating $DMG"
-hdiutil create -volname "PicViewMac" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG" >/dev/null
 hdiutil verify "$DMG" >/dev/null
 
 rm -rf "$STAGING"
