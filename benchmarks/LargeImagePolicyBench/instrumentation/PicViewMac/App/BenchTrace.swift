@@ -12,6 +12,10 @@ func benchNow() -> Double { Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) /
 enum BenchTrace {
     nonisolated static let enabled = ProcessInfo.processInfo.environment["PICLIGHT_TTI_BENCH"] != nil
     nonisolated static let start = benchNow()
+    /// Highest footprint seen by the heartbeat (250 ms sampling). What was previously
+    /// reported as "peakFootprint" was the footprint at finish, which understates
+    /// short-lived transients.
+    nonisolated(unsafe) static var peakFootprintSeen: Int64 = 0
     nonisolated(unsafe) static var energyStart: UInt64 = 0
     nonisolated(unsafe) static var energyEnd: UInt64 = 0
     static var lines: [String] = []
@@ -96,6 +100,7 @@ enum BenchTrace {
             while true {
                 Thread.sleep(forTimeInterval: 0.25)
                 let m = currentMemory()
+                if m.footprint > peakFootprintSeen { peakFootprintSeen = m.footprint }
                 let pingStart = benchNow()
                 DispatchQueue.main.async {
                     let latency = benchNow() - pingStart
@@ -149,7 +154,8 @@ enum BenchTrace {
         var out = "\n=== PicLight baseline (1.9 GB PNG) ===\n"
         out += lines.joined(separator: "\n") + "\n"
         out += String(format: "\npeakRSS_getrusage = %.3f GiB\n", Double(m.peakRSS) / 1073741824)
-        out += String(format: "peakFootprint     = %.3f GiB\n", Double(m.peakFootprint) / 1073741824)
+        out += String(format: "footprint_at_finish   = %.3f GiB\n", Double(m.peakFootprint) / 1073741824)
+        out += String(format: "peakFootprint_sampled = %.3f GiB (250 ms sampling)\n", Double(peakFootprintSeen) / 1073741824)
         out += String(format: "total_wall        = %.3f s\n", benchNow() - start)
         out += "canvas_draws      = \(drawCount)\n"
         out += "full_stream_traversals = \(traversalSummary())\n"

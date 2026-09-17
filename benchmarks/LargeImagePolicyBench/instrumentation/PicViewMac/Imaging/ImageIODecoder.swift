@@ -24,7 +24,7 @@ public struct ImageIODecoder: ImageDecoding {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
                 throw ImageDecodeError.cannotCreateSource
             }
-            BenchTrace.mark("T1 CGImageSourceCreateWithURL ...")
+            await BenchTrace.mark("T1 CGImageSourceCreateWithURL ...")
             let descriptor = try Self.descriptor(for: source, url: url)
             await BenchTrace.mark("T2 descriptor done")
             let index = try Self.selectIndex(source: source, descriptor: descriptor, target: target)
@@ -261,10 +261,9 @@ public struct ImageIODecoder: ImageDecoding {
                               target: DecodeTarget) -> (image: CGImage, level: DecodeLevel)? {
         let longEdge = pixelMaximum(source: source, index: index)
         if longEdge > 0, longEdge <= DecodeBudget.maximumLongEdge {
-            BenchTrace.markFromAnyThread("decodeLimited: native path (source long edge \(longEdge))")
+            BenchTrace.markFromAnyThread("decodeLimited: native path (source long edge \(longEdge)), materializing")
             guard let image = decodeOriented(source: source, index: index) else { return nil }
             let materialized = BitmapMaterializer.materialize(image)
-            BenchTrace.markFromAnyThread("decodeLimited: materialized \(image.width)x\(image.height)")
             BenchTrace.noteTraversal("main native decode(materialized)")
             return (materialized, .native)
         }

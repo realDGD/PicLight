@@ -20,6 +20,12 @@ WORK="$HERE/.work/e4-app"
 
 test -f "$IMAGE" || { echo "image not found: $IMAGE"; exit 1; }
 
+HEAD_REV="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [ "$REF" != "$HEAD_REV" ] && [ "$REF" != "HEAD" ] && [ "$REF" != "HEAD^{commit}" ]; then
+    echo "note: the overlay in instrumentation/ is written against HEAD ($HEAD_REV);" >&2
+    echo "      measuring $REF may not compile if the decode path has changed since." >&2
+fi
+
 echo "== hashing source image (read-only check) =="
 shasum -a 256 "$IMAGE"
 
@@ -35,7 +41,7 @@ PICLIGHT_TTI_BENCH="$IMAGE" "$WORK/.build/release/PicViewMac" \
     > "$HERE/results/e4-run.txt" 2> "$HERE/results/e4-run-trace.txt" || true
 
 echo "== E4 acceptance numbers =="
-grep -E "full_stream_traversals|open_energy_mJ|peakRSS_getrusage|peakFootprint |canvas_draws" "$HERE/results/e4-run.txt" || true
+grep -E "full_stream_traversals|open_energy_mJ|peakRSS_getrusage|peakFootprint_sampled|footprint_at_finish|canvas_draws" "$HERE/results/e4-run.txt" || true
 stall=$(grep -o 'mainThreadLatency=[ 0-9]*ms' "$HERE/results/e4-run-trace.txt" | sed 's/[^0-9]//g' | sort -n | tail -1)
 echo "main_thread_stall_max_ms = ${stall:-n/a}"
 echo "== hashing source image again =="

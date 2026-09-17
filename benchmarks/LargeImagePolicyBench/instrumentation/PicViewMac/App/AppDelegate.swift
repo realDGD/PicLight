@@ -16,7 +16,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: false)
 
         if let benchPath = ProcessInfo.processInfo.environment["PICLIGHT_TTI_BENCH"], !benchPath.isEmpty {
-            // Same path Finder uses: FileOpenCoordinator -> FolderSession -> decode.
             BenchTrace.beginSummaryLoop()
             BenchTrace.startHeartbeat()
             BenchTrace.energyStart = BenchTrace.readEnergyNJ()
