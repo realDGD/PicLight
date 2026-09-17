@@ -86,21 +86,33 @@ public struct GestureRouter: Sendable {
     ///     into a pan and a switch.
     ///   - canPanInDirection: `false` when the image is already at the edge that
     ///     this swipe direction would reveal.
+    /// - Parameter canSwitch: `false` while the gesture is coasting on momentum.
+    ///   Inertia must never navigate: a fast flick that ends at the edge would
+    ///   otherwise keep pushing past the threshold after the fingers have lifted.
     public mutating func routeSwipe(deltaX: CGFloat, deltaY: CGFloat = 0, viewWidth: CGFloat,
-                                    isZoomedIn: Bool, canPanInDirection: Bool) -> GestureIntent {
+                                    isZoomedIn: Bool, canPanInDirection: Bool,
+                                    canSwitch: Bool = true) -> GestureIntent {
         guard viewWidth > 0 else { return .none }
         switch swipeMode {
         case .disabled:
             return isZoomedIn ? .pan(CGSize(width: deltaX, height: deltaY)) : .none
         case .alwaysPan:
-            guard isZoomedIn else { return switchIntent(deltaX: deltaX, viewWidth: viewWidth) }
-            return .pan(CGSize(width: deltaX, height: deltaY))
+            // "Always pan" pans whenever there is something to pan; navigating is
+            // only what it does where panning is impossible, and never on a coast.
+            if isZoomedIn { return .pan(CGSize(width: deltaX, height: deltaY)) }
+            guard canSwitch else { return .none }
+            return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         case .alwaysSwitch:
+            guard canSwitch else { return .none }
             return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         case .smart:
             if isZoomedIn && canPanInDirection {
                 accumulated = 0
                 return .pan(CGSize(width: deltaX, height: deltaY))
+            }
+            // Coasting inertia is allowed to finish a pan but never to navigate.
+            guard canSwitch else {
+                return isZoomedIn ? .pan(CGSize(width: deltaX, height: deltaY)) : .none
             }
             return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         }

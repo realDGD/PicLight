@@ -157,41 +157,61 @@ public final class ImageCanvasView: NSView {
 
     // MARK: - Interaction
 
+    /// Where a scroll event came from. A trackpad gesture produces two phases: the
+    /// fingers, then - after they lift - a momentum coast that macOS keeps sending.
+    enum ScrollGestureOrigin: Equatable {
+        case mouseWheel
+        case trackpadFingers
+        case trackpadMomentum
+    }
+
+    nonisolated static func gestureOrigin(preciseDeltas: Bool, phase: NSEvent.Phase,
+                                          momentumPhase: NSEvent.Phase) -> ScrollGestureOrigin {
+        guard preciseDeltas else { return .mouseWheel }
+        return momentumPhase == [] ? .trackpadFingers : .trackpadMomentum
+    }
+
     public override func scrollWheel(with event: NSEvent) {
         onPointerActivity?()
         let point = convert(event.locationInWindow, from: nil)
         let deltaX = event.scrollingDeltaX
         let deltaY = event.scrollingDeltaY
-        let isTrackpad = event.hasPreciseScrollingDeltas
+        let origin = Self.gestureOrigin(preciseDeltas: event.hasPreciseScrollingDeltas,
+                                        phase: event.phase,
+                                        momentumPhase: event.momentumPhase)
+        // Fingers may navigate; coasting momentum may only finish moving the image.
+        let isMomentum = origin == .trackpadMomentum
+        let isTrackpad = origin != .mouseWheel
 
         // While the image is zoomed, a trackpad gesture moves the image. Routing each
         // event by whichever axis happened to be larger split one two-finger gesture
         // into pans for some events and zooms or image switches for others, so
         // panning appeared to change the picture.
         if isTrackpad, viewport.isZoomedIn {
-            if event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
+            if !isMomentum, event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
             // Only a clearly horizontal gesture may reach the edge and switch; a
             // diagonal one pans on both axes.
             let horizontalDominant = abs(deltaX) > abs(deltaY) * 1.5
             let intent = horizontalDominant
                 ? router.routeSwipe(deltaX: deltaX, deltaY: deltaY, viewWidth: bounds.width,
-                                    isZoomedIn: true, canPanInDirection: canPan(deltaX: deltaX))
+                                    isZoomedIn: true, canPanInDirection: canPan(deltaX: deltaX),
+                                    canSwitch: !isMomentum)
                 : .pan(CGSize(width: deltaX, height: deltaY))
             apply(intent)
-            if event.phase == .ended || event.phase == .cancelled { router.endGesture() }
+            if !isMomentum, event.phase == .ended || event.phase == .cancelled { router.endGesture() }
             return
         }
 
         // At Fit, or with a real mouse wheel, the configured behavior applies. A
         // clearly horizontal trackpad gesture is still a swipe.
         if abs(deltaX) > abs(deltaY) * 1.5 {
-            if event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
+            if !isMomentum, event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
             let intent = router.routeSwipe(
                 deltaX: deltaX, viewWidth: bounds.width,
-                isZoomedIn: false, canPanInDirection: false
+                isZoomedIn: false, canPanInDirection: false, canSwitch: !isMomentum
             )
             apply(intent)
-            if event.phase == .ended || event.phase == .cancelled { router.endGesture() }
+            if !isMomentum, event.phase == .ended || event.phase == .cancelled { router.endGesture() }
             return
         }
 

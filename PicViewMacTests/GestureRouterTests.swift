@@ -214,3 +214,102 @@ final class ZoomedTrackpadPanningTests: XCTestCase {
                        .pan(CGSize(width: -8, height: 3)))
     }
 }
+
+/// Inertia must never navigate.
+///
+/// After the fingers lift, macOS keeps delivering scroll events as a momentum
+/// coast. Accumulating those made a fast flick that ended at the edge switch to the
+/// next image after the user had already stopped touching the trackpad - and at Fit
+/// it could switch twice for one flick.
+final class MomentumCoastingTests: XCTestCase {
+    func testMomentumNeverSwitchesWhileZoomed() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.05)
+        router.beginGesture()
+        // The finger part of the gesture, deliberately short of the threshold.
+        _ = router.routeSwipe(deltaX: -20, deltaY: 0, viewWidth: 900,
+                              isZoomedIn: true, canPanInDirection: false, canSwitch: true)
+        router.endGesture()
+
+        // Now the coast: a long run of momentum events at the edge.
+        for _ in 0..<60 {
+            let intent = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                           isZoomedIn: true, canPanInDirection: false,
+                                           canSwitch: false)
+            if case .nextImage = intent {
+                XCTFail("coasting momentum must never switch images")
+            }
+        }
+    }
+
+    func testMomentumStillMovesTheImage() {
+        var router = GestureRouter(swipeMode: .smart)
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -12, deltaY: -5, viewWidth: 900,
+                                         isZoomedIn: true, canPanInDirection: true,
+                                         canSwitch: false),
+                       .pan(CGSize(width: -12, height: -5)),
+                       "a coast may finish moving the image")
+    }
+
+    func testMomentumIsIgnoredAtFit() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.05)
+        router.beginGesture()
+        for _ in 0..<60 {
+            XCTAssertEqual(router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                             isZoomedIn: false, canPanInDirection: false,
+                                             canSwitch: false),
+                           .none,
+                           "one flick switches at most once, by the fingers")
+        }
+    }
+
+    func testAFingerGestureCanStillSwitchWhileFingersAreDown() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        var result: GestureIntent = .none
+        for _ in 0..<20 where result == .none {
+            result = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                       isZoomedIn: true, canPanInDirection: false,
+                                       canSwitch: true)
+        }
+        XCTAssertEqual(result, .nextImage, "a deliberate finger swipe still navigates")
+    }
+
+    func testAlwaysSwitchModeAlsoRespectsTheCoastRule() {
+        var router = GestureRouter(swipeMode: .alwaysSwitch, switchThreshold: 0.05)
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -100, deltaY: 0, viewWidth: 900,
+                                         isZoomedIn: true, canPanInDirection: true,
+                                         canSwitch: false),
+                       .none, "even always-switch waits for the fingers")
+    }
+}
+
+/// Classifying a scroll event is what keeps the two phases apart.
+final class ScrollGestureOriginTests: XCTestCase {
+    func testMouseWheelIsNotATrackpadGesture() {
+        XCTAssertEqual(ImageCanvasView.gestureOrigin(preciseDeltas: false, phase: .changed,
+                                                     momentumPhase: []),
+                       .mouseWheel)
+    }
+
+    func testFingerPhaseIsRecognised() {
+        XCTAssertEqual(ImageCanvasView.gestureOrigin(preciseDeltas: true, phase: .began,
+                                                     momentumPhase: []),
+                       .trackpadFingers)
+        XCTAssertEqual(ImageCanvasView.gestureOrigin(preciseDeltas: true, phase: .changed,
+                                                     momentumPhase: []),
+                       .trackpadFingers)
+    }
+
+    func testMomentumPhaseIsRecognisedEvenThoughEventPhaseIsEmpty() {
+        // This is the case the router used to treat as an ordinary gesture: after the
+        // fingers lift, `phase` is empty and only `momentumPhase` carries information.
+        XCTAssertEqual(ImageCanvasView.gestureOrigin(preciseDeltas: true, phase: [],
+                                                     momentumPhase: .began),
+                       .trackpadMomentum)
+        XCTAssertEqual(ImageCanvasView.gestureOrigin(preciseDeltas: true, phase: [],
+                                                     momentumPhase: .changed),
+                       .trackpadMomentum)
+    }
+}
