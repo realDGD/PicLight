@@ -123,9 +123,21 @@ writeMulti(gifFrames, to: "animated-twice.gif", type: .gif, propertiesPerFrame: 
                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 2],
            ])
 
+// Single-page TIFF, so page count 1 is covered explicitly.
+write(makeImage(width: 36, height: 24), to: "single.tiff", type: .tiff)
+
 // Multi-page TIFF: three pages of different sizes.
 writeMulti([makeImage(width: 40, height: 30), makeImage(width: 30, height: 40), makeImage(width: 50, height: 20)],
            to: "multipage.tiff", type: .tiff)
+
+// Truncated JPEG: a real JPEG whose body is cut short, so the decoder sees a
+// plausible header with incomplete data.
+write(makeImage(width: 128, height: 96), to: "full.jpg", type: .jpeg,
+      properties: [kCGImageDestinationLossyCompressionQuality: 0.9])
+let fullJPEG = try Data(contentsOf: outputDirectory.appendingPathComponent("full.jpg"))
+let truncated = fullJPEG.prefix(fullJPEG.count * 2 / 5)
+try Data(truncated).write(to: outputDirectory.appendingPathComponent("truncated.jpg"))
+print("wrote truncated.jpg (\(truncated.count) of \(fullJPEG.count) bytes)")
 
 // Corrupt file: valid extension, unusable body.
 let corrupt = outputDirectory.appendingPathComponent("corrupt.png")

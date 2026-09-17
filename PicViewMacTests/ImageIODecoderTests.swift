@@ -14,6 +14,7 @@ final class ImageIODecoderTests: XCTestCase {
             ("static.jpg", CGSize(width: 96, height: 64)),
             ("multi.ico", CGSize(width: 32, height: 32)),
             ("multipage.tiff", CGSize(width: 40, height: 30)),
+            ("single.tiff", CGSize(width: 36, height: 24)),
             ("static.webp", CGSize(width: 64, height: 48)),
             ("lossy.webp", CGSize(width: 64, height: 48)),
         ]
@@ -26,7 +27,7 @@ final class ImageIODecoderTests: XCTestCase {
 
     func testDecodesFirstDisplayableFrameForEveryRequiredFormat() async throws {
         for name in ["static.png", "static.bmp", "static.gif", "static.jpg",
-                     "multi.ico", "multipage.tiff", "static.webp"] {
+                     "multi.ico", "multipage.tiff", "single.tiff", "static.webp"] {
             let head = try await decoder.decodeFirstDisplayableFrame(Fixtures.url(name), target: .fullResolution)
             XCTAssertGreaterThan(head.image.width, 0, name)
             XCTAssertGreaterThan(head.image.height, 0, name)
@@ -110,6 +111,36 @@ final class ImageIODecoderTests: XCTestCase {
     }
 
     // MARK: - Multi-page TIFF and ICO
+
+    func testSinglePageTIFFReportsOnePageAndDecodes() async throws {
+        let descriptor = try await decoder.inspect(Fixtures.url("single.tiff"))
+        XCTAssertEqual(descriptor.pageCount, 1)
+        XCTAssertFalse(descriptor.animated)
+        XCTAssertEqual(descriptor.pixelSize, CGSize(width: 36, height: 24))
+        let head = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("single.tiff"),
+                                                                 target: .fullResolution)
+        XCTAssertEqual(CGSize(width: head.image.width, height: head.image.height),
+                       CGSize(width: 36, height: 24))
+    }
+
+    func testTruncatedJPEGDoesNotCrashAndKeepsNavigationUsable() async throws {
+        let url = Fixtures.url("truncated.jpg")
+        // A truncated file may decode partially or fail outright; both are
+        // acceptable. What is not acceptable is crashing or wedging the viewer.
+        let descriptor = try? await decoder.inspect(url)
+        XCTAssertEqual(descriptor?.sourceURL, url)
+
+        let head = try? await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
+        if let head {
+            XCTAssertGreaterThan(head.image.width, 0, "a partial decode must still be a usable image")
+        }
+
+        // The next fixture in the folder still decodes, so navigation survives.
+        let following = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.png"),
+                                                                      target: .fullResolution)
+        XCTAssertEqual(CGSize(width: following.image.width, height: following.image.height),
+                       CGSize(width: 64, height: 48))
+    }
 
     func testMultiPageTIFFReportsPagesNotAnimation() async throws {
         let descriptor = try await decoder.inspect(Fixtures.url("multipage.tiff"))
