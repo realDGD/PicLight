@@ -1,0 +1,56 @@
+### probebench policy=c1 folder=/tmp/piclight-bench/folders/small5000 files=5000 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.401 s (probed all 5000 files)
+policy_cost = 0.373 s  probes = 5000  (0.08 ms/probe median, 0.09 ms p95)
+cpu = user 0.302 s sys 0.071 s
+footprint = 9.1 MiB
+classified = 5000 / 5000   misclassified = 0
+oversized_in_truth = 0
+### probebench policy=c2 folder=/tmp/piclight-bench/folders/small5000 files=5000 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.403 s (probed all 5000 files)
+policy_cost = 0.002 s  probes = 20  (0.08 ms/probe median, 0.09 ms p95)
+cpu = user 0.001 s sys 0.000 s
+footprint = 8.6 MiB
+classified = 20 / 5000   misclassified = 0
+oversized_in_truth = 0
+### probebench policy=c3 folder=/tmp/piclight-bench/folders/small5000 files=5000 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.406 s (probed all 5000 files)
+policy_cost = 0.380 s  probes = 5000  (0.08 ms/probe median, 0.09 ms p95)
+cpu = user 0.306 s sys 0.073 s
+footprint = 9.1 MiB
+classified = 5000 / 5000   misclassified = 0
+oversized_in_truth = 0
+### probebench policy=c1 folder=/tmp/piclight-bench/folders/giant30 files=30 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.025 s (probed all 30 files)
+policy_cost = 0.002 s  probes = 30  (0.71 ms/probe median, 1.10 ms p95)
+cpu = user 0.001 s sys 0.001 s
+footprint = 3.8 MiB
+classified = 30 / 30   misclassified = 0
+oversized_in_truth = 30
+### probebench policy=c2 folder=/tmp/piclight-bench/folders/giant30 files=30 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.004 s (probed all 30 files)
+policy_cost = 0.001 s  probes = 20  (0.07 ms/probe median, 0.10 ms p95)
+cpu = user 0.001 s sys 0.001 s
+footprint = 3.8 MiB
+classified = 20 / 30   misclassified = 0
+oversized_in_truth = 30
+### probebench policy=c4 folder=/tmp/piclight-bench/folders/mixed files=5 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.007 s (probed all 5 files)
+policy_cost = 0.000 s  probes = 0  (0.55 ms/probe median, 4.30 ms p95)
+cpu = user 0.000 s sys 0.000 s
+footprint = 3.7 MiB
+classified = 0 / 5   misclassified = 5 -> noise-8192x5461.png(unclassified), noise-6000x4000.png(unclassified), solid-12000x12000.png(unclassified), photo-4032x3024.jpg(unclassified), solid-8192x8192.png(unclassified)
+oversized_in_truth = 1
+### probebench policy=c3 folder=/tmp/piclight-bench/folders/mixed files=5 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.004 s (probed all 5 files)
+policy_cost = 0.000 s  probes = 3  (0.22 ms/probe median, 3.43 ms p95)
+cpu = user 0.000 s sys 0.000 s
+footprint = 3.7 MiB
+classified = 5 / 5   misclassified = 2 -> noise-6000x4000.png(truth=false got=true), noise-8192x5461.png(truth=false got=true)
+oversized_in_truth = 1
+### probebench policy=c1 folder=/tmp/piclight-bench/folders/mixed files=5 visible=20 byteThreshold=64MB
+folder_enumeration_and_ground_truth = 0.004 s (probed all 5 files)
+policy_cost = 0.001 s  probes = 5  (0.18 ms/probe median, 2.95 ms p95)
+cpu = user 0.000 s sys 0.000 s
+footprint = 3.7 MiB
+classified = 5 / 5   misclassified = 0
+oversized_in_truth = 1

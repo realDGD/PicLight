@@ -1,0 +1,81 @@
+### matbench mode=a1 file=grad-12000x9000.png (1.8 MiB) canvasLong=3200
+pid = 15714
+source_create = 2 ms
+delivered_in = 0.127 s
+delivered_image = 12000x9000 bpc=8 bpp=32 bytesPerRow=48000 rowBytes_per_px=4.00 alphaInfo=3 cs=kCGColorSpaceSRGB bitmapBytes=412.0 MiB
+footprint_at_publish = 3.8 MiB
+source_cs_alphaInfo_before_after = see delivered_image; source alphaInfo usually 3 (.last), thumbnails 2 (premultipliedFirst)
+first_draw = 0.210 s dest=3200x2400
+second_draw_same_size = 0.002 s
+draw_different_size = 0.140 s dest=4096x3072
+first_draw_paid_a_decode = YES (>100 ms)
+wall = 0.479 s
+cpu = user=0.425 s sys=0.056 s total=0.480 s cpu/wall=1.00x
+energy = 3158.3 mJ  (task_energy, nJ counter)
+wakeups = interrupt=238 idle=0
+peakFootprint_sampler = 0.456 GiB
+largest_footprint_step = 428.0 MiB at t+341 ms
+peakRSS_getrusage = 0.943 GiB
+system_memory_at_end = phys=16.000 GiB free=536.2 MiB active=5806.2 MiB inactive=5460.9 MiB wired=2996.4 MiB compressed=979.5 MiB swapUsed=5605.3 MiB/7168.0 MiB
+
+### matbench mode=a2 file=grad-12000x9000.png (1.8 MiB) canvasLong=3200
+pid = 15720
+source_create = 2 ms
+delivered_in = 0.226 s
+delivered_image = 12000x9000 bpc=8 bpp=32 bytesPerRow=48000 rowBytes_per_px=4.00 alphaInfo=2 cs=kCGColorSpaceSRGB bitmapBytes=412.0 MiB
+footprint_at_publish = 4.2 MiB
+source_cs_alphaInfo_before_after = see delivered_image; source alphaInfo usually 3 (.last), thumbnails 2 (premultipliedFirst)
+first_draw = 0.127 s dest=3200x2400
+second_draw_same_size = 0.002 s
+draw_different_size = 0.125 s dest=4096x3072
+first_draw_paid_a_decode = YES (>100 ms)
+wall = 0.480 s
+cpu = user=0.383 s sys=0.099 s total=0.482 s cpu/wall=1.00x
+energy = 2898.8 mJ  (task_energy, nJ counter)
+wakeups = interrupt=238 idle=0
+peakFootprint_sampler = 1.204 GiB
+largest_footprint_step = 56.4 MiB at t+39 ms
+peakRSS_getrusage = 1.221 GiB
+system_memory_at_end = phys=16.000 GiB free=767.7 MiB active=5694.5 MiB inactive=5445.8 MiB wired=2981.1 MiB compressed=890.1 MiB swapUsed=5605.3 MiB/7168.0 MiB
+
+### matbench mode=a3 file=grad-12000x9000.png (1.8 MiB) canvasLong=3200
+pid = 15725
+source_create = 2 ms
+delivered_in = 0.179 s
+background_materialize = 0.176 s into 412.0 MiB
+delivered_image = 12000x9000 bpc=8 bpp=32 bytesPerRow=48000 rowBytes_per_px=4.00 alphaInfo=1 cs=kCGColorSpaceSRGB bitmapBytes=412.0 MiB
+footprint_at_publish = 4.4 MiB
+source_cs_alphaInfo_before_after = see delivered_image; source alphaInfo usually 3 (.last), thumbnails 2 (premultipliedFirst)
+first_draw = 0.116 s dest=3200x2400
+second_draw_same_size = 0.004 s
+draw_different_size = 0.122 s dest=4096x3072
+first_draw_paid_a_decode = YES (>100 ms)
+wall = 0.421 s
+cpu = user=0.340 s sys=0.083 s total=0.423 s cpu/wall=1.01x
+energy = 2593.8 mJ  (task_energy, nJ counter)
+wakeups = interrupt=208 idle=0
+peakFootprint_sampler = 0.806 GiB
+largest_footprint_step = 50.1 MiB at t+183 ms
+peakRSS_getrusage = 1.345 GiB
+system_memory_at_end = phys=16.000 GiB free=391.1 MiB active=5935.1 MiB inactive=5581.6 MiB wired=2981.3 MiB compressed=890.1 MiB swapUsed=5605.3 MiB/7168.0 MiB
+
+### matbench mode=a1 file=万萝图.png (1975.2 MiB) canvasLong=3200
+pid = 15730
+source_create = 6 ms
+delivered_in = 20.620 s
+delivered_image = 48000x32000 bpc=8 bpp=32 bytesPerRow=192000 rowBytes_per_px=4.00 alphaInfo=3 cs=kCGColorSpaceSRGB bitmapBytes=5859.4 MiB
+footprint_at_publish = 8.1 MiB
+source_cs_alphaInfo_before_after = see delivered_image; source alphaInfo usually 3 (.last), thumbnails 2 (premultipliedFirst)
+first_draw = 19.017 s dest=3200x2133
+second_draw_same_size = 0.003 s
+draw_different_size = 18.052 s dest=4096x2731
+first_draw_paid_a_decode = YES (>100 ms)
+wall = 57.691 s
+cpu = user=44.845 s sys=6.497 s total=51.342 s cpu/wall=0.89x
+energy = 214196.8 mJ  (task_energy, nJ counter)
+wakeups = interrupt=38494 idle=1170
+peakFootprint_sampler = 5.780 GiB
+largest_footprint_step = 60.2 MiB at t+39875 ms
+peakRSS_getrusage = 6.455 GiB
+system_memory_at_end = phys=16.000 GiB free=197.8 MiB active=2625.5 MiB inactive=2692.7 MiB wired=2879.0 MiB compressed=7382.6 MiB swapUsed=6869.0 MiB/7168.0 MiB
+

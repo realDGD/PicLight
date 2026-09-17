@@ -1,0 +1,117 @@
+
+=== PicLight baseline (1.9 GB PNG) ===
+T+  -0.000  T0 user open requested (FileOpenCoordinator.open) fp=   12.2MiB res=   67.6MiB peakRSS=    67.6MiB
+T+   0.193  canvas draw #1 COMPLETE took=0.000s image=nil bounds=960x568 dirty=960x568 fp=   24.3MiB res=   92.7MiB peakRSS=    92.7MiB
+T+   0.193  [MAIN] canvas draw ENTER image=nil zoom=1.0000 bounds=960x568 dirty=960x568
+T+   0.231  T1 CGImageSourceCreateWithURL ... fp=   26.5MiB res=   97.8MiB peakRSS=    98.4MiB
+T+   0.231  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.231  [bg] TRAVERSAL #1 kind=thumbnail(maxPx:300)
+T+   0.237  T2 source created fp=   26.5MiB res=   98.3MiB peakRSS=    98.4MiB
+T+   0.238  T2 descriptor+metadata properties done fp=   30.5MiB res=  102.9MiB peakRSS=   103.0MiB
+T+   0.238  T3 decode about to start (CGImageSourceCreateImageAtIndex) fp=   31.5MiB res=  103.9MiB peakRSS=   103.9MiB
+T+   0.238  T4 CGImage returned (lazy unless it decoded) fp=   32.4MiB res=  104.8MiB peakRSS=   104.8MiB
+T+   0.238  T4 metadata read done fp=   33.1MiB res=  106.0MiB peakRSS=   106.0MiB
+T+   0.239  T5 ViewerState.apply(head:) — image published to UI fp=   33.1MiB res=  106.0MiB peakRSS=   106.0MiB
+T+   0.247  canvas draw #2 COMPLETE took=0.000s image=yes bounds=960x568 dirty=960x568 fp=   37.7MiB res=  112.1MiB peakRSS=   112.1MiB
+T+   0.247  [MAIN] TRAVERSAL #2 kind=canvas rasterization(oversized:48000x32000)
+T+   0.247  [MAIN] canvas draw ENTER image=yes zoom=0.0177 bounds=960x568 dirty=960x568
+T+  21.111  forcing extra redraw #1 fp= 2908.1MiB res= 2888.9MiB peakRSS=  7049.9MiB
+T+  17.699  [bg] ThumbnailPipeline.thumbnail(300) END
+T+  21.111  [pulse] mainThreadLatency= 20860ms fp=40MiB res=117MiB peakRSS=117MiB
+T+  21.111  [bg] ThumbnailPipeline.preview(from: 48000x32000, maxPixelSize: 336) START
+T+  21.111  [bg] TRAVERSAL #3 kind=preview(oversized:48000x32000)
+T+  21.111  [pulse] mainThreadLatency= 20609ms fp=4278MiB res=4383MiB peakRSS=4383MiB
+T+  21.111  [pulse] mainThreadLatency= 20358ms fp=5949MiB res=5246MiB peakRSS=5288MiB
+T+  21.111  [pulse] mainThreadLatency= 20108ms fp=5949MiB res=5324MiB peakRSS=5324MiB
+T+  21.111  [pulse] mainThreadLatency= 19857ms fp=5949MiB res=5391MiB peakRSS=5415MiB
+T+  21.111  [pulse] mainThreadLatency= 19606ms fp=5950MiB res=5420MiB peakRSS=5443MiB
+T+  21.111  [pulse] mainThreadLatency= 19355ms fp=5950MiB res=5449MiB peakRSS=5451MiB
+T+  21.111  [pulse] mainThreadLatency= 19104ms fp=5950MiB res=5480MiB peakRSS=5485MiB
+T+  21.111  [pulse] mainThreadLatency= 18853ms fp=5950MiB res=5537MiB peakRSS=5537MiB
+T+  21.111  [pulse] mainThreadLatency= 18602ms fp=5950MiB res=5536MiB peakRSS=5560MiB
+T+  21.111  [pulse] mainThreadLatency= 18351ms fp=5950MiB res=5586MiB peakRSS=5586MiB
+T+  21.111  [pulse] mainThreadLatency= 18100ms fp=5950MiB res=5591MiB peakRSS=5612MiB
+T+  21.111  [pulse] mainThreadLatency= 17849ms fp=5950MiB res=5645MiB peakRSS=5645MiB
+T+  21.111  [pulse] mainThreadLatency= 17598ms fp=5950MiB res=5688MiB peakRSS=5688MiB
+T+  21.111  [pulse] mainThreadLatency= 17347ms fp=5950MiB res=5757MiB peakRSS=5757MiB
+T+  21.111  [pulse] mainThreadLatency= 17096ms fp=5950MiB res=5788MiB peakRSS=5788MiB
+T+  21.111  [pulse] mainThreadLatency= 16845ms fp=5950MiB res=5798MiB peakRSS=5807MiB
+T+  21.111  [pulse] mainThreadLatency= 16594ms fp=5950MiB res=5839MiB peakRSS=5839MiB
+T+  21.111  [pulse] mainThreadLatency= 16343ms fp=5950MiB res=5865MiB peakRSS=5873MiB
+T+  21.111  [pulse] mainThreadLatency= 16091ms fp=5950MiB res=5943MiB peakRSS=5943MiB
+T+  21.111  [pulse] mainThreadLatency= 15840ms fp=5950MiB res=6023MiB peakRSS=6023MiB
+T+  21.111  [pulse] mainThreadLatency= 15589ms fp=5950MiB res=6080MiB peakRSS=6080MiB
+T+  21.111  [pulse] mainThreadLatency= 15338ms fp=5950MiB res=6133MiB peakRSS=6133MiB
+T+  21.111  [pulse] mainThreadLatency= 15087ms fp=5950MiB res=6215MiB peakRSS=6215MiB
+T+  21.111  [pulse] mainThreadLatency= 14836ms fp=5950MiB res=6240MiB peakRSS=6240MiB
+T+  21.111  [pulse] mainThreadLatency= 14585ms fp=5950MiB res=6261MiB peakRSS=6275MiB
+T+  21.111  [pulse] mainThreadLatency= 14335ms fp=5950MiB res=6308MiB peakRSS=6308MiB
+T+  21.111  [pulse] mainThreadLatency= 14084ms fp=5950MiB res=6331MiB peakRSS=6341MiB
+T+  21.111  [pulse] mainThreadLatency= 13833ms fp=5950MiB res=6356MiB peakRSS=6361MiB
+T+  21.111  [pulse] mainThreadLatency= 13582ms fp=5950MiB res=6347MiB peakRSS=6385MiB
+T+  21.111  [pulse] mainThreadLatency= 13331ms fp=5950MiB res=6370MiB peakRSS=6391MiB
+T+  21.111  [pulse] mainThreadLatency= 13080ms fp=5950MiB res=6421MiB peakRSS=6421MiB
+T+  21.111  [pulse] mainThreadLatency= 12829ms fp=5950MiB res=6443MiB peakRSS=6443MiB
+T+  21.111  [pulse] mainThreadLatency= 12578ms fp=5950MiB res=6480MiB peakRSS=6480MiB
+T+  21.111  [pulse] mainThreadLatency= 12327ms fp=5950MiB res=6499MiB peakRSS=6512MiB
+T+  21.111  [pulse] mainThreadLatency= 12076ms fp=5950MiB res=6522MiB peakRSS=6535MiB
+T+  21.111  [pulse] mainThreadLatency= 11825ms fp=5950MiB res=6576MiB peakRSS=6577MiB
+T+  21.111  [pulse] mainThreadLatency= 11574ms fp=5950MiB res=6608MiB peakRSS=6608MiB
+T+  21.111  [pulse] mainThreadLatency= 11323ms fp=5950MiB res=6680MiB peakRSS=6680MiB
+T+  21.111  [pulse] mainThreadLatency= 11072ms fp=5950MiB res=6706MiB peakRSS=6739MiB
+T+  21.111  [pulse] mainThreadLatency= 10821ms fp=5950MiB res=6756MiB peakRSS=6775MiB
+T+  21.111  [pulse] mainThreadLatency= 10570ms fp=5950MiB res=6786MiB peakRSS=6808MiB
+T+  21.111  [pulse] mainThreadLatency= 10319ms fp=5950MiB res=6839MiB peakRSS=6839MiB
+T+  21.111  [pulse] mainThreadLatency= 10069ms fp=5950MiB res=6871MiB peakRSS=6871MiB
+T+  21.111  [pulse] mainThreadLatency=  9818ms fp=5951MiB res=6898MiB peakRSS=6914MiB
+T+  21.111  [pulse] mainThreadLatency=  9567ms fp=5951MiB res=6935MiB peakRSS=6959MiB
+T+  21.111  [pulse] mainThreadLatency=  9316ms fp=5951MiB res=6958MiB peakRSS=6971MiB
+T+  21.111  [pulse] mainThreadLatency=  9065ms fp=5951MiB res=6992MiB peakRSS=6999MiB
+T+  21.111  [pulse] mainThreadLatency=  8814ms fp=5951MiB res=7019MiB peakRSS=7027MiB
+T+  21.111  [pulse] mainThreadLatency=  8563ms fp=5951MiB res=7015MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  8312ms fp=5951MiB res=6963MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  8061ms fp=5951MiB res=6810MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  7810ms fp=5951MiB res=6718MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  7559ms fp=5951MiB res=6583MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  7308ms fp=5951MiB res=6468MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  7057ms fp=5951MiB res=6250MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  6806ms fp=5951MiB res=6116MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  6555ms fp=5951MiB res=6064MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  6304ms fp=5951MiB res=5879MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  6053ms fp=5951MiB res=5742MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  5802ms fp=5951MiB res=5640MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  5551ms fp=5951MiB res=5501MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  5300ms fp=5951MiB res=5613MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  5049ms fp=5951MiB res=5720MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  4798ms fp=5951MiB res=5755MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  4547ms fp=5951MiB res=5803MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  4296ms fp=5951MiB res=5885MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  4045ms fp=5951MiB res=6029MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  3794ms fp=6354MiB res=4489MiB peakRSS=7050MiB
+T+  21.111  [pulse] mainThreadLatency=  3543ms fp=6637MiB res=4647MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  3293ms fp=6630MiB res=3089MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  3042ms fp=6630MiB res=3273MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  2791ms fp=6630MiB res=3249MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  2540ms fp=6630MiB res=3305MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  2289ms fp=6630MiB res=3434MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  2038ms fp=6630MiB res=3635MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  1784ms fp=6630MiB res=3880MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  1533ms fp=6630MiB res=3735MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  1282ms fp=6630MiB res=3689MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=  1031ms fp=6630MiB res=3907MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=   780ms fp=6630MiB res=3980MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=   529ms fp=6630MiB res=3689MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=   279ms fp=2394MiB res=2445MiB peakRSS=7050MiB
+T+  21.113  [pulse] mainThreadLatency=    28ms fp=2991MiB res=2972MiB peakRSS=7050MiB
+T+  21.121  canvas draw #3 COMPLETE took=0.000s image=yes bounds=637x723 dirty=637x723 fp= 2906.0MiB res= 2893.3MiB peakRSS=  7049.9MiB
+T+  21.121  [MAIN] TRAVERSAL #4 kind=canvas rasterization(oversized:48000x32000)
+T+  21.121  [MAIN] canvas draw ENTER image=yes zoom=0.0177 bounds=637x723 dirty=637x723
+T+  21.351  [pulse] mainThreadLatency=    15ms fp=5037MiB res=5023MiB peakRSS=7050MiB
+
+peakRSS_getrusage = 6.885 GiB
+peakFootprint     = 5.170 GiB
+total_wall        = 21.351 s
+canvas_draws      = 3
+full_stream_traversals = 4 traversals: canvas rasterization(oversized:48000x32000)=2 preview(oversized:48000x32000)=1 thumbnail(maxPx:300)=1
+open_energy_mJ    = 136562
+

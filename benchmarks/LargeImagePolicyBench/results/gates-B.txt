@@ -1,0 +1,47 @@
+### preloadbench set=normal workload=[0, 1, 2, 3] level=4096 dwell=0.6s
+images = noise-4032x3024.png(dim=4032x3024,over=false), photo-4032x3024.jpg(dim=4032x3024,over=false), noise-6000x4000.png(dim=6000x4000,over=false), noise-8192x5461.png(dim=8192x5461,over=false)
+pol lat_p50 hits preHit misses decod specCPU_s specE_mJ totE_mJ peakMiB skipOv curEv
+b0    0.166      0      0       4      4     0.000         0      4747       364       0       0
+b1    0.041      3      3       1      1     0.776      3844      4665       365       0       0
+b2    0.035      3      3       1      1     0.779      3856      4705       366       0       0
+b3    0.042      3      3       1      1     0.784      3868      4657       366       0       0
+b4    0.041      3      0       1      1     0.783      3854      4667       366       0       0
+
+### preloadbench set=normal workload=[0, 1, 0, 1, 2] level=4096 dwell=0.6s
+images = noise-4032x3024.png(dim=4032x3024,over=false), photo-4032x3024.jpg(dim=4032x3024,over=false), noise-6000x4000.png(dim=6000x4000,over=false), noise-8192x5461.png(dim=8192x5461,over=false)
+pol lat_p50 hits preHit misses decod specCPU_s specE_mJ totE_mJ peakMiB skipOv curEv
+b0    0.001      2      0       3      3     0.000         0      2178       193       0       0
+b1    0.001      4      3       1      1     0.766      3916      4561       194       0       0
+b2    0.001      4      3       1      1     0.775      3841      4566       194       0       0
+b3    0.000      4      3       1      1     0.782      3903      4619       195       0       0
+b4    0.000      4      0       1      1     0.794      3815      4526       195       0       0
+
+### preloadbench set=mixed workload=[1, 2, 3] level=4096 dwell=0.6s
+images = 万萝图.png(dim=48000x32000,over=true), noise-4032x3024.png(dim=4032x3024,over=false), photo-4032x3024.jpg(dim=4032x3024,over=false), noise-8192x5461.png(dim=8192x5461,over=false)
+pol lat_p50 hits preHit misses decod specCPU_s specE_mJ totE_mJ peakMiB skipOv curEv
+b0    0.088      0      0       3      3     0.000         0      3523       272       0       0
+b1    0.027      2      2       1      1     0.509      2522      3322       273       1       0
+b2    0.029      2      2       1      1     0.514      2527      3330       273       1       0
+b3    0.029      2      2       1      1     0.524      2480      3290       274       1       0
+b4    0.027      2      0       1      1     0.517      2560      3377       274       1       0
+
+########## B: big3 set (native bitmaps 256+170.7+196 MB > 384 MiB budget), sequential
+### preloadbench set=big3 workload=[0, 1, 2] level=4096 dwell=0.8s
+images = noise-8192x8192.png(dim=8192x8192,over=false), noise-8192x5461.png(dim=8192x5461,over=false), noise-7000x7000.png(dim=7000x7000,over=false)
+pol lat_p50 hits preHit misses decod specCPU_s specE_mJ totE_mJ peakMiB skipOv curEv
+b0    0.546      0      0       3      3     0.000         0      9271       364       0       0
+b1    0.062      1      1       2      2     3.404     14926     17099       196       0       0
+b2    0.056      1      1       2      2     3.496     14738     16807       197       0       0
+b3    0.065      2      2       1      1     1.070      4985      9000       625       0       0
+b4    0.568      0      0       3      3     3.458     14274     18790       198       0       0
+
+########## B: normal set re-run with level identity fixed, sequential
+### preloadbench set=normal workload=[0, 1, 2, 3] level=4096 dwell=0.6s
+images = noise-4032x3024.png(dim=4032x3024,over=false), photo-4032x3024.jpg(dim=4032x3024,over=false), noise-6000x4000.png(dim=6000x4000,over=false), noise-8192x5461.png(dim=8192x5461,over=false)
+pol lat_p50 hits preHit misses decod specCPU_s specE_mJ totE_mJ peakMiB skipOv curEv
+b0    0.151      0      0       4      4     0.000         0      4648       364       0       0
+b1    0.038      3      3       1      1     0.807      3800      4731       365       0       0
+b2    0.022      3      3       1      1     0.844      3279      4329       365       0       0
+b3    0.036      3      3       1      1     0.813      3722      4573       366       0       0
+b4    0.169      0      0       4      4     1.496      6617      9803       182       0       0
+
