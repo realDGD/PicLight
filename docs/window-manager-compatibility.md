@@ -21,21 +21,27 @@ Checks that cover this matrix:
 
 | Requirement | Check in the runner |
 | --- | --- |
-| Exactly one visible window per viewer | `one visible viewer window` |
+| Exactly one visible window per viewer, for 1/2/3 viewers, classified by window type | `one visible viewer window`; `WindowArchitectureTests.testOneTwoThreeViewersProduceExactlyThatManyTopLevelWindows` |
 | No overlay/child windows for hover UI | `no child overlay windows` |
 | Standard titled window, not borderless | `viewer is a standard titled NSWindow` |
 | Native tabbing disabled | `native tabbing disabled` |
 | Drawer/hover/minimap never change the window count | `opening the drawer never changes canvas geometry`, `immersive does not close or add windows` |
 | Rotate/mirror never rewrite the source | `rotate and mirror are view-only` |
 
-Unit-level coverage lives in `PicViewMacTests/WindowPolicyTests.swift`
-(`ViewerWindow.policy`, real `NSWindow` construction, and the absence of child
-windows).
+Unit-level coverage lives in `PicViewMacTests/WindowPolicyTests.swift` and
+`PicViewMacTests/WindowArchitectureTests.swift` (real `NSWindow` construction,
+type-based window classification, chrome containment, chrome-vs-geometry
+independence for immersive mode, and the standard full-screen command).
 
-## Manual verification still required before tagging
+`SourcePolicyTests.testProductionCodeNeverUsesNativeWindowTabs` additionally
+proves by source scan that `addTabbedWindow`, `tabGroup` and `tabbedWindows`
+never appear in production code.
+
+## Manual verification still required (MANUAL-PENDING)
 
 These need a human in front of a display; they were **not** executed in this
-environment and are therefore *not* claimed as verified.
+environment and are therefore *not* claimed as verified. They are tracked as
+M1–M5 in `docs/release/v0.1-checklist.md`.
 
 1. **Mission Control / native tiling** with 1, 2 and 3 viewer windows: each must
    appear as a separate ordinary window that can be tiled and snapped.

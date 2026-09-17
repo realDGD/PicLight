@@ -46,6 +46,20 @@ so no other sort mode pays for header reads.
 | Full in-app acceptance runner | 46 checks, ≈ 14 s |
 | Release bundle size | ≈ 1.7 MB binary, 708 KB DMG |
 
+## Automated stress coverage (added for rc1)
+
+`LargeFolderStressTests`, `RapidSwitchCancellationTests` and `CacheInvariantTests`
+now assert the *shape* of the behavior rather than a wall-clock number:
+
+| Scenario | Asserted |
+| --- | --- |
+| 10,000-file folder | scans, sorts naturally, never recurses, inspects no image bodies |
+| 2,000-file folder opened in the viewer | at most 4 decode requests (current + neighbours) |
+| 5,000-item drawer while closed | fewer than 100 thumbnail requests |
+| Scrubbing 58 selections quickly | at most 3 decode tasks left in flight |
+| 500 forward + 500 backward switches | correct final index, at most 3 tasks in flight |
+| 160 thumbnail decodes | RSS recorded before/after, no threshold asserted |
+
 ## Not measured (no Instruments run)
 
 `Task 21 Step 5` asks for an Instruments profile of a large JPEG/TIFF (peak
