@@ -1,0 +1,28 @@
+qlspike on 万萝图.png (1.93 GiB)
+
+size=2048 pass=cold ok in 16013 ms  pixels=2048x1365 type=QLThumbnailRepresentationType(rawValue: 2)
+  our footprint peak   0.00 GiB
+  QL .thumb cache      824746 -> 824746 bytes (22 -> 22 files)
+  QL helper com.apple.quicklook.ThumbnailsAgent peak RSS 0.02 GiB
+  QL helper QuickLookUIService peak RSS 0.01 GiB
+
+size=2048 pass=warm ok in 8 ms  pixels=2048x1365 type=QLThumbnailRepresentationType(rawValue: 2)
+  our footprint peak   0.00 GiB
+  QL .thumb cache      824746 -> 824746 bytes (22 -> 22 files)
+  QL helper processes  none observed
+
+size=4096 pass=cold error: The operation couldn’t be completed. (QLThumbnailErrorDomain error 0.) in 15920 ms  pixels=- type=-
+  our footprint peak   0.00 GiB
+  QL .thumb cache      824746 -> 824746 bytes (22 -> 22 files)
+  QL helper com.apple.quicklook.ThumbnailsAgent peak RSS 0.04 GiB
+  QL helper QuickLookUIService peak RSS 0.01 GiB
+
+size=4096 pass=warm error: The operation couldn’t be completed. (QLThumbnailErrorDomain error 0.) in 16036 ms  pixels=- type=-
+  our footprint peak   0.00 GiB
+  QL .thumb cache      824746 -> 824746 bytes (22 -> 22 files)
+  QL helper com.apple.quicklook.ThumbnailsAgent peak RSS 0.04 GiB
+  QL helper QuickLookUIService peak RSS 0.01 GiB
+
+--- control: ImageIO thumbnail (page cache warm, no Quick Look cache) ---
+size=2048 fromImageAlways in 16254 ms pixels=2048x1365 footprint peak 0.09 GiB cache 824746->824746 bytes
+size=4096 fromImageAlways in 16098 ms pixels=4096x2731 footprint peak 0.24 GiB cache 824746->824746 bytes

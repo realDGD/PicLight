@@ -1,0 +1,14 @@
+qlspike on 万萝图.png (1.93 GiB)
+
+size=2048 pass=cold ok in 7 ms  pixels=2048x1365 type=QLThumbnailRepresentationType(rawValue: 2)
+  our footprint peak   0.00 GiB
+  QL .thumb cache      824746 -> 824746 bytes (22 -> 22 files)
+  QL helper processes  none observed
+
+size=2048 pass=warm ok in 4 ms  pixels=2048x1365 type=QLThumbnailRepresentationType(rawValue: 2)
+  our footprint peak   0.00 GiB
+  QL .thumb cache      824746 -> 824746 bytes (22 -> 22 files)
+  QL helper processes  none observed
+
+--- control: ImageIO thumbnail (page cache warm, no Quick Look cache) ---
+size=2048 fromImageAlways in 16097 ms pixels=2048x1365 footprint peak 0.09 GiB cache 824746->824746 bytes

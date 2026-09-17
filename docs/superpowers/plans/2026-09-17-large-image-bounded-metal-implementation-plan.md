@@ -401,10 +401,16 @@ git commit -m "test: regression sweep and documentation for large-image handling
 
 ## Task 10: Quick Look spike (isolated, no production dependency)
 
-- [ ] Step 1: Measure `QLThumbnailGenerator` cold vs warm **Quick Look cache** (not merely page cache) for 2048/4096 on
+Result: **negative** — first preview is not earlier (16.0 s vs 16.25 s for our own streaming
+thumbnail, with the file page-cache-warm), the warm hit is Quick Look's own purgeable system
+cache (`…/C/com.apple.quicklook.ThumbnailsAgent/com.apple.QuickLook.thumbnailcache/`, 42 MB
+`thumbnails.data`), 4096 requests fail after doing the full decode, and the drawer placeholder
+policy already avoids this cost. Report: `benchmarks/QuickLookSpike/results/report.md`.
+
+- [x] Step 1: Measure `QLThumbnailGenerator` cold vs warm **Quick Look cache** (not merely page cache) for 2048/4096 on
       the investigation image; record wall time, output size, footprint, and whether it triggers a full PNG decode.
-- [ ] Step 2: Success requires a repeatable materially earlier preview; otherwise record the negative result and stop.
-- [ ] Step 3: Report only — do not integrate.
+- [x] Step 2 (**negative result, recorded**): Success requires a repeatable materially earlier preview; otherwise record the negative result and stop.
+- [x] Step 3: Report only — do not integrate.
 
 ## Task 11: Alternative PNG decoder spike (isolated)
 
