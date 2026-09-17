@@ -15,7 +15,7 @@ This design addresses two independent problems:
 
 This design does **not** attempt to make a 1.9 GiB PNG decode in sub-second time. The investigation proved that ImageIO thumbnail creation still spends roughly 18 s because PNG inflate + row filtering dominates and scales with the compressed stream, not the requested output dimensions.
 
-A second objective of this revision is to record unresolved policy disagreements explicitly and settle them with repeatable benchmark evidence rather than architectural preference.
+A second objective of this revision is to settle policy disagreements with repeatable benchmark evidence rather than architectural preference. That work is **done**: the A/B/C/D and E-series gates ran on 2026-09-17, every decision the implementation plan needs is frozen in §5.1/§5.3/§9.4/§9.5/§13.3/§14.1, and the numbers are in §17.5 with the harness in `benchmarks/LargeImagePolicyBench/`.
 
 ## 2. Scope
 
@@ -384,7 +384,7 @@ All reviewers agree:
 - Raising memory use for speculative preload is not automatically acceptable on a 16 GB Mac.
 - Preload policy must account for actual materialized bitmap cost, not compressed file size.
 
-### 13.2 Policy candidates under dispute
+### 13.2 Policy candidates evaluated (B0–B4)
 
 **Candidate B0 — no preload**
 
@@ -629,7 +629,7 @@ Measure:
 - an observable materialization proof (`vmmap` at publication; a `sample` stack during the post-publication draw must
   contain no `PNGReadPlugin`/`inflate` frames), not a self-reported flag.
 
-A3 is the current preferred mechanism, but implementation planning freezes it only after this validation confirms the expected behavior.
+A3 is the frozen mechanism (§5.1); the numbers below are from this gate's run.
 
 ### 17.2 B-series — preload/cache arbitration
 
