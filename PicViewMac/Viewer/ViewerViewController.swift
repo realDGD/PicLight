@@ -45,6 +45,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var infoCardSuppressed = false
     private var pendingDirection: NavigationDirection = .unknown
     private var onDemandFrameTask: Task<Void, Never>?
+    /// Level of the bitmap currently published, so a resize can tell whether the
+    /// canvas has outgrown it. Reset with the image.
+    private var displayedLevel: DecodeLevel = .native
+    private var resizeUpgradeWorkItem: DispatchWorkItem?
 
     public private(set) var settings = AppSettings.shared
 
@@ -301,6 +305,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.hover.setImmersive(!self.hover.immersive, at: Date().timeIntervalSinceReferenceDate)
             self.applyChromeVisibility()
         }
+        canvas.onGeometryChange = { [weak self] in
+            self?.scheduleResizeUpgrade()
+        }
 
         toolDock.onCommand = { [weak self] command in
             self?.perform(command)
@@ -430,6 +437,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
         viewerState.clearForNewImage()
         stopAnimation()
+        // A pending resize upgrade belongs to the image being replaced.
+        resizeUpgradeWorkItem?.cancel()
+        resizeUpgradeWorkItem = nil
+        displayedLevel = .native
         errorLabel.isHidden = true
         viewerState.errorMessage = nil
         onTitleChanged?(item.displayName)
@@ -437,8 +448,31 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         drawer.scrollCurrentIntoView()
         refreshBottomBar()
 
-        let target = DecodeTarget()
-        let url = item.url
+        startDecode(url: item.url, previous: previous, next: next,
+                    direction: direction, target: currentDecodeTarget())
+    }
+
+    /// The initial current-image requirement (spec §5.3, frozen by E1):
+    /// `required = ceil(max(canvasW, canvasH) × backingScale × 1.5)`, snapped up to a
+    /// bucket and capped at 8192. A canvas that has not been laid out yet has no
+    /// requirement to state, so it asks for no budget and the decoder bounds the
+    /// source at the ceiling instead; a later resize can only ever ask for a coarser
+    /// level, never a finer one, which is why the fallback is the safe direction.
+    private func currentDecodeTarget() -> DecodeTarget {
+        let canvasPoints = canvas.bounds.size
+        guard canvasPoints.width > 0, canvasPoints.height > 0 else { return DecodeTarget() }
+        let required = DecodeBudget.requiredLongEdge(canvasPoints: canvasPoints,
+                                                     backingScale: canvas.backingScale)
+        let level = DecodeLevel.bucket(DecodeBudget.bucket(atLeast: required))
+        return DecodeTarget(maxPixelSize: DecodeBudget.pixelBudget(for: level))
+    }
+
+    /// Starts a decode without touching the state that describes what is on screen:
+    /// used both for a fresh load (which clears first) and for a level upgrade after
+    /// a resize, where the current bitmap must keep rendering until the replacement
+    /// arrives (§9.5: never blank the canvas).
+    private func startDecode(url: URL, previous: URL?, next: URL?,
+                             direction: NavigationDirection, target: DecodeTarget) {
         Task { [weak self] in
             guard let self else { return }
             _ = await self.coordinator.show(item: url, previous: previous, next: next,
@@ -448,10 +482,54 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
+    // MARK: - Resize-driven level upgrades (spec §9.5)
+
+    /// Debounced: a resize that crosses a bucket boundary costs a full bounded
+    /// decode, so it only starts once the geometry has settled and the user has
+    /// stopped dragging, and only when the bitmap on screen is undersampled.
+    private func scheduleResizeUpgrade() {
+        resizeUpgradeWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.upgradeLevelForCurrentGeometry() }
+        resizeUpgradeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + ResizeUpgradePolicy.debounce, execute: work)
+    }
+
+    private func upgradeLevelForCurrentGeometry() {
+        resizeUpgradeWorkItem = nil
+        guard let item = session.currentItem, let descriptor = viewerState.descriptor else { return }
+        // Still moving: wait for the geometry to settle instead of starting a decode
+        // the next resize would invalidate.
+        guard !canvas.isInteracting else {
+            scheduleResizeUpgrade()
+            return
+        }
+        // Animation frames are decoded outside the budget, so a level upgrade would
+        // only fight the frame clock.
+        guard !viewerState.isAnimated else { return }
+
+        let level = ResizeUpgradePolicy.level(
+            current: displayedLevel,
+            sourcePixelSize: descriptor.pixelSize,
+            canvasPoints: canvas.bounds.size,
+            backingScale: canvas.backingScale,
+            zoomScale: viewerState.viewport.zoomScale,
+            quarterTurns: viewerState.viewport.normalizedQuarterTurns,
+            isInteracting: false
+        )
+        guard let level else { return }
+        let index = session.currentIndex ?? 0
+        startDecode(url: item.url,
+                    previous: index > 0 ? session.items[index - 1].url : nil,
+                    next: index + 1 < session.items.count ? session.items[index + 1].url : nil,
+                    direction: .unknown,
+                    target: DecodeTarget(maxPixelSize: DecodeBudget.pixelBudget(for: level)))
+    }
+
     private func handle(event: DecodeEvent) {
         switch event {
         case let .head(head):
             viewerState.apply(head: head)
+            displayedLevel = head.level
             errorLabel.isHidden = true
             onDescriptorAvailable?(head.descriptor)
             // Once per displayed image, as the navigator's own documentation states.

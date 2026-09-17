@@ -17,18 +17,24 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
     /// contexts, and these calls happen inside decode tasks.
     private let queue = DispatchQueue(label: "picviewmac.tests.countingdecoder")
     private var requests: [String] = []
+    private var budgets: [Int?] = []
     private var headRequests = 0
     private var frameRequests = 0
 
     let payload: CGImage
     let delay: TimeInterval
     let document: Document
+    /// What the fake source claims to be, so a test can exercise the oversized path
+    /// without a real 48000-pixel file.
+    let pixelSize: CGSize
 
     init(payload: CGImage = FakeDecoder.pixel, delay: TimeInterval = 0,
-         document: Document = .animation(frameCount: 3)) {
+         document: Document = .animation(frameCount: 3),
+         pixelSize: CGSize = CGSize(width: 64, height: 48)) {
         self.payload = payload
         self.delay = delay
         self.document = document
+        self.pixelSize = pixelSize
     }
 
     private var descriptorShape: (frameCount: Int, pageCount: Int, animated: Bool,
@@ -43,48 +49,56 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
         }
     }
 
-    private func withState<T>(_ body: (inout [String], inout Int, inout Int) -> T) -> T {
+    private func withState<T>(_ body: (inout [String], inout [Int?], inout Int, inout Int) -> T) -> T {
         queue.sync {
-            body(&requests, &headRequests, &frameRequests)
+            body(&requests, &budgets, &headRequests, &frameRequests)
         }
     }
 
-    var requestCount: Int { withState { requests, _, _ in requests.count } }
-    var requestedNames: [String] { withState { requests, _, _ in requests } }
-    var headRequestCount: Int { withState { _, head, _ in head } }
-    var frameRequestCount: Int { withState { _, _, frames in frames } }
+    var requestCount: Int { withState { requests, _, _, _ in requests.count } }
+    var requestedNames: [String] { withState { requests, _, _, _ in requests } }
+    /// The `maxPixelSize` budget of each head decode, in order: how a test sees the
+    /// level a resize asked for.
+    var requestedBudgets: [Int?] { withState { _, budgets, _, _ in budgets } }
+    var headRequestCount: Int { withState { _, _, head, _ in head } }
+    var frameRequestCount: Int { withState { _, _, _, frames in frames } }
 
     func reset() {
-        withState { requests, head, frames in
+        withState { requests, budgets, head, frames in
             requests = []
+            budgets = []
             head = 0
             frames = 0
         }
     }
 
     func inspect(_ url: URL) async throws -> ImageDescriptor {
-        ImageDescriptor(sourceURL: url, pixelSize: CGSize(width: 64, height: 48))
+        ImageDescriptor(sourceURL: url, pixelSize: pixelSize)
     }
 
     func decodeFirstDisplayableFrame(_ url: URL, target: DecodeTarget) async throws -> DecodedImageHead {
-        withState { requests, head, _ in
+        withState { requests, budgets, head, _ in
             requests.append(url.lastPathComponent)
+            budgets.append(target.maxPixelSize)
             head += 1
         }
         if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
         let shape = descriptorShape
+        let level = DecodeBudget.level(sourceLongEdge: Int(max(pixelSize.width, pixelSize.height)),
+                                       budget: target.maxPixelSize)
         return DecodedImageHead(
             image: payload,
-            descriptor: ImageDescriptor(sourceURL: url, pixelSize: CGSize(width: 64, height: 48),
+            descriptor: ImageDescriptor(sourceURL: url, pixelSize: pixelSize,
                                         frameCount: shape.frameCount, pageCount: shape.pageCount,
                                         animated: shape.animated, loopCount: shape.loopCount,
                                         frameDurations: shape.durations),
-            metadata: ImageMetadata(fileName: url.lastPathComponent)
+            metadata: ImageMetadata(fileName: url.lastPathComponent),
+            level: level
         )
     }
 
     func decodeRemainingFrames(_ url: URL, descriptor: ImageDescriptor) -> AsyncThrowingStream<DecodedFrame, Error> {
-        withState { _, _, frames in frames += 1 }
+        withState { _, _, _, frames in frames += 1 }
         return AsyncThrowingStream { $0.finish() }
     }
 

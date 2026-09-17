@@ -9,13 +9,20 @@ public final class ViewerWindowController: NSWindowController {
     private var drawerButton: NSButton?
     private var drawerAccessory: NSTitlebarAccessoryViewController?
 
-    public init() {
+    public convenience init() {
+        self.init(viewer: ViewerViewController())
+    }
+
+    /// Builds the window around a caller-supplied viewer. The viewer is where the
+    /// decode seams live (decoder, thumbnails, dimension probe), so this is how a
+    /// test drives a window through a stub instead of the real ImageIO stack.
+    public init(viewer: ViewerViewController) {
         let contentRect = WindowPlacementStore.defaultFrame(
             size: AppSettings.shared.lastWindowSize ?? CGSize(width: 960, height: 680),
             visibleFrame: NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         )
         let window = ViewerWindow(contentRect: contentRect)
-        self.viewerViewController = ViewerViewController()
+        self.viewerViewController = viewer
         super.init(window: window)
         window.contentViewController = viewerViewController
         window.delegate = self

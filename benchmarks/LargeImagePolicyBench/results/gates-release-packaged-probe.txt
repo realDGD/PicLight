@@ -1,0 +1,3 @@
+### packaged app, metal probe Fri Sep 18 01:43:25 WITA 2026
+zsh:3: no such file or directory: dist/PicLight.app/Contents/MacOS/PicViewMac
+probe exit=127

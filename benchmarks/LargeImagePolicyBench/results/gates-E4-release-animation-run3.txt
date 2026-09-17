@@ -1,0 +1,10 @@
+### release gate animation run 3 Fri Sep 18 01:42:54 WITA 2026 | rev 46d4bd0
+peakRSS_getrusage = 0.242 GiB
+footprint_at_finish   = 0.153 GiB
+peakFootprint_sampled = 0.161 GiB (250 ms sampling)
+total_wall        = 20.033 s
+canvas_draws      = 319
+frames_applied    = 345
+full_stream_traversals = 2 traversals: main native decode(materialized)=2
+open_energy_mJ    = 89099
+

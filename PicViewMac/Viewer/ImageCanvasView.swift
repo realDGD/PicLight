@@ -339,6 +339,17 @@ public final class ImageCanvasView: NSView {
         isDragging = false
     }
 
+    /// True while the pointer is dragging the image or the window is being resized:
+    /// the moment never to start a bounded decode for a new level (§9.5).
+    public var isInteracting: Bool {
+        isDragging || (window?.inLiveResize ?? false)
+    }
+
+    /// Called after the canvas geometry (bounds or backing scale) changes, for the
+    /// resize-driven level decision. Deliberately not called for viewport changes:
+    /// zoom and pan must stay free.
+    public var onGeometryChange: (() -> Void)?
+
     public override func layout() {
         super.layout()
         if let metalSurface, metalSurface.frame != bounds {
@@ -346,5 +357,12 @@ public final class ImageCanvasView: NSView {
             pushToMetal()
         }
         refit()
+        onGeometryChange?()
+    }
+
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        refit()
+        onGeometryChange?()
     }
 }

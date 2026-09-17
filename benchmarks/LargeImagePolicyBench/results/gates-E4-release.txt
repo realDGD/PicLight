@@ -1,0 +1,10 @@
+### release gate re-run Fri Sep 18 01:36:51 WITA 2026 | rev 46d4bd0
+peakRSS_getrusage = 2.769 GiB
+footprint_at_finish   = 0.488 GiB
+peakFootprint_sampled = 0.780 GiB (250 ms sampling)
+total_wall        = 200.136 s
+canvas_draws      = 2
+frames_applied    = 0
+full_stream_traversals = 1 traversals: main bounded decode(maxPx:8192)=1
+open_energy_mJ    = 83936
+
