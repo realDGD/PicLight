@@ -1,0 +1,8 @@
+### baseline — ref 123d943, 123d943, Fri Sep 18 02:02:02 WITA 2026
+### env: none
+run draws frames energy_mJ traversals ping_p95_ms ping_max_ms mJ_per_frame
+1 325.0 None 109794.0 2 84 108 337.8
+2 318.0 None 105999.0 2 75 99 333.3
+3 316.0 None 103984.0 2 85 106 329.1
+4 329.0 None 100021.0 0 89 104 304.0
+5 318.0 None 102694.0 2 85 106 322.9

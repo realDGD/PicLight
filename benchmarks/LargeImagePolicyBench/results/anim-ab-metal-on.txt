@@ -1,0 +1,9 @@
+### metal-on — ref HEAD, 0456b77, Fri Sep 18 02:04:22 WITA 2026
+### env: none
+### machine: total = 5120.00M  used = 3732.00M  free = 1388.00M  (encrypted) | load { 2.45 2.35 2.24 }
+run draws frames energy_mJ traversals ping_p95_ms ping_max_ms mJ_per_frame
+1 313.0 339.0 89761.0 2 97 193 286.8
+2 318.0 345.0 90154.0 4 86 99 283.5
+3 320.0 347.0 89317.0 3 89 105 279.1
+4 325.0 351.0 85836.0 4 82 107 264.1
+5 323.0 350.0 87507.0 4 78 101 270.9

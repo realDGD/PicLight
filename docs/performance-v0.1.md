@@ -123,6 +123,25 @@ undersampled to the current level: detail beyond the 8192 proxy needs a
 `LargeImageBackend` that streams tiles, which is out of scope here. Zooming to
 100 % therefore shows a 8192-class image, not 48000×32000 pixels.
 
+## Energy numbers are session-scoped
+
+An absolute energy figure from one sitting does not transfer to another on this machine. The
+archived animated-playback baseline (78.1 J, 249 mJ per drawn frame) does not reproduce: the same
+baseline revision, measured later, gives 99.0–109.8 J and 304–338 mJ per frame over eight runs, with
+swap at 3.7 GiB used and load average ~2.4. What the same-session A/B does show
+(`benchmarks/LargeImagePolicyBench/results/anim-ab-summary.md`, `sample-animation.sh`):
+
+| arm | samples | draws / 20 s | energy | per drawn frame |
+| --- | --- | --- | --- | --- |
+| baseline 123d943 (Quartz) | 8 | 319.9 | 102.6 J | 320.8 mJ |
+| HEAD, Metal on | 5 | 319.8 | 88.5 J | 276.9 mJ |
+| HEAD, Metal off | 5 | 297.0 | 84.3 J | 283.9 mJ |
+
+So the animated path is 11–14 % cheaper per drawn frame than the baseline beside it, Metal on versus
+off is within noise per frame while rendering ~8 % more frames, and the earlier "+3–18 % residual"
+was an artefact of comparing a fresh run against an archived number. Treat any single energy value
+here as comparable only within the run that produced it.
+
 ## Large-image working set (integrated DecodeCache + mipmapped Metal texture)
 
 Measured 2026-09-18 on the 16 GB target Mac with the production decoder, cache and

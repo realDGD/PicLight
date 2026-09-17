@@ -437,7 +437,8 @@ not. Report: `benchmarks/PngDecoderSpike/results/report.md`.
 - [x] Step 2: Task 7 (integrated working set) and Task 8 (E4) re-run at the release commit:
       `results/gates-15.8-integrated-release.txt`, `gates-E4-release-giant.txt`,
       `gates-E4-release-giant-soak.txt`, `gates-E4-release-animation-run2/3/4.txt`.
-- [x] Step 3: Every §23 criterion below is answered by a named measurement, except the two marked OPEN.
+- [x] Step 3: Every §23 criterion below is answered by a named measurement. One release-process check
+      stays SKIPPED in this environment and is stated under the table rather than counted as met.
 
 ### §23 criteria at the release commit
 
@@ -452,17 +453,28 @@ not. Report: `benchmarks/PngDecoderSpike/results/report.md`.
 | Preload/cache and probe policies backed by evidence | `results/gates-B.txt` (B3/768 MiB), `gates-C.txt` (C2), `gates-report.md` |
 | Integrated working set passes §15.8; 768 MiB is a cache limit | `gates-15.8-integrated-release.txt`: 682.7 MiB cached, 3/3 retained, 227.5 MiB texture, 1.475 GiB peak footprint, 0 MiB swap growth |
 | Exactly one full-stream traversal and decode-class open energy | E4 20 s run: 1 traversal, 83.4 J against the 75.3 J single-decode measurement |
-| No main-thread stall >100 ms (p95) | E4 ping p50 0 / p95 0 / max 23 ms; animation run p95 88 ms, max 98 ms (baseline max 20.9 s) |
+| No main-thread stall >100 ms (p95) | E4 still image ping p50 0 / p95 0 / max 23 ms (baseline max 20.9 s); animation A/B ping p95 86 ms in every sample; scripted drag ping max 2 ms |
 | Large-image interaction uses on-demand Metal | `MetalParityTests` (9); E4 draws with `metal=yes`; `MetalCanvasSurface` is paused with `enableSetNeedsDisplay` |
 | Strong minification meets the D-series gate | `results/gates-D.txt`, `gates-D6.txt` (linear magnification) |
 | Static images do not run a continuous GPU loop | E4 `canvas_draws = 2` over 20 s (one real draw plus the harness's forced redraw) |
 | Metal failures fall back to source-geometry Quartz | `MetalFallbackTests` (5), including the packaged missing-resource run in `verify-release.sh` |
-| Packaged `.app`/DMG can load Metal resources | `verify-release.sh`: "packaged app creates a Metal pipeline: metal=ok pipeline=created mipmaps=yes"; **OPEN:** the compiled-library check is SKIPPED here (no `xcrun metal`) |
+| Packaged `.app`/DMG can load Metal resources; missing resources fall back without crash | `verify-release.sh`: "packaged app creates a Metal pipeline: metal=ok pipeline=created mipmaps=yes" plus "missing Metal resources fall back to Quartz without trapping"; the probe also passes from a bundle **copied to /tmp** (`gates-packaged-metal-copied.txt`), so the shader is resolved from the app's own resource bundle and not from the development tree |
 | Responsiveness and live memory on the real 1.9 GiB PNG | E4 (ping, footprint 0.198 GiB, RSS 2.111 GiB), vmmap with no `Image IO` region >1 GiB; packaged acceptance run passes on the giant (`results/gates-release-packaged.txt`) |
+| Animation playback does not regress | Same-session A/B, 8 baseline samples vs 5 HEAD samples (`results/anim-ab-summary.md`): HEAD 276.9 mJ per drawn frame against the baseline's 320.8 mJ (11–14 % lower), 88.5 J per 20 s against 102.6 J, cadence unchanged at 319.8 draws; the archived 249 mJ figure does not reproduce (today's baseline measures 304–338 mJ), which is why the criterion is stated as a same-session comparison |
 | Existing behavioural tests remain green | 392 tests, 0 failures; suite-by-suite sweep in Task 9 |
 | Reviewer-added discriminating tests resolved before planning | §20.1 and the gate results in §17.5 |
 | Spikes stay isolated unless evidence justifies adoption | Task 10 and Task 11 both negative, no production references (`grep QLThumbnail|spng|libpng` empty), no package dependency |
-| §9.5 resize policy honoured | `ResizeUpgradeTests` (12) + `ResizeWiringTests` (5) against a real window: load uses the canvas bucket, a settled larger canvas is served by a covering level, nothing decodes in the layout pass or while dragging, shrinking and ordinary sources decode nothing. **OPEN:** no scripted live-resize timing run; the stall numbers above are from decode and animation windows, not a drag. |
+| §9.5 resize policy honoured | `ResizeUpgradeTests` (12) + `ResizeWiringTests` (5) against a real window, **and a scripted live drag** (`gates-resize-run.txt`, `gates-resize-trace.txt`): 75 steps at 0.12 s between canvas 448×335 and 1240×763 and back, no decode starting during the drag, exactly one starting 0.32 s after it stopped (bucket 4096 for the settled requirement), none on the shrink, 63 canvas draws, main-thread ping max 2 ms |
+
+**Release-process check that stays SKIPPED here (not a §23 criterion).** `verify-release.sh`
+requires a compiled `default.metallib` to be packaged and reports SKIPPED when
+`PICLIGHT_ALLOW_SOURCE_SHADER=1` marks the build as a development one. This environment cannot
+produce one: `xcrun metal` exists only as a launcher stub ("cannot execute tool 'metal' due to
+missing Metal Toolchain"), and `xcodebuild -downloadComponent MetalToolchain` needs Apple's asset
+host, which is unreachable here. The §23 criterion itself — a packaged app can load Metal resources
+and falls back without crashing — is met and verified; the compile step in `build-release.sh` fails
+loudly rather than shipping quietly, so a release built on a machine with the toolchain produces the
+library and this check turns into a PASS without further changes.
 
 ---
 

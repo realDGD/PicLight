@@ -103,6 +103,68 @@ enum BenchTrace {
         }
     }
 
+    // MARK: - scripted live resize (§9.5)
+
+    /// `PICLIGHT_BENCH_RESIZE=1` drives the window through sizes the way a user drags an
+    /// edge: many small changes in quick succession (4 s of growing, 2 s hold, 4 s of
+    /// shrinking), then it settles. The heartbeat keeps sampling ping latency through
+    /// all of it, every step is timestamped in the same trace as the decode marks, and
+    /// the traversal counter says whether a decode started while the drag was still
+    /// going. None of this touches production code — it only moves the window.
+    nonisolated(unsafe) private static var resizeTimer: Timer?
+    /// MainActor-isolated because every mutation happens inside the hop below.
+    private static var resizeStep = 0
+
+    static func scheduleResizeSequence() {
+        guard enabled,
+              let mode = ProcessInfo.processInfo.environment["PICLIGHT_BENCH_RESIZE"], !mode.isEmpty,
+              mode != "0" else { return }
+        // After the first bounded decode has published (16-18 s on the investigation
+        // image), otherwise the viewer has no descriptor and the upgrade path is a
+        // no-op by design.
+        let begin = Double(ProcessInfo.processInfo.environment["PICLIGHT_BENCH_RESIZE_AT"] ?? "20") ?? 20
+        let interval = 0.12          // far faster than the 300 ms debounce, like a real drag
+        let growSteps = 30, holdSteps = 16, shrinkSteps = 30
+        resizeStep = 0
+
+        resizeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            Task { @MainActor in
+                guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+                      let screen = window.screen ?? NSScreen.main else { return }
+                let t = benchNow() - start
+                guard t >= begin else { return }
+                let base = NSSize(width: 420, height: 320)
+                let large = NSSize(width: min(1700, screen.visibleFrame.width - 40),
+                                   height: min(1100, screen.visibleFrame.height - 40))
+                let phase = resizeStep
+                var size = window.contentView?.bounds.size ?? base
+                let label: String
+                let applies: Bool
+                if phase < growSteps {
+                    size = NSSize(width: base.width + (large.width - base.width) * CGFloat(phase + 1) / CGFloat(growSteps),
+                                  height: base.height + (large.height - base.height) * CGFloat(phase + 1) / CGFloat(growSteps))
+                    label = "grow"; applies = true
+                } else if phase < growSteps + holdSteps {
+                    // A real hold: no window calls at all, so the debounce can fire.
+                    size = large; label = "hold-large (quiet)"; applies = false
+                } else if phase < growSteps + holdSteps + shrinkSteps {
+                    let k = phase - growSteps - holdSteps
+                    size = NSSize(width: large.width - (large.width - base.width) * CGFloat(k + 1) / CGFloat(shrinkSteps),
+                                  height: large.height - (large.height - base.height) * CGFloat(k + 1) / CGFloat(shrinkSteps))
+                    label = "shrink"; applies = true
+                } else {
+                    resizeTimer?.invalidate(); resizeTimer = nil
+                    return
+                }
+                if applies { window.setContentSize(size) }
+                let canvas = window.contentView?.bounds.size ?? .zero
+                mark(String(format: "RESIZE step %d %@ window=%.0fx%.0f canvas=%.0fx%.0f",
+                            resizeStep, label, size.width, size.height, canvas.width, canvas.height))
+                resizeStep += 1
+            }
+        }
+    }
+
     // MARK: - heartbeat: memory + main-thread responsiveness, off-main
 
     static func startHeartbeat() {

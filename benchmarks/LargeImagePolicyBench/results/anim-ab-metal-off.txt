@@ -1,0 +1,9 @@
+### metal-off — ref HEAD, 0456b77, Fri Sep 18 02:06:19 WITA 2026
+### env: PICLIGHT_DISABLE_METAL=1
+### machine: total = 5120.00M  used = 3732.00M  free = 1388.00M  (encrypted) | load { 2.65 2.37 2.25 }
+run draws frames energy_mJ traversals ping_p95_ms ping_max_ms mJ_per_frame
+1 290.0 316.0 84706.0 4 90 119 292.1
+2 302.0 328.0 83303.0 2 80 93 275.8
+3 299.0 331.0 82756.0 4 91 105 276.8
+4 297.0 324.0 85931.0 4 81 93 289.3
+5 297.0 325.0 84838.0 4 91 126 285.6

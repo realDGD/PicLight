@@ -1,0 +1,4 @@
+### packaged Metal resources: copied bundle probe Fri Sep 18 02:16:25 WITA 2026
+MetalLibraryLocator: no compiled default.metallib in the resource bundle; compiling the shipped ImageShaders.metal at first use (install the Metal toolchain with `xcodebuild -downloadComponent MetalToolchain` to package a compiled library)
+metal=ok pipeline=created mipmaps=yes device=Apple M4
+exit=0

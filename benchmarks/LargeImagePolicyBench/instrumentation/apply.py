@@ -129,6 +129,7 @@ edit("App/AppDelegate.swift", [
             // Same path Finder uses: FileOpenCoordinator -> FolderSession -> decode.
             BenchTrace.beginSummaryLoop()
             BenchTrace.startHeartbeat()
+            BenchTrace.scheduleResizeSequence()
             BenchTrace.mark("T0 user open requested (FileOpenCoordinator.open)")
             BenchTrace.energyStart = BenchTrace.readEnergyNJ()
             environment.fileOpener.open(url: URL(fileURLWithPath: benchPath))

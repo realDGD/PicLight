@@ -352,6 +352,14 @@ canvas, peak footprint 0.780 → 0.198 GiB, with the decode cost unchanged becau
 Level changes remain geometry-triggered: zooming past the 1.5× headroom does not start a decode,
 which is the E1 trade-off stated above (every level change is a full, uncancellable stream decode).
 
+Measured with a scripted drag (`PICLIGHT_BENCH_RESIZE=1`, 75 steps at 0.12 s over 9 s, canvas
+448×335 → 1240×763 → 420×320; §16): no decode starts during the drag, exactly one starts **0.32 s
+after it stops** and only for the larger canvas (bucket 4096 for the settled 3720-px requirement),
+the shrink starts nothing, the canvas keeps drawing the current bitmap throughout (63 draws), and
+main-thread ping latency never exceeds 2 ms. The same run measured a cold re-read: the second
+full-stream decode of this file took 47.5 s against the first one's 16.1 s, so the 1.5× overscan is
+worth more than a warm-cache cost model suggests.
+
 ## 10. Quartz fallback
 
 Quartz remains a first-class fallback, not a debug-only path.
@@ -693,29 +701,51 @@ Raw output: `results/gates-E4-final-giant.txt`, `results/gates-E4-head-checkpoin
 `vmmap` during the load shows no `Image IO` region above 1 GiB (largest: 0.36 GiB; the baseline had a
 5.7 GiB one).
 
-**Animation non-regression (same 1 MPixel 30-frame GIF as the E5 baseline).** The baseline
-(`results/gates-E5-animation.txt`, rev 123d943) is 316 draws in 20.07 s (15.75 fps) over 5 whole-stream
-passes, 78.1 J, i.e. **249 mJ per drawn frame**. Tasks 1–4 first made this *worse* — the animation path
-paid still-image costs, measured at 495 whole-stream passes and 136 drawn frames per 20 s — and the
-three fixes in `e7e1511` removed that: frames no longer materialize, `requestFrame` skips a tick instead
-of discarding an in-flight decode, and the navigator preview follows the image rather than every frame.
-
-Four runs are recorded after the fixes (`results/gates-E4-final-animation.txt`,
-`results/gates-E4-release-animation-run2/3/4.txt`):
+**Animation non-regression (same 1 MPixel 30-frame GIF as the E5 baseline).** The baseline is
+316–329 draws per 20 s and 78.1 J in the file that recorded it (`results/gates-E5-animation.txt`,
+rev 123d943) — but that absolute energy does not reproduce: the same baseline code measured again
+today gives 99.0–109.8 J and 304–338 mJ per drawn frame over eight runs. Energy here is
+session-sensitive (swap 3.7 GiB used, ~1.4 GiB free), so the criterion is a **same-session A/B**
+against the baseline revision, taken in one sitting (`results/anim-ab-summary.md`,
+`anim-ab-baseline*.txt`, `anim-ab-metal-on.txt`, `anim-ab-metal-off.txt`):
 
 ```text
-draws per 20 s        318, 319, 320, 328      baseline 316          frame rate restored
-whole-stream passes   2–4                     baseline 5            never per-frame work
-open energy           84.3, 89.1, 90.0, 93.2 J   baseline 78.1 J
-per drawn frame       257–293 mJ              baseline 249 mJ       +3 % to +18 %
-main-thread ping      p95 88 ms, max 98 ms    baseline p95 98 ms
+arm                              n   draws        energy          per drawn frame    ping p95
+baseline 123d943 (Quartz)        8   319.9        102.6 J         320.8 mJ           82 ms
+HEAD, Metal on                   5   319.8         88.5 J         276.9 mJ           86 ms
+HEAD, Metal off                  5   297.0         84.3 J         283.9 mJ           87 ms
 ```
 
-Frame rate is at or above the baseline and the passes collapsed. The **energy residual is real and is
-recorded rather than smoothed over**: energy per drawn frame sits 3–18 % above the baseline across the
-runs, and no mechanism in this design explains the spread. It is left open deliberately; the criterion
-this iteration was asked to hold (playback does not regress) holds on cadence, and the energy question
-needs a profile that distinguishes GIF LZW work from the compositor.
+Cadence is unchanged and the energy is **11–14 % lower per drawn frame and 15–19 % lower per
+20 s window than the baseline measured beside it**. Metal on versus off is within noise per frame
+(276.9 vs 283.9 mJ) but renders more frames in the same window (320 vs 297 draws) for ~5 % more
+energy: on this content the renderer buys cadence rather than power. One Metal-on sample carries a
+single 193 ms ping spike; p95 is 86 ms in every run and p95 is the criterion.
+
+Tasks 1–4 did regress this path first (495 whole-stream passes and 136 drawn frames per 20 s,
+measured on the unfixed tree) and the three fixes in `e7e1511` removed it: frames no longer
+materialize, `requestFrame` skips a tick instead of discarding an in-flight decode, and the
+navigator preview follows the image rather than every frame.
+
+**Resize (live drag).** `PICLIGHT_BENCH_RESIZE=1` drives a scripted 9 s drag — 75 steps at 0.12 s
+between canvas 448×335 and 1240×763, then back to 420×320 — with the heartbeat sampling the main
+thread throughout (`results/gates-resize-run.txt`, `gates-resize-trace.txt`):
+
+```text
+T+16.3   image published (first bounded decode, bucket 2048)
+T+20.0   drag begins; 75 steps, no decode starts during the drag
+T+23.64  drag stops (hold)
+T+23.86  upgrade decode starts, bucket 4096 = ceil(1240x2x1.5 = 3720)  -> 0.32 s after the drag
+T+26-29  drag back down to 420x320: no decode starts
+T+71.4   the upgrade lands and publishes
+main-thread ping max 2 ms for the whole 60-110 s run; canvas kept drawing (63 draws)
+```
+
+Two things this measured beyond the policy: the drag itself costs the main thread nothing, and a
+**second** full-stream decode of the same file took 47.5 s against the first one's 16.1 s under the
+session's memory pressure (the source's compressed pages are no longer resident). The "≈16–18 s per
+level change" figure used throughout this document is therefore a warm-cache figure; a cold re-read
+can be ~3× that, which argues for the 1.5× overscan and against casual level changes.
 
 ## 17. Policy benchmark harness
 

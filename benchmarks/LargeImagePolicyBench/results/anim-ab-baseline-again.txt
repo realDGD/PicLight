@@ -1,0 +1,7 @@
+### baseline-again — ref 123d943, 123d943, Fri Sep 18 02:08:22 WITA 2026
+### env: none
+### machine: total = 5120.00M  used = 3732.00M  free = 1388.00M  (encrypted) | load { 2.39 2.32 2.25 }
+run draws frames energy_mJ traversals ping_p95_ms ping_max_ms mJ_per_frame
+1 317.0 None 100118.0 0 75 102 315.8
+2 318.0 None 98956.0 2 79 85 311.2
+3 318.0 None 99255.0 2 87 111 312.1
