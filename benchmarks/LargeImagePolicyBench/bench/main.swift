@@ -503,8 +503,9 @@ func runCacheSem(_ args: [String]) async {
     m.add("cost_reported_by_production_calc", "\(fmtG(Int64(cost)))  (bytesPerRow x height)")
     m.add("cache_totalCostLimit", fmtM(384 * 1024 * 1024))
     m.add("cost_limit_ratio", String(format: "%.1fx over the limit", Double(cost) / Double(384 * 1024 * 1024)))
-    cache.store(head: head, for: url)
-    m.add("retrievable_after_store", cache.head(for: url) != nil ? "yes" : "NO — evicted immediately")
+    let key = DecodeCacheKey(url: url, level: .native)
+    cache.store(head: head, for: key)
+    m.add("retrievable_after_store", cache.head(for: key) != nil ? "yes" : "NO — evicted immediately")
     // Raw NSCache behaviour with the same cost.
     let nc = NSCache<NSString, NSString>()
     nc.totalCostLimit = 384 * 1024 * 1024
@@ -809,11 +810,11 @@ func runCachePlan(_ args: [String]) async {
         let cur = syntheticHead(width: 8192, height: 5461)!
         let p1 = syntheticHead(width: 4096, height: 2731)!
         let p2 = syntheticHead(width: 4096, height: 2731)!
-        cache.store(head: cur, for: cur.descriptor.sourceURL)
-        cache.store(head: p1, for: p1.descriptor.sourceURL)
-        cache.store(head: p2, for: p2.descriptor.sourceURL)
+        cache.store(head: cur, for: DecodeCacheKey(url: cur.descriptor.sourceURL, level: .bucket(8192)))
+        cache.store(head: p1, for: DecodeCacheKey(url: p1.descriptor.sourceURL, level: .bucket(4096)))
+        cache.store(head: p2, for: DecodeCacheKey(url: p2.descriptor.sourceURL, level: .bucket(4096)))
         let curBytes = Int64(cur.image.bytesPerRow) * Int64(cur.image.height)
-        m.add("S1_bounded_8192_plus_2x4096", "working_set=\(fmtM(curBytes + 2 * Int64(p1.image.bytesPerRow) * Int64(p1.image.height))) retrievable: current=\(cache.head(for: cur.descriptor.sourceURL) != nil) p1=\(cache.head(for: p1.descriptor.sourceURL) != nil) p2=\(cache.head(for: p2.descriptor.sourceURL) != nil)")
+        m.add("S1_bounded_8192_plus_2x4096", "working_set=\(fmtM(curBytes + 2 * Int64(p1.image.bytesPerRow) * Int64(p1.image.height))) retrievable: current=\(cache.head(for: DecodeCacheKey(url: cur.descriptor.sourceURL, level: .bucket(8192))) != nil) p1=\(cache.head(for: DecodeCacheKey(url: p1.descriptor.sourceURL, level: .bucket(4096))) != nil) p2=\(cache.head(for: DecodeCacheKey(url: p2.descriptor.sourceURL, level: .bucket(4096))) != nil)")
     }
     // Scenario 2: R4 native path with big native images. 8192x8192 (256 MB) x3.
     do {
@@ -821,29 +822,30 @@ func runCachePlan(_ args: [String]) async {
         let a = syntheticHead(width: 8192, height: 8192)!
         let b = syntheticHead(width: 8192, height: 8192)!
         let c = syntheticHead(width: 8192, height: 8192)!
-        cache.store(head: a, for: a.descriptor.sourceURL)
-        cache.store(head: b, for: b.descriptor.sourceURL)
-        cache.store(head: c, for: c.descriptor.sourceURL)
-        m.add("S2_native_8192sq_x3", "working_set=\(fmtM(3 * Int64(a.image.bytesPerRow) * Int64(a.image.height))) retrievable: a=\(cache.head(for: a.descriptor.sourceURL) != nil) b=\(cache.head(for: b.descriptor.sourceURL) != nil) c=\(cache.head(for: c.descriptor.sourceURL) != nil)")
+        cache.store(head: a, for: DecodeCacheKey(url: a.descriptor.sourceURL, level: .native))
+        cache.store(head: b, for: DecodeCacheKey(url: b.descriptor.sourceURL, level: .native))
+        cache.store(head: c, for: DecodeCacheKey(url: c.descriptor.sourceURL, level: .native))
+        m.add("S2_native_8192sq_x3", "working_set=\(fmtM(3 * Int64(a.image.bytesPerRow) * Int64(a.image.height))) retrievable: a=\(cache.head(for: DecodeCacheKey(url: a.descriptor.sourceURL, level: .native)) != nil) b=\(cache.head(for: DecodeCacheKey(url: b.descriptor.sourceURL, level: .native)) != nil) c=\(cache.head(for: DecodeCacheKey(url: c.descriptor.sourceURL, level: .native)) != nil)")
     }
     // Scenario 3: mixed current-native 8192sq + neighbours 8192x5461
     do {
         let cache = DecodeCache()
         let cur = syntheticHead(width: 8192, height: 8192)!
         let n = syntheticHead(width: 8192, height: 5461)!
-        cache.store(head: cur, for: cur.descriptor.sourceURL)
-        cache.store(head: n, for: n.descriptor.sourceURL)
+        cache.store(head: cur, for: DecodeCacheKey(url: cur.descriptor.sourceURL, level: .native))
+        cache.store(head: n, for: DecodeCacheKey(url: n.descriptor.sourceURL, level: .native))
         let total = Int64(cur.image.bytesPerRow) * Int64(cur.image.height) + Int64(n.image.bytesPerRow) * Int64(n.image.height)
-        m.add("S3_native_8192sq_plus_8192x5461", "working_set=\(fmtM(total)) retrievable: current=\(cache.head(for: cur.descriptor.sourceURL) != nil) neighbour=\(cache.head(for: n.descriptor.sourceURL) != nil)")
+        m.add("S3_native_8192sq_plus_8192x5461", "working_set=\(fmtM(total)) retrievable: current=\(cache.head(for: DecodeCacheKey(url: cur.descriptor.sourceURL, level: .native)) != nil) neighbour=\(cache.head(for: DecodeCacheKey(url: n.descriptor.sourceURL, level: .native)) != nil)")
     }
     // Scenario 4: revisit after a purge-like eviction pressure (memory pressure notification)
     do {
         let cache = DecodeCache()
         let cur = syntheticHead(width: 8192, height: 5461)!
-        cache.setCurrent(cur.descriptor.sourceURL)
-        cache.store(head: cur, for: cur.descriptor.sourceURL)
+        let key = DecodeCacheKey(url: cur.descriptor.sourceURL, level: .native)
+        cache.setCurrent(key)
+        cache.store(head: cur, for: key)
         NotificationCenter.default.post(name: .decodeCacheMemoryPressure, object: nil)
-        m.add("S4_after_memory_pressure", "current(8192) retrievable=\(cache.head(for: cur.descriptor.sourceURL) != nil) -> a purge keeps only the current image")
+        m.add("S4_after_memory_pressure", "current(8192) retrievable=\(cache.head(for: DecodeCacheKey(url: cur.descriptor.sourceURL, level: .native)) != nil) -> a purge keeps only the current image")
     }
     m.emit()
 }
