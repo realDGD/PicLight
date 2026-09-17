@@ -46,10 +46,14 @@ public struct ImageIODecoder: ImageDecoding {
             }
             let count = CGImageSourceGetCount(source)
             guard index >= 0, index < count else { throw ImageDecodeError.pageOutOfBounds }
-            guard let decoded = Self.decodeLimited(source: source, index: index, target: target) else {
+            // Animation frames and TIFF pages deliberately take the *pre-Task-3* path:
+            // a lazy native decode with no materialization. Frames are small, animation
+            // budgeting is out of scope for this iteration, and materializing every frame
+            // measured as an animation regression (24.6 materializations per second while
+            // only ~8 frames/s reach the screen). Stills keep the A3 win.
+            guard let image = Self.decodeOriented(source: source, index: index) else {
                 throw ImageDecodeError.noDisplayableImage
             }
-            let image = decoded.image
             let durations = Self.frameDurations(source: source)
             let duration = index < durations.count ? durations[index] : nil
             return DecodedFrame(image: image, index: index, duration: duration)

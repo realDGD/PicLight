@@ -454,6 +454,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             viewerState.apply(head: head)
             errorLabel.isHidden = true
             onDescriptorAvailable?(head.descriptor)
+            // Once per displayed image, as the navigator's own documentation states.
+            regenerateNavigatorPreview()
             if head.descriptor.animated {
                 startAnimation(descriptor: head.descriptor, autoplay: settings.autoplayAnimations)
             }
@@ -512,7 +514,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // must be re-evaluated when the image changes rather than only on the next
         // pointer event.
         applyChromeVisibility()
-        regenerateNavigatorPreview()
+        // `regenerateNavigatorPreview()` is deliberately NOT called here: this runs for
+        // every animation frame, and rebuilding a navigator preview (plus its layout
+        // pass) per frame starved the display cycle — measured, only 54 of 81 published
+        // frames were ever drawn. It runs when the image changes instead, which is what
+        // its own documentation already promised.
         refreshMinimap()
         refreshBottomBar()
     }
@@ -563,13 +569,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func requestFrame(index: Int, descriptor: ImageDescriptor) {
         guard let url = descriptor.sourceURL as URL? else { return }
-        onDemandFrameTask?.cancel()
+        // One decode at a time. Cancelling an in-flight frame decode throws the work
+        // away (ImageIO cannot abort mid-stream) and the next tick starts another, so
+        // the old code measured 195 decodes for 81 published frames. Skipping the tick
+        // instead keeps playback at the rate the decoder can actually sustain.
+        if let inFlight = onDemandFrameTask, !inFlight.isCancelled { return }
         onDemandFrameTask = Task { [weak self] in
             guard let self else { return }
             let decoder = ImageIODecoder()
-            if let frame = try? await decoder.decodeFrame(url, index: index) {
-                guard !Task.isCancelled else { return }
-                await MainActor.run { self.viewerState.apply(frame: frame) }
+            let frame = try? await decoder.decodeFrame(url, index: index)
+            await MainActor.run {
+                if let frame, !Task.isCancelled { self.viewerState.apply(frame: frame) }
+                self.onDemandFrameTask = nil
             }
         }
     }
@@ -869,6 +880,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let next = viewerState.pageIndex + delta
         guard next >= 0, next < descriptor.pageCount else { return }
         viewerState.pageIndex = next
+        regenerateNavigatorPreview()
         let url = descriptor.sourceURL
         onDemandFrameTask?.cancel()
         onDemandFrameTask = Task { [weak self] in
