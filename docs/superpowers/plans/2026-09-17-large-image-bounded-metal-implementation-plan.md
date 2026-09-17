@@ -374,7 +374,7 @@ git commit -m "test: integrated decode-cache + Metal working-set acceptance"
       within one bucket step of the requested budget; no native 48000×32000 bitmap anywhere on the display path.
 - [x] Step 3: Record RSS for **diagnostics only** — it moves with mmapped source pages and system cache and is not a
       pass/fail signal. The gates remain `phys_footprint`, the `vmmap` `Image IO` assertion and swap growth (spec §16).
-- [x] Step 4 (met with a recorded residual): Animation non-regression: `PICLIGHT_BENCH_SECONDS=20 run-e4.sh <rev> anim-1000.gif` — compare with the
+- [x] Step 4 (met by same-session A/B; the earlier "residual" was a cross-session artefact): Animation non-regression: `PICLIGHT_BENCH_SECONDS=20 run-e4.sh <rev> anim-1000.gif` — compare with the
       E5 baseline (15.9 fps, 249 mJ per frame, ping p95 98 ms).
 - [x] Step 5: Record all raw outputs under `benchmarks/LargeImagePolicyBench/results/`.
 
