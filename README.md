@@ -16,6 +16,7 @@ current folder.
 swift build                 # debug build
 swift run                   # launch the viewer
 swift test                  # 138 unit tests
+xcodebuild -scheme PicViewMac -destination 'platform=macOS' test   # same suite
 ```
 
 Release artifacts:
