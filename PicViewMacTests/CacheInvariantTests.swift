@@ -44,13 +44,14 @@ final class CacheInvariantTests: XCTestCase {
         let decoder = ImageIODecoder()
         let first = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.png"),
                                                                   target: .fullResolution)
-        cache.setCurrent(Fixtures.url("static.png"))
-        cache.store(head: first, for: Fixtures.url("static.png"))
-        XCTAssertNotNil(cache.head(for: Fixtures.url("static.png")))
+        let key = DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)
+        cache.setCurrent(key)
+        cache.store(head: first, for: key)
+        XCTAssertNotNil(cache.head(for: key))
 
         // Reloading the current image always works, whether or not it was evicted.
-        cache.store(head: first, for: Fixtures.url("static.png"))
-        XCTAssertNotNil(cache.head(for: Fixtures.url("static.png")))
+        cache.store(head: first, for: key)
+        XCTAssertNotNil(cache.head(for: key))
     }
 
     func testMemoryPressureKeepsOnlyTheCurrentImage() async throws {
@@ -60,14 +61,16 @@ final class CacheInvariantTests: XCTestCase {
                                                                     target: .fullResolution)
         let other = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.bmp"),
                                                                   target: .fullResolution)
-        cache.setCurrent(Fixtures.url("static.png"))
-        cache.store(head: current, for: Fixtures.url("static.png"))
-        cache.store(head: other, for: Fixtures.url("static.bmp"))
+        let currentKey = DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)
+        let otherKey = DecodeCacheKey(url: Fixtures.url("static.bmp"), level: .native)
+        cache.setCurrent(currentKey)
+        cache.store(head: current, for: currentKey)
+        cache.store(head: other, for: otherKey)
 
         NotificationCenter.default.post(name: .decodeCacheMemoryPressure, object: nil)
 
-        XCTAssertNotNil(cache.head(for: Fixtures.url("static.png")), "the shown image survives")
-        XCTAssertNil(cache.head(for: Fixtures.url("static.bmp")), "non-current entries are purged")
+        XCTAssertNotNil(cache.head(for: currentKey), "the shown image survives")
+        XCTAssertNil(cache.head(for: otherKey), "non-current entries are purged")
     }
 
     func testAnimationFramesAreCachedSeparatelyFromTheHead() async throws {
@@ -76,12 +79,13 @@ final class CacheInvariantTests: XCTestCase {
         let decoder = ImageIODecoder()
         let head = try await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
         let frame = try await decoder.decodeFrame(url, index: 1)
-        cache.store(head: head, for: url)
-        cache.store(frame: frame, for: url)
-        XCTAssertNotNil(cache.head(for: url))
-        XCTAssertNotNil(cache.frame(for: url, index: 1))
+        let key = DecodeCacheKey(url: url, level: .native)
+        cache.store(head: head, for: key)
+        cache.store(frame: frame, for: key)
+        XCTAssertNotNil(cache.head(for: key))
+        XCTAssertNotNil(cache.frame(for: key, index: 1))
         // Frame 0 is the head, so it is never stored twice.
-        cache.store(frame: DecodedFrame(image: frame.image, index: 0, duration: 0.1), for: url)
+        cache.store(frame: DecodedFrame(image: frame.image, index: 0, duration: 0.1), for: key)
         XCTAssertNotNil(head.image)
     }
 
@@ -95,13 +99,14 @@ final class CacheInvariantTests: XCTestCase {
 
         _ = try await thumbnails.thumbnail(for: url, maxPixelSize: 64)
         let head = try await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
-        cache.store(head: head, for: url)
+        cache.store(head: head, for: DecodeCacheKey(url: url, level: .native))
 
         await thumbnails.purge()
-        XCTAssertNotNil(cache.head(for: url), "purging thumbnails must not empty the image cache")
+        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: url, level: .native)),
+                        "purging thumbnails must not empty the image cache")
 
         cache.purge(keeping: nil)
-        XCTAssertNil(cache.head(for: url))
+        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, level: .native)))
         let thumbnailAgain = try await thumbnails.thumbnail(for: url, maxPixelSize: 64)
         XCTAssertGreaterThan(thumbnailAgain.width, 0, "thumbnails remain available after a cache purge")
     }

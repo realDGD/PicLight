@@ -169,25 +169,25 @@ struct DecodeCacheKey: Hashable {          // the single encoding of cache ident
 // the struct into an NSString for NSCache; nothing else may build key strings.
 ```
 
-- [ ] Step 1: Implement `DecodeBudget` exactly as §5.3/E1: `required = ceil(max(canvasW, canvasH) × backingScale × 1.5)`,
+- [x] Step 1: Implement `DecodeBudget` exactly as §5.3/E1: `required = ceil(max(canvasW, canvasH) × backingScale × 1.5)`,
       smallest bucket ≥ required, clamp 8192; **`.native` whenever `sourceLongEdge <= 8192`**, otherwise the clamped
       bucket. Table-test it against the E1 matrix (default window, full screen, narrow, short-wide × landscape,
       portrait, extreme, wide).
-- [ ] Step 2: Implement `OversizedPolicy` as the one predicate used by both preload and drawer.
-- [ ] Step 3: Implement `DimensionProbe` on top of the existing header probe (`FolderScanner.pixelSize(of:)`), with a
+- [x] Step 2: Implement `OversizedPolicy` as the one predicate used by both preload and drawer.
+- [x] Step 3: Implement `DimensionProbe` on top of the existing header probe (`FolderScanner.pixelSize(of:)`), with a
       bounded cache; byte size is *not* an input to the decision (it may only order work later, if ever).
-- [ ] Step 4: `DecodeCache`: replace `headKey(_ url:)` with the `DecodeCacheKey` struct above and switch
+- [x] Step 4: `DecodeCache`: replace `headKey(_ url:)` with the `DecodeCacheKey` struct above and switch
       `setCurrent(_:)` / `purge(keeping:)` to take a key. This is load-bearing: with a key that carries only the URL,
       the memory-pressure purge cannot tell whether the on-screen entry is `page 0 / bucket(8192)` or
       `page 0 / bucket(4096)` and will keep the wrong one. Update the two `DecodeCoordinator` call sites
       (`cache.setCurrent(url)` when a show begins, `purgeCache(keeping:)`) to pass the key they actually requested.
       Raise the default `totalCostLimit` to 768 MiB; keep `cost = bytesPerRow × height`.
-- [ ] Step 5: Tests — budget table; oversized predicate boundary (8192/8193); probe caching (one probe per URL);
+- [x] Step 5: Tests — budget table; oversized predicate boundary (8192/8193); probe caching (one probe per URL);
       cache identity (4096≠8192, page participates, cost is real bytes); the two E3 retention probes as unit tests
       using synthetic bitmaps: 8192+2×4096 = 256 MB retained, and the 426.7 MB case documented as "NSCache may evict
       the earlier entry" so no test assumes otherwise; and specifically **memory-pressure purge keeps the entry for the
       currently shown (page, level)** while a different level of the same URL is dropped.
-- [ ] Step 6: `swift test`.
+- [x] Step 6: `swift test`.
 
 ```bash
 git add PicViewMac/Imaging/DecodeBudget.swift PicViewMac/Imaging/OversizedPolicy.swift PicViewMac/Imaging/DimensionProbe.swift PicViewMac/Imaging/DecodeCache.swift PicViewMac/Imaging/DecodeCoordinator.swift PicViewMacTests/DecodeBudgetTests.swift PicViewMacTests/CacheIdentityTests.swift

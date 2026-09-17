@@ -49,17 +49,21 @@ public actor DecodeCoordinator {
         next: URL? = nil,
         direction: NavigationDirection = .unknown,
         target: DecodeTarget = .fullResolution,
+        level: DecodeLevel = .native,
         onEvent: @escaping @Sendable (DecodeEvent) -> Void
     ) -> Task<Void, Never> {
         currentTask?.cancel()
         let token = nextGeneration()
         let decoder = self.decoder
         let cache = self.cache
-        cache.setCurrent(url)
+        let key = DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level)
+        self.currentKey = key
+        cache.setCurrent(key)
 
-        if let cached = cache.head(for: url) {
+        if let cached = cache.head(for: key) {
             onEvent(.head(cached))
-            schedulePreload(previous: previous, next: next, direction: direction, target: target)
+            schedulePreload(previous: previous, next: next, direction: direction,
+                            target: target, level: level)
             return Task {}
         }
 
@@ -67,7 +71,7 @@ public actor DecodeCoordinator {
             do {
                 let head = try await decoder.decodeFirstDisplayableFrame(url, target: target)
                 guard !Task.isCancelled, self.isCurrent(token) else { return }
-                cache.store(head: head, for: url)
+                cache.store(head: head, for: key)
                 onEvent(.head(head))
 
                 // Pages of a multi-page document are not animation frames; they are
@@ -76,7 +80,7 @@ public actor DecodeCoordinator {
                 let stream = decoder.decodeRemainingFrames(url, descriptor: head.descriptor)
                 for try await frame in stream {
                     guard !Task.isCancelled, self.isCurrent(token) else { return }
-                    cache.store(frame: frame, for: url)
+                    cache.store(frame: frame, for: key)
                     onEvent(.frame(frame))
                 }
             } catch {
@@ -90,7 +94,8 @@ public actor DecodeCoordinator {
             }
         }
         currentTask = task
-        schedulePreload(previous: previous, next: next, direction: direction, target: target)
+        schedulePreload(previous: previous, next: next, direction: direction,
+                        target: target, level: level)
         return task
     }
 
@@ -109,7 +114,7 @@ public actor DecodeCoordinator {
     }
 
     private func schedulePreload(previous: URL?, next: URL?, direction: NavigationDirection,
-                                 target: DecodeTarget) {
+                                 target: DecodeTarget, level: DecodeLevel) {
         let wanted = Set(Self.preloadOrder(previous: previous, next: next, direction: direction)
             .map(\.path))
         // Neighbours that are no longer wanted are cancelled immediately, so
@@ -120,21 +125,21 @@ public actor DecodeCoordinator {
         }
 
         for url in Self.preloadOrder(previous: previous, next: next, direction: direction)
-        where cache.head(for: url) == nil {
+        where cache.head(for: DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level)) == nil {
             guard preloadTasks[url.path] == nil else { continue }
             preloadTasks[url.path] = Task(priority: .utility) {
-                await self.runPreload(url: url, target: target)
+                await self.runPreload(url: url, target: target, level: level)
             }
         }
     }
 
     /// Actor-isolated so the bookkeeping entry is cleared as soon as the work
     /// ends, without spawning yet another task to do it.
-    private func runPreload(url: URL, target: DecodeTarget) async {
+    private func runPreload(url: URL, target: DecodeTarget, level: DecodeLevel) async {
         defer { preloadTasks[url.path] = nil }
         guard let head = try? await decoder.decodeFirstDisplayableFrame(url, target: target) else { return }
         guard !Task.isCancelled else { return }
-        cache.store(head: head, for: url)
+        cache.store(head: head, for: DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level))
     }
 
     public func cancelAll() {
@@ -143,5 +148,11 @@ public actor DecodeCoordinator {
         preloadTasks.removeAll()
     }
 
-    public func purgeCache(keeping url: URL?) { cache.purge(keeping: url) }
+    /// The identity the cache must protect, so a purge keeps the on-screen level.
+    public private(set) var currentKey: DecodeCacheKey?
+
+    public func purgeCache(keeping key: DecodeCacheKey?) { cache.purge(keeping: key) }
+
+    /// Purges everything except the entry the last `show` put on screen.
+    public func purgeCacheKeepingCurrent() { cache.purge(keeping: currentKey) }
 }
