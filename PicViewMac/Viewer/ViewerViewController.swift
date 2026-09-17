@@ -77,6 +77,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Chrome that participates in hover/idle visibility (the titlebar does not:
     /// it is AppKit's and always visible).
     static let hoverChromeNames: Set<String> = ["bottomBar", "drawer", "minimap", "toolDock"]
+    /// Usable canvas width the window's minimum size must leave.
+    static let minimumCanvasWidth: CGFloat = 320
+    /// Breathing room between the tool dock and the canvas edges.
+    static let dockCanvasMargin: CGFloat = 28
 
     /// Re-applies the current hover state without inventing pointer movement.
     func applyChromeVisibilityForTesting() {
@@ -640,7 +644,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
         canvasLeadingToRoot?.isActive = !pinned
         canvasLeadingToDrawer?.isActive = pinned
-        (view.window as? ViewerWindow)?.applyMinimumSize(drawerWidth: pinned ? currentDrawerWidth : 0)
+        // The canvas minimum has to fit the tool dock: a pinned drawer in a narrow
+        // window would otherwise leave a canvas narrower than the dock, which then
+        // overflows it and draws across the sidebar.
+        let dockWidth = toolDock.fittingSize.width
+        let minimumCanvas = max(Self.minimumCanvasWidth, dockWidth + Self.dockCanvasMargin)
+        (view.window as? ViewerWindow)?.applyMinimumSize(drawerWidth: pinned ? currentDrawerWidth : 0,
+                                                        minimumCanvasWidth: minimumCanvas)
         view.layoutSubtreeIfNeeded()
 
         var viewport = canvas.viewport

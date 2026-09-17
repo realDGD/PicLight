@@ -40,39 +40,35 @@ public final class ViewerWindowController: NSWindowController {
     /// The drawer opens and closes from a button beside the traffic lights, the way
     /// a sidebar does in a document window.
     private func installDrawerTitlebarButton() {
-        let button = NSButton()
+        // The accessory *is* the button, with an explicit frame: a container view with
+        // no intrinsic size is laid out zero-width by the titlebar, which clipped the
+        // button away entirely and made it invisible.
+        let button = NSButton(frame: NSRect(x: 0, y: 0, width: Self.drawerButtonSize.width,
+                                            height: Self.drawerButtonSize.height))
         button.isBordered = false
         button.bezelStyle = .texturedRounded
         button.imagePosition = .imageOnly
         button.target = self
         button.action = #selector(toggleDrawerFromTitlebar)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 26),
-            button.heightAnchor.constraint(equalToConstant: 20),
-        ])
         drawerButton = button
 
-        let container = NSView()
-        container.addSubview(button)
-        NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
-            button.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
-            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-        ])
         let accessory = NSTitlebarAccessoryViewController()
         accessory.layoutAttribute = .leading
-        accessory.view = container
+        accessory.view = button
         window?.addTitlebarAccessoryViewController(accessory)
         drawerAccessory = accessory
         updateDrawerButton(pinned: viewerViewController.isDrawerPinned)
     }
 
+    /// Size of the titlebar drawer control.
+    static let drawerButtonSize = NSSize(width: 30, height: 22)
+
     fileprivate func updateDrawerButton(pinned: Bool) {
-        drawerButton?.image = NSImage(
+        let symbol = NSImage(
             systemSymbolName: pinned ? "rectangle.lefthalf.inset.filled" : "sidebar.left",
             accessibilityDescription: pinned ? "关闭左栏" : "打开左栏"
-        )
+        )?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+        drawerButton?.image = symbol
         drawerButton?.toolTip = pinned ? "关闭左栏" : "打开左栏"
         drawerButton?.setAccessibilityLabel(pinned ? "关闭左栏" : "打开左栏")
         drawerButton?.contentTintColor = pinned ? .controlAccentColor : nil

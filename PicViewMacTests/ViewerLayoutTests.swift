@@ -85,6 +85,18 @@ final class ViewerLayoutTests: XCTestCase {
 
     /// Adjustments first, then moving through the folder, then the zoom and file
     /// actions - with the navigation pair sitting in the middle of the dock.
+    func testDockUsesTheRequestedZoomSymbols() {
+        let symbols = ViewerToolDockView.toolDefinitions
+        XCTAssertEqual(symbols.first { $0.command == .zoomToFit }?.symbol,
+                       "arrow.down.left.and.arrow.up.right.rectangle")
+        XCTAssertEqual(symbols.first { $0.command == .zoomToFitWidth }?.symbol,
+                       "arrow.left.and.right.square")
+        // Both must actually resolve on this system.
+        for name in ["arrow.down.left.and.arrow.up.right.rectangle", "arrow.left.and.right.square"] {
+            XCTAssertNotNil(NSImage(systemSymbolName: name, accessibilityDescription: nil), name)
+        }
+    }
+
     func testNavigationSitsInTheMiddleOfTheDock() throws {
         let dock = ViewerToolDockView()
         dock.frame = NSRect(x: 0, y: 0, width: 400, height: 38)
@@ -324,6 +336,9 @@ final class ViewerLayoutTests: XCTestCase {
     func testDockNavigatorAndInfoFollowTheCanvasWhenPinned() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
+        // An explicit size, so the assertions do not depend on the window size
+        // remembered from earlier runs.
+        controller.window?.setContentSize(NSSize(width: 900, height: 600))
         loadImage(viewer)
         let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
         let minimap = try XCTUnwrap(viewer.chromeViewsForTesting["minimap"])
@@ -351,6 +366,29 @@ final class ViewerLayoutTests: XCTestCase {
         viewer.toggleDrawerPinForTesting()
         settle(0.6)
         checkAnchors("pinned")
+    }
+
+    /// The dock is wider than a narrow canvas if the window minimum does not account
+    /// for it, and then it draws across the sidebar.
+    func testToolDockFitsInsideTheCanvasAtTheMinimumWindowSize() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        loadImage(viewer)
+        viewer.toggleDrawerPinForTesting()
+        settle(0.6)
+
+        guard let window = controller.window else { return XCTFail("no window") }
+        window.setContentSize(window.minSize)
+        settle(0.5)
+
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"])
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
+        XCTAssertGreaterThanOrEqual(canvas.frame.width, dock.frame.width,
+                                    "the canvas must be at least as wide as the dock "
+                                      + "(canvas \(canvas.frame.width), dock \(dock.frame.width))")
+        XCTAssertGreaterThanOrEqual(dock.frame.minX, canvas.frame.minX - 1,
+                                    "the dock must not hang over the sidebar")
+        XCTAssertLessThanOrEqual(dock.frame.maxX, canvas.frame.maxX + 1)
     }
 
     // MARK: - Zoom survives a pin toggle
@@ -700,6 +738,32 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         _ = viewer.view
         controller.window?.contentView?.layoutSubtreeIfNeeded()
         return (controller, viewer)
+    }
+
+    /// The first version put the button inside a container view with no intrinsic
+    /// size: the titlebar laid that container out zero-width and clipped the button
+    /// away, so it existed but could not be seen.
+    func testTitlebarDrawerButtonHasARealOnScreenSize() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        controller.window?.layoutIfNeeded()
+        let accessory = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first)
+        let accessoryView = accessory.view
+        XCTAssertGreaterThan(accessoryView.frame.width, 0,
+                             "a zero-width accessory is invisible in the titlebar")
+        XCTAssertGreaterThan(accessoryView.frame.height, 0)
+        XCTAssertFalse(accessoryView.isHidden)
+        XCTAssertFalse(accessory.isHidden)
+        // Everything the user needs to click is inside that frame.
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        let buttonInWindow = button.convert(button.bounds, to: nil)
+        let accessoryInWindow = accessoryView.convert(accessoryView.bounds, to: nil)
+        XCTAssertGreaterThan(buttonInWindow.width, 0)
+        XCTAssertTrue(buttonInWindow.width <= accessoryInWindow.width + 1
+                      && buttonInWindow.height <= accessoryInWindow.height + 1,
+                      "the button must fit inside the accessory's on-screen frame "
+                        + "(button \(buttonInWindow.size), accessory \(accessoryInWindow.size))")
+        _ = viewer
     }
 
     func testTitlebarCarriesADrawerButton() throws {
