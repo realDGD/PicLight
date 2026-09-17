@@ -140,6 +140,7 @@ enum SelfTest {
         }
 
         verifyStartupPresentation(environment, reporter)
+        verifyWindowShape(viewer, reporter)
         verifyChrome(viewer, reporter)
         verifyDrawerPin(viewer, reporter)
         verifyViewerLayout(viewer, reporter)
@@ -172,6 +173,19 @@ enum SelfTest {
         check("bare launch path presents a visible window",
               bare.window?.isVisible == true,
               "visible: \(bare.window?.isVisible == true)")
+        where_is_probe: do {
+            // Measure the welcome-state window shape, which is where square bottom
+            // corners were reported.
+            if let window = bare.window,
+               let image = WindowShapeProbe.capture(windowNumber: window.windowNumber) {
+                let samples = WindowShapeProbe.samples(of: image)
+                reporter.note("welcome window samples: "
+                    + samples.map { "\($0.label) a\($0.alpha)(\($0.r),\($0.g),\($0.b))" }
+                        .joined(separator: " | "))
+            } else {
+                reporter.note("welcome window: no capture available")
+            }
+        }
         check("bare launch shows the welcome state",
               bare.viewerViewController.emptyStateReasonForTesting == .noImageOpened,
               String(describing: bare.viewerViewController.emptyStateReasonForTesting))
@@ -280,6 +294,51 @@ enum SelfTest {
               "canvas \(viewer.chromeSnapshot.canvasFrame.width) vs \(baseline.canvasFrame.width)")
     }
 
+    /// Measures the window's own composited pixels. A rounded window has corner
+    /// pixels that are not part of the window (transparent or desktop); a square
+    /// bottom corner is the signature of content painting past the window shape.
+    private static func verifyWindowShape(_ viewer: ViewerViewController,
+                                          _ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        guard let window = viewer.view.window else {
+            check("window shape: a window exists", false)
+            return
+        }
+        guard let image = WindowShapeProbe.capture(windowNumber: window.windowNumber) else {
+            reporter.note("window shape: this process cannot capture its own window")
+            return
+        }
+        let samples = WindowShapeProbe.samples(of: image)
+        reporter.note("window shape samples (alpha r g b): "
+            + samples.map { "\($0.label) a\($0.alpha) (\($0.r),\($0.g),\($0.b))" }
+                .joined(separator: " | "))
+        let centre = samples.first { $0.label == "centre" }?.alpha ?? 0
+        guard centre > 0 else {
+            reporter.note("window shape: capture looks empty, skipping the comparison")
+            return
+        }
+        // How far in the window's shape starts tells the actual corner radius:
+        // a rounded window reaches its first opaque pixel well inside the corner.
+        let topReach = WindowShapeProbe.firstOpaqueOffset(of: image, row: 2) ?? -1
+        let bottomReach = WindowShapeProbe.firstOpaqueOffset(of: image, row: image.height - 3) ?? -1
+        let leftTopReach = WindowShapeProbe.firstOpaqueOffset(of: image, column: 2) ?? -1
+        let leftBottomReach = WindowShapeProbe.firstOpaqueOffset(of: image, column: image.width - 3) ?? -1
+        reporter.note("window shape reach: top row \(topReach)px, bottom row \(bottomReach)px, "
+            + "left column \(leftTopReach)px, right column \(leftBottomReach)px")
+        check("window shape: bottom corners are rounded like the top ones",
+              bottomReach >= 0 && topReach >= 0 && bottomReach + 4 >= topReach,
+              "top row starts at \(topReach)px, bottom row at \(bottomReach)px")
+
+        for label in ["bottomLeft", "bottomRight"] {
+            guard let sample = samples.first(where: { $0.label == label }) else { continue }
+            check("window shape: \(label) corner is rounded, not square",
+                  sample.alpha < centre / 2,
+                  "corner alpha \(sample.alpha) vs centre alpha \(centre)")
+        }
+    }
+
     /// The viewer layout refactor: standard titlebar, fixed dock, canvas-anchored
     /// panels, and an information card instead of a separate window.
     private static func verifyViewerLayout(_ viewer: ViewerViewController,
@@ -303,6 +362,28 @@ enum SelfTest {
               "\(dock.commands.count) commands")
         check("tool dock is a viewer subview, not a window",
               dock.isDescendant(of: viewer.view))
+
+        // A button with no icon is invisible in practice, so check the images
+        // rather than only the command list.
+        let dockButtons = dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+        let iconlessButtons = dockButtons.filter { !$0.isHidden && $0.symbolImage == nil }
+        check("every visible dock button has an icon",
+              iconlessButtons.isEmpty,
+              "\(iconlessButtons.count) of \(dockButtons.count) buttons have no image")
+        let glassAvailable = ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0))
+        check("tool dock uses the native glass surface where available",
+              dock.usesNativeGlass == glassAvailable,
+              "glass=\(dock.usesNativeGlass), material=\(dock.usesSystemMaterial)")
+        let untinted = dockButtons.filter { !$0.isHidden && $0.iconTint == nil }
+        check("dock icons carry an adaptive tint",
+              untinted.isEmpty && dockButtons.filter { !$0.isHidden }
+                .allSatisfy { $0.symbolImage?.isTemplate == true },
+              "\(untinted.count) untinted of \(dockButtons.count)")
+        check("dock buttons are laid out with a real size",
+              dockButtons.allSatisfy { $0.frame.width >= 20 && $0.frame.height >= 20 },
+              dockButtons.map { "\(Int($0.frame.width))x\(Int($0.frame.height))" }.joined(separator: " "))
 
         drainRunLoop(0.3)
         let unpinnedCanvas = canvas.frame

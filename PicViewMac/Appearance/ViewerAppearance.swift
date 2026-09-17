@@ -48,9 +48,12 @@ public class MaterialHostView: NSView {
         /// Plain system material. Used for the viewer's own chrome (tool dock,
         /// info card, bottom bar) where readability matters more than effect.
         case hud
-        /// Native glass on macOS 26+, a system material before that.
+        /// Native glass on macOS 26+, a system material before that. `.dock` uses
+        /// the regular glass variant, which reads better on a small floating pill
+        /// than the clear variant.
         case chrome
         case drawer
+        case dock
     }
 
     public let style: Style
@@ -74,6 +77,16 @@ public class MaterialHostView: NSView {
     /// `true` when a translucent material is actually installed for the current OS.
     public var usesSystemMaterial: Bool { effectView != nil }
 
+    /// The corner radius applied to the system surface, for tests and for callers
+    /// that reshape the container after construction.
+    public func setCornerRadius(_ radius: CGFloat) {
+        if #available(macOS 26.0, *), let glass = glassView as? NSGlassEffectView {
+            glass.cornerRadius = radius
+        }
+        effectView?.layer?.cornerRadius = radius
+        layer?.cornerRadius = radius
+    }
+
     public init(style: Style) {
         self.style = style
         super.init(frame: .zero)
@@ -81,7 +94,7 @@ public class MaterialHostView: NSView {
 
         if #available(macOS 26.0, *), style != .hud {
             let glass = NSGlassEffectView()
-            glass.style = style == .drawer ? .regular : .clear
+            glass.style = style == .chrome ? .clear : .regular
             glass.cornerRadius = style == .drawer ? 0 : 10
             glass.translatesAutoresizingMaskIntoConstraints = false
             addSubview(glass)

@@ -22,17 +22,21 @@ public final class ViewerToolDockView: MaterialHostView {
     ]
 
     private let stack = NSStackView()
-    private let playbackButton = DockButton(command: .togglePlayback, tooltip: "暂停 / 播放")
+    private let playbackButton = DockButton(symbol: "pause.fill", command: .togglePlayback,
+                                            tooltip: "暂停 / 播放")
     private var toolButtons: [DockButton] = []
     private let infoButton: DockButton
 
-    public override init(style: Style = .hud) {
+    public override init(style: Style = .dock) {
         let infoDefinition = Self.toolDefinitions.last!
-        infoButton = DockButton(command: infoDefinition.command, tooltip: infoDefinition.tooltip)
+        infoButton = DockButton(symbol: infoDefinition.symbol, command: infoDefinition.command,
+                                tooltip: infoDefinition.tooltip)
         super.init(style: style)
         translatesAutoresizingMaskIntoConstraints = false
         layer?.cornerRadius = Self.height / 2
         layer?.masksToBounds = false
+        // Match the glass pill to the dock's shape.
+        setCornerRadius(Self.height / 2)
 
         stack.orientation = .horizontal
         stack.spacing = 6
@@ -41,7 +45,8 @@ public final class ViewerToolDockView: MaterialHostView {
         addSubview(stack)
 
         for definition in Self.toolDefinitions {
-            let button = DockButton(command: definition.command, tooltip: definition.tooltip)
+            let button = DockButton(symbol: definition.symbol, command: definition.command,
+                                    tooltip: definition.tooltip)
             toolButtons.append(button)
             stack.addArrangedSubview(button)
         }
@@ -108,10 +113,11 @@ final class DockButton: NSButton {
     private let command: ViewerCommand
     private var trackingArea: NSTrackingArea?
 
-    init(command: ViewerCommand, tooltip: String) {
+    init(symbol: String, command: ViewerCommand, tooltip: String) {
         self.command = command
         super.init(frame: .zero)
         configure(command: command, tooltip: tooltip)
+        setSymbol(symbol)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -133,9 +139,27 @@ final class DockButton: NSButton {
         ])
     }
 
+    /// Icons are template images and are tinted with a dynamic system colour, so
+    /// they follow the surface behind them (light/dark, and the vibrancy of the
+    /// glass) instead of being baked to one shade.
     func setSymbol(_ symbol: String) {
-        image = NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip)
+        let symbolImage = NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip)
+        symbolImage?.isTemplate = true
+        image = symbolImage
+        applyIconTint()
     }
+
+    func applyIconTint() {
+        contentTintColor = .labelColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyIconTint()
+    }
+
+    /// The tint actually in force, for tests.
+    var iconTint: NSColor? { contentTintColor }
 
     func setScale(_ scale: CGFloat, duration: TimeInterval) {
         guard let layer else { return }
@@ -156,6 +180,10 @@ final class DockButton: NSButton {
         layer.transform = transform
         layer.add(animation, forKey: "hoverScale")
     }
+
+    /// The rendered icon, exposed so tests can prove the button is actually
+    /// visible rather than merely present.
+    var symbolImage: NSImage? { image }
 
     /// Current enlargement, for tests.
     var currentScale: CGFloat {

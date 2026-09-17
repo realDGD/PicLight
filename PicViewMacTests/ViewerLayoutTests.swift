@@ -6,9 +6,15 @@ import AppKit
 /// a drawer that reserves real space instead of overlaying when pinned.
 @MainActor
 final class ViewerLayoutTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func makeViewer() throws -> (controller: ViewerWindowController, viewer: ViewerViewController) {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
-        controller.present()
+        TestAppKit.presentOffScreen(controller)
         let viewer = controller.viewerViewController
         _ = viewer.view
         controller.window?.contentView?.layoutSubtreeIfNeeded()
@@ -74,6 +80,34 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertEqual(dock.commands,
                        [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomActualPixels,
                         .moveToTrash, .showImageInfo])
+    }
+
+    /// Presence and enabled state are not enough: a button with no icon renders as
+    /// an empty square, which is exactly how the dock shipped once.
+    func testEveryDockButtonHasAVisibleSymbol() throws {
+        let dock = ViewerToolDockView()
+        dock.frame = NSRect(x: 0, y: 0, width: 300, height: 38)
+        dock.layoutSubtreeIfNeeded()
+
+        let buttons = dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+        XCTAssertEqual(buttons.count, 7)
+
+        for button in buttons where !button.isHidden {
+            let image = try XCTUnwrap(button.symbolImage,
+                                      "every visible dock button needs an icon")
+            XCTAssertGreaterThan(image.size.width, 0,
+                                 "the icon must have a real size, not just exist")
+        }
+
+        // The playback button only appears for animated content, and then it must
+        // carry an icon too.
+        dock.setAnimated(true, isPlaying: false)
+        XCTAssertFalse(dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+            .last!.isHidden)
+        XCTAssertNotNil(dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }.last?.symbolImage)
     }
 
     func testToolDockIsFixedChromeCentredOnTheCanvas() throws {
@@ -302,9 +336,15 @@ final class ViewerLayoutTests: XCTestCase {
 /// The in-viewer information card.
 @MainActor
 final class ImageInfoCardTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func makeViewer() throws -> (controller: ViewerWindowController, viewer: ViewerViewController) {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
-        controller.present()
+        TestAppKit.presentOffScreen(controller)
         let viewer = controller.viewerViewController
         _ = viewer.view
         viewer.open(url: Fixtures.url("static.png"))
@@ -379,5 +419,77 @@ final class ImageInfoCardTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.0 == "EXIF 方向" && $0.1 == "6" },
                       "the stored orientation is reported as stored")
         XCTAssertTrue(rows.contains { $0.0 == "显示尺寸" && $0.1 == "100 × 50" })
+    }
+}
+
+/// The dock's surface and icon treatment.
+@MainActor
+final class ToolDockAppearanceTests: XCTestCase {
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
+
+    private func dockButtons(_ dock: ViewerToolDockView) -> [DockButton] {
+        dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+    }
+
+    /// The dock is a glass pill on macOS 26+, and a plain system material before
+    /// that. Either way it is a system surface, never a hand-drawn blur.
+    func testDockUsesNativeGlassWhereTheSystemProvidesIt() {
+        let dock = ViewerToolDockView()
+        let glassAvailable = ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0))
+        XCTAssertEqual(dock.usesNativeGlass, glassAvailable,
+                       "glass is chosen by an availability guard, matching the running OS")
+        XCTAssertTrue(dock.usesNativeGlass || dock.usesSystemMaterial,
+                      "the dock must still have a system surface on older systems")
+    }
+
+    /// Over a translucent surface the icons must not be baked to one shade: they
+    /// are template images carrying a dynamic tint, so they stay legible as the
+    /// background and the appearance change.
+    func testDockIconsAreTemplateImagesWithADynamicTint() {
+        let dock = ViewerToolDockView()
+        let buttons = dockButtons(dock)
+        XCTAssertEqual(buttons.count, 7)
+
+        for button in buttons where !button.isHidden {
+            XCTAssertNotNil(button.symbolImage, "every visible dock button has an icon")
+            XCTAssertEqual(button.symbolImage?.isTemplate, true,
+                           "a non-template icon cannot follow the surface behind it")
+            XCTAssertNotNil(button.iconTint, "the icon needs an explicit tint")
+        }
+    }
+
+    func testIconTintResolvesDifferentlyInLightAndDark() throws {
+        let dock = ViewerToolDockView()
+        let button = try XCTUnwrap(dockButtons(dock).first)
+        let tint = try XCTUnwrap(button.iconTint)
+
+        var dark: NSColor?
+        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
+            dark = tint.usingColorSpace(.sRGB)
+        }
+        var light: NSColor?
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            light = tint.usingColorSpace(.sRGB)
+        }
+        let darkColor = try XCTUnwrap(dark)
+        let lightColor = try XCTUnwrap(light)
+        XCTAssertNotEqual(darkColor, lightColor,
+                          "a dynamic tint must resolve differently per appearance")
+        XCTAssertGreaterThan(darkColor.brightnessComponent, lightColor.brightnessComponent,
+                             "the icon is light on a dark surface and dark on a light one")
+    }
+
+    func testIconTintIsReappliedWhenTheAppearanceChanges() {
+        let dock = ViewerToolDockView()
+        let button = dockButtons(dock)[0]
+        button.contentTintColor = .systemRed      // simulate a stale tint
+        button.viewDidChangeEffectiveAppearance()
+        XCTAssertEqual(button.iconTint, .labelColor,
+                       "an appearance change re-applies the adaptive tint")
     }
 }
