@@ -12,6 +12,12 @@ VENDOR="$WORK/vendor"
 
 mkdir -p "$VENDOR" "$WORK/out"
 
+IN_GIT=1
+git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || IN_GIT=0
+if [ "$IN_GIT" = "0" ]; then
+    echo "note: not a git checkout; using the working-tree sources instead of '$REF'" >&2
+fi
+
 for f in Imaging/ImageDecoder.swift \
          Imaging/ImageIODecoder.swift \
          Imaging/ImageDescriptor.swift \
@@ -20,7 +26,11 @@ for f in Imaging/ImageDecoder.swift \
          Imaging/DecodeCoordinator.swift \
          Imaging/ThumbnailPipeline.swift \
          Metadata/MetadataReader.swift; do
-    git -C "$ROOT" show "$REF:PicViewMac/$f" > "$VENDOR/$(basename "$f")"
+    if [ "$IN_GIT" = "1" ]; then
+        git -C "$ROOT" show "$REF:PicViewMac/$f" > "$VENDOR/$(basename "$f")"
+    else
+        cp "$ROOT/PicViewMac/$f" "$VENDOR/$(basename "$f")"
+    fi
 done
 
 swiftc -O -swift-version 6 "$VENDOR"/*.swift "$HERE/bench/Probe.swift" "$HERE/bench/main.swift" -o "$WORK/picbench"
