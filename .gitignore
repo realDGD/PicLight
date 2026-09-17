@@ -1,9 +1,58 @@
+# PicViewMac — ignore rules
+#
+# Tracked on purpose, so never add rules that would swallow them:
+#   Package.swift, Resources/Assets.xcassets/Contents.json
+#   PicViewMacTests/Fixtures/**   (generated PNG/GIF/ICO/TIFF/WebP fixtures)
+#   docs/**, scripts/**, README.md
+#
+# If dependencies are ever added, commit Package.resolved rather than ignoring it:
+# an app should build reproducibly. There are none today.
 
-# Build artifacts
+# ---------------------------------------------------------------- SwiftPM build
 .build/
 build/
-dist/
+.index-build/
+.swiftpm/
 
-# Xcode
-*.xcodeproj/xcuserdata/
+# ------------------------------------------------------- release artifacts
+# scripts/build-release.sh writes dist/PicViewMac.app, scripts/make-dmg.sh writes
+# dist/PicViewMac-<version>.dmg; both are reproducible from source.
+dist/
+dist/dmg-staging/
+*.dmg
+*.xcarchive
+*.app
+
+# ------------------------------------------------------------------ Xcode state
 DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+IDEWorkspaceChecks.plist
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# ------------------------------------------------------------------ tooling
+# Coverage and Instruments output, plus local editor state.
+*.profraw
+*.profdata
+*.trace
+.vscode/
+.idea/
+
+# --------------------------------------------------------------------- macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.AppleDouble
+
+# ----------------------------------------------------------------------- misc
+*.orig
+*.rej
+*.bak
