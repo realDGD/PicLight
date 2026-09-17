@@ -287,12 +287,12 @@ git commit -m "feat: reuse the bounded bitmap for navigator and current drawer i
 `PicViewMac/Shaders/ImageShaders.metal`, `ImageCanvasView.swift`, `Package.swift`,
 `PicViewMacTests/MetalParityTests.swift`, `MetalFallbackTests.swift` (new).
 
-- [ ] Step 1: `Package.swift` gains `resources: [.process("Shaders/ImageShaders.metal")]` on the executable target.
+- [x] Step 1: `Package.swift` gains `resources: [.process("Shaders/ImageShaders.metal")]` on the executable target.
       Do **not** compile shader source strings at runtime.
-- [ ] Step 2: `MetalLibraryLocator` mirrors SwiftPM's search order (dev override → `Bundle.main.resourceURL` →
+- [x] Step 2: `MetalLibraryLocator` mirrors SwiftPM's search order (dev override → `Bundle.main.resourceURL` →
       `Bundle(for:)`-style → `Bundle.main.bundleURL`) and returns `nil` on failure. No `fatalError`; nothing on the
       runtime path may call the generated `Bundle.module` accessor.
-- [ ] Step 3: `MetalImageRenderer`: pipeline from the locator. Texture format comes from a **complete layout mapping
+- [x] Step 3: `MetalImageRenderer`: pipeline from the locator. Texture format comes from a **complete layout mapping
       table over `bitsPerComponent` + `alphaInfo` + `byteOrder` + `bitsPerPixel`** — `alphaInfo` alone does not
       determine memory order (`byteOrder32Little` + `premultipliedFirst` is BGRA in memory; the same byte order with
       `premultipliedLast` is RGBA). 8-bit layouts map to `bgra8Unorm`/`rgba8Unorm`; anything else (16-bit, float,
@@ -300,25 +300,25 @@ git commit -m "feat: reuse the bounded bitmap for navigator and current drawer i
       never guessed. Blending is premultiplied source-over the canvas background colour. Pair the mapping with a
       **channel-identity pixel test** (a fixture with known, distinct R/G/B values) so a red/blue swap cannot pass as
       "parity".
-- [ ] Step 4: Mipmaps are **mandatory**: generate after upload, `mipFilter = .linear`, no shader LOD clamp that
+- [x] Step 4: Mipmaps are **mandatory**: generate after upload, `mipFilter = .linear`, no shader LOD clamp that
       bypasses the chain. Sampler min/mag linear; magnification of a proxy stays linear (D6).
-- [ ] Step 5: Colour management is configured on the **surface**, not merely carried by the texture: the
+- [x] Step 5: Colour management is configured on the **surface**, not merely carried by the texture: the
       `MTKView`/`CAMetalLayer` colour space is set from the render bitmap's colour space, so a Display-P3 image is
       composited as P3 instead of being reinterpreted as sRGB downstream. If the drawable cannot be configured for the
       input's colour space, route to Quartz (spec §10).
-- [ ] Step 6: Geometry: quad = `displayPixelSize × zoom` in points × backingScale, NDC from `drawableSize`; rotate by
+- [x] Step 6: Geometry: quad = `displayPixelSize × zoom` in points × backingScale, NDC from `drawableSize`; rotate by
       quarter turns; mirror; keep `ViewportState` as the only viewport model. Flip on upload (or map UVs) so the image
       is not upside down — verify with a 1:1 parity test at scale 1.0 (RMSE must be ≈0 against the Quartz reference, as
       the D-series sanity check showed).
-- [ ] Step 7: On-demand lifecycle in `MetalCanvasSurface`: `isPaused = true`, `enableSetNeedsDisplay = true`;
+- [x] Step 7: On-demand lifecycle in `MetalCanvasSurface`: `isPaused = true`, `enableSetNeedsDisplay = true`;
       `setNeedsDisplay` only for new bitmap, viewport change, resize/layout, backing-scale change, drawable/colour
       change, background change.
-- [ ] Step 8: `ImageCanvasView` keeps gestures/hit testing and hosts the surface; on any Metal failure it renders the
+- [x] Step 8: `ImageCanvasView` keeps gestures/hit testing and hosts the surface; on any Metal failure it renders the
       **bounded bitmap over the source rect** through the existing Quartz path (never a native lazy source).
-- [ ] Step 9: Tests — parity on small fixtures for identity/zoom/pan/90° rotation/mirror/alpha/sRGB/P3/BGRA-vs-RGBA/1×
+- [x] Step 9: Tests — parity on small fixtures for identity/zoom/pan/90° rotation/mirror/alpha/sRGB/P3/BGRA-vs-RGBA/1×
       vs 2× backing scale/strong minification; a forced-failure injection proving the fallback is selected and no
       `Image IO` allocation appears.
-- [ ] Step 10: Verify with the harness: `.work/minbench` parity numbers at 1.0× (≈0 RMSE) and the D-series minification
+- [x] Step 10 (partly): Verify with the harness: `.work/minbench` parity numbers at 1.0× (≈0 RMSE) and the D-series minification
       numbers for the shipped sampler setup; `renderbench` zoom/pan/idle for 60 fps and ~40 mW.
 
 ```bash

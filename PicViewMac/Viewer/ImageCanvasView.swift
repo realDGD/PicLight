@@ -11,6 +11,7 @@ public final class ImageCanvasView: NSView {
     public var renderImage: RenderImage? {
         didSet {
             guard renderImage != oldValue else { return }
+            pushToMetal()
             needsDisplay = true
         }
     }
@@ -20,11 +21,56 @@ public final class ImageCanvasView: NSView {
     public var image: CGImage? { renderImage?.bitmap }
 
     public var viewport = ViewportState() {
-        didSet { needsDisplay = true; onViewportChange?(viewport) }
+        didSet { pushToMetal(); needsDisplay = true; onViewportChange?(viewport) }
     }
 
     public var backgroundColor: NSColor = .clear {
-        didSet { needsDisplay = true }
+        didSet { pushToMetal(); needsDisplay = true }
+    }
+
+    // MARK: - Metal
+
+    /// Creates the renderer; injectable so a test can force the Quartz fallback.
+    var metalRendererFactory: () -> MetalImageRenderer? = { MetalImageRenderer() }
+    private var metalSurface: MetalCanvasSurface?
+
+    /// True when this canvas is drawing through Metal rather than Quartz.
+    public var isUsingMetal: Bool { metalSurface != nil }
+
+    /// True when the bitmap on screen can actually be presented by Metal. A 16-bit or
+    /// indexed bitmap cannot, and then the Quartz path draws it — with the same
+    /// source-rectangle geometry, never an oversized native decode.
+    public var isUsingMetalForCurrentImage: Bool {
+        guard metalSurface != nil, let renderImage else { return false }
+        return MetalImageRenderer.canRender(renderImage.bitmap)
+    }
+
+    /// Metal is set up only inside a real window, so headless tests and the drawing
+    /// they assert keep exercising the Quartz path.
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else {
+            metalSurface?.removeFromSuperview()
+            metalSurface = nil
+            needsDisplay = true
+            return
+        }
+        guard metalSurface == nil, let renderer = metalRendererFactory(),
+              let surface = MetalCanvasSurface(frame: bounds, renderer: renderer) else {
+            needsDisplay = true
+            return
+        }
+        addSubview(surface)
+        metalSurface = surface
+        pushToMetal()
+        needsDisplay = true
+    }
+
+    private func pushToMetal() {
+        guard let surface = metalSurface else { return }
+        let renderable = renderImage.map { MetalImageRenderer.canRender($0.bitmap) } ?? false
+        surface.update(renderImage: renderable ? renderImage : nil,
+                       viewport: viewport, backgroundColor: backgroundColor)
     }
 
     public var wheelMode: WheelMode = .zoom { didSet { router.wheelMode = wheelMode } }
@@ -153,6 +199,10 @@ public final class ImageCanvasView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         backgroundColor.setFill()
         bounds.fill()
+        // When the surface is presenting this bitmap, the canvas paints only the
+        // background. An unsupported bitmap (16-bit, indexed) falls through to the
+        // Quartz path below instead of leaving an empty canvas.
+        if isUsingMetalForCurrentImage { return }
         guard let renderImage else { return }
 
         // The bitmap is mapped over the source rectangle: a bounded proxy and a
@@ -284,6 +334,10 @@ public final class ImageCanvasView: NSView {
 
     public override func layout() {
         super.layout()
+        if let metalSurface, metalSurface.frame != bounds {
+            metalSurface.frame = bounds
+            pushToMetal()
+        }
         refit()
     }
 }

@@ -376,6 +376,8 @@ Failure returns `nil` and selects Quartz. It must never `fatalError` merely beca
 
 The release script must copy the SwiftPM resource bundle/compiled Metal library into the packaged app's `Contents/Resources`.
 
+**Implementation note (2026-09-18): the shader ships as a copied source and the release build compiles it.** The environment used for this implementation cannot install the Xcode Metal toolchain — `xcodebuild -downloadComponent MetalToolchain` fails fetching its asset catalogue (`mesu.apple.com` is unreachable here) and only a launcher stub exists at `XcodeDefault.xctoolchain/usr/bin/metal` — while declaring the `.metal` file as a `.process` resource makes *every* build fail with `cannot execute tool 'metal' due to missing Metal Toolchain`. So the file is declared as `.copy` and `scripts/build-release.sh` compiles it with `xcrun metal`/`metallib` into `Contents/Resources/default.metallib`, **failing the release** if it cannot. The locator prefers that compiled library; only when it is absent (development on a machine without the toolchain) does it compile the shipped `.metal` source once at first use — the source file from the bundle, never a string literal in code. The packaged-app check in `verify-release.sh` still requires the compiled library, and it needs a machine with the toolchain to run.
+
 `verify-release.sh` must test both:
 
 - packaged app can locate/create the Metal pipeline;
