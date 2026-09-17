@@ -82,50 +82,6 @@ final class WindowPlacementStoreTests: XCTestCase {
 }
 
 final class HoverVisibilityTests: XCTestCase {
-    func testTopChromeRevealsImmediatelyAndHidesAfterTheDelayedFade() {
-        var model = HoverVisibilityModel()
-        model.pointerEnteredTop(at: 0)
-        XCTAssertTrue(model.update(at: 0))
-        XCTAssertTrue(model.topVisible)
-
-        model.pointerExitedTop(at: 1.0)
-        XCTAssertFalse(model.update(at: 1.1), "the fade delay has not elapsed yet")
-        XCTAssertTrue(model.topVisible)
-        XCTAssertTrue(model.update(at: 1.4))
-        XCTAssertFalse(model.topVisible)
-    }
-
-    func testIdlePointerEventuallyHidesChrome() {
-        var model = HoverVisibilityModel()
-        // The pointer stays inside the top region but never moves again.
-        model.pointerEnteredTop(at: 0)
-        XCTAssertTrue(model.update(at: 0))
-        XCTAssertTrue(model.topVisible)
-
-        XCTAssertFalse(model.update(at: 1.0), "still within the idle window")
-        XCTAssertTrue(model.topVisible)
-        XCTAssertTrue(model.update(at: 2.0), "idle inactivity hides chrome after ~1.5–2 s")
-        XCTAssertFalse(model.topVisible)
-    }
-
-    func testPointerActivityKeepsTheMinimapAliveAndFitHidesIt() {
-        var model = HoverVisibilityModel()
-        model.setZoomedIn(true, at: 0)
-        XCTAssertTrue(model.update(at: 0.2))
-        XCTAssertTrue(model.minimapVisible)
-
-        XCTAssertTrue(model.update(at: 5))
-        XCTAssertFalse(model.minimapVisible, "the minimap fades after ~1.5 s idle")
-
-        model.zoomActivity(at: 6)
-        _ = model.update(at: 6.1)
-        XCTAssertTrue(model.minimapVisible, "zoom or pan interaction brings it back")
-
-        model.setZoomedIn(false, at: 6.2)
-        _ = model.update(at: 6.3)
-        XCTAssertFalse(model.minimapVisible, "the minimap never shows at Fit")
-    }
-
     func testDrawerOpensAfterTheDelayAndClosesAfterTheLeaveDelay() {
         var model = HoverVisibilityModel()
         model.pointerEnteredLeftEdge(at: 0)
@@ -153,30 +109,46 @@ final class HoverVisibilityTests: XCTestCase {
         XCTAssertTrue(model.drawerVisible)
     }
 
-    func testImmersiveModeStartsHiddenButStillAllowsHoverReveal() {
+    func testPointerActivityKeepsTheMinimapAliveAndFitHidesIt() {
         var model = HoverVisibilityModel()
-        model.pointerEnteredTop(at: 0)
-        _ = model.update(at: 0)
-        XCTAssertTrue(model.topVisible)
+        model.setZoomedIn(true, at: 0)
+        XCTAssertTrue(model.update(at: 0.2))
+        XCTAssertTrue(model.minimapVisible)
 
-        model.setImmersive(true, at: 1)
-        XCTAssertFalse(model.topVisible)
-        XCTAssertFalse(model.bottomVisible)
-        XCTAssertTrue(model.chromeHidden)
+        XCTAssertTrue(model.update(at: 5))
+        XCTAssertFalse(model.minimapVisible, "the minimap fades after ~1.5 s idle")
 
-        model.pointerEnteredTop(at: 2)
-        _ = model.update(at: 2)
-        XCTAssertTrue(model.topVisible, "immersive mode still reveals chrome on hover")
+        model.zoomActivity(at: 6)
+        _ = model.update(at: 6.1)
+        XCTAssertTrue(model.minimapVisible, "zoom or pan interaction brings it back")
+
+        model.setZoomedIn(false, at: 6.2)
+        _ = model.update(at: 6.3)
+        XCTAssertFalse(model.minimapVisible, "the minimap never shows at Fit")
     }
 
-    func testBottomBarFollowsTheSameHoverFadeBehavior() {
+    func testImmersiveModeHidesOverlayChromeButKeepsThePin() {
         var model = HoverVisibilityModel()
-        XCTAssertFalse(model.bottomVisible)
-        model.pointerEnteredTop(at: 0)
+        model.setDrawerPinned(true, at: 0)
         _ = model.update(at: 0.1)
-        XCTAssertTrue(model.bottomVisible)
-        model.pointerExitedTop(at: 0.2)
-        _ = model.update(at: 0.6)
-        XCTAssertFalse(model.bottomVisible)
+        XCTAssertTrue(model.drawerVisible)
+
+        model.setImmersive(true, at: 1)
+        _ = model.update(at: 1.1)
+        XCTAssertFalse(model.drawerVisible, "immersive hides overlay chrome")
+        XCTAssertTrue(model.drawerPinned)
+
+        model.setImmersive(false, at: 2)
+        _ = model.update(at: 2.1)
+        XCTAssertTrue(model.drawerVisible, "leaving immersive restores the pinned drawer")
+    }
+
+    /// The model no longer carries any window-management state: the titlebar is
+    /// AppKit's and is always visible.
+    func testModelHasNoTopChromeState() {
+        let model = HoverVisibilityModel()
+        XCTAssertTrue(model.chromeHidden, "only the drawer and minimap are model state")
+        XCTAssertFalse(model.drawerVisible)
+        XCTAssertFalse(model.minimapVisible)
     }
 }

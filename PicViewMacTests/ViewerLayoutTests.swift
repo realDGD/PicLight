@@ -1,0 +1,383 @@
+import XCTest
+import AppKit
+@testable import PicViewMac
+
+/// The viewer layout refactor: a standard titlebar, a fixed bottom tool dock, and
+/// a drawer that reserves real space instead of overlaying when pinned.
+@MainActor
+final class ViewerLayoutTests: XCTestCase {
+    private func makeViewer() throws -> (controller: ViewerWindowController, viewer: ViewerViewController) {
+        let controller = ViewerWindowController()
+        controller.present()
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        viewer.view.layoutSubtreeIfNeeded()
+        return (controller, viewer)
+    }
+
+    private func settle(_ seconds: TimeInterval = 0.3) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    private func loadImage(_ viewer: ViewerViewController) {
+        viewer.open(url: Fixtures.url("static.png"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline { settle(0.05) }
+        settle(0.4)
+    }
+
+    // MARK: - Titlebar
+
+    func testViewerUsesTheStandardVisibleTitlebar() throws {
+        let (controller, _) = try makeViewer()
+        defer { controller.close() }
+        guard let window = controller.window else { return XCTFail("no window") }
+
+        XCTAssertTrue(window.styleMask.contains(.titled))
+        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
+                       "content must start below the titlebar")
+        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertFalse(window.titlebarAppearsTransparent)
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            XCTAssertNotNil(window.standardWindowButton(button))
+        }
+        XCTAssertEqual(window.title, "PicLight", "no image: the app name is the title")
+    }
+
+    func testTitleFollowsTheCurrentImage() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        loadImage(viewer)
+        XCTAssertEqual(controller.window?.title, "static.png",
+                       "the standard titlebar shows the current file")
+    }
+
+    func testTitlebarAndTrafficLightsAreNotPartOfViewerChrome() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertFalse(viewer.chromeViewsForTesting.keys.contains("topBar"),
+                       "there is no viewer-owned top bar any more")
+        // The viewer's own chrome never reaches into the titlebar band: the content
+        // view starts below it.
+        guard let content = controller.window?.contentView else { return XCTFail("no content") }
+        let titlebarHeight = controller.window!.frame.height - content.frame.height
+        XCTAssertGreaterThan(titlebarHeight, 0, "the standard titlebar occupies real space")
+    }
+
+    // MARK: - Tool dock
+
+    func testToolDockExposesTheViewerCommands() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
+        XCTAssertEqual(dock.commands,
+                       [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomActualPixels,
+                        .moveToTrash, .showImageInfo])
+    }
+
+    func testToolDockIsFixedChromeCentredOnTheCanvas() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        loadImage(viewer)
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
+
+        XCTAssertFalse(dock.isHidden, "the dock is fixed chrome once an image is shown")
+        settle()
+        let dockCenter = dock.superview!.convert(CGPoint(x: dock.frame.midX, y: dock.frame.midY),
+                                                to: viewer.view)
+        let canvasCenterX = canvas.frame.midX
+        XCTAssertEqual(dockCenter.x, canvasCenterX, accuracy: 2,
+                       "the dock is centred on the canvas, not on the window")
+        XCTAssertLessThan(dockCenter.y, canvas.frame.minY + 60,
+                          "the dock sits near the bottom of the image area")
+    }
+
+    func testDockHoverScalesButtonsAndReturnsToBaseline() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
+        let buttons = dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+        XCTAssertEqual(buttons.count, 7, "six tools plus the playback button")
+
+        XCTAssertEqual(buttons[0].currentScale, 1, accuracy: 0.001)
+        buttons[1].onHoverChanged?(true)
+        XCTAssertEqual(buttons[1].currentScale, ViewerToolDockView.hoveredScale, accuracy: 0.001)
+        XCTAssertEqual(buttons[0].currentScale, ViewerToolDockView.neighbourScale, accuracy: 0.001,
+                       "the immediate neighbour lifts slightly, like a Dock")
+        XCTAssertEqual(buttons[3].currentScale, 1, accuracy: 0.001,
+                       "buttons further away are unaffected")
+
+        buttons[1].onHoverChanged?(false)
+        XCTAssertEqual(buttons[1].currentScale, 1, accuracy: 0.001)
+        XCTAssertEqual(buttons[0].currentScale, 1, accuracy: 0.001)
+    }
+
+    /// The dock is a viewer subview, never a window of its own.
+    func testDockAndInfoCardAddNoTopLevelWindows() throws {
+        let before = NSApp.windows.count
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        loadImage(viewer)
+        viewer.setInfoCardVisible(true)
+        settle()
+        XCTAssertEqual(NSApp.windows.count, before + 1,
+                       "only the viewer window itself is added")
+        XCTAssertTrue(viewer.chromeViewsForTesting["toolDock"]!.isDescendant(of: viewer.view))
+        XCTAssertTrue(viewer.chromeViewsForTesting["infoCard"]!.isDescendant(of: viewer.view))
+    }
+
+    // MARK: - Drawer pin layout
+
+    func testPinnedDrawerReservesCanvasWidth() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        loadImage(viewer)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
+        let rootWidth = viewer.view.bounds.width
+        let drawerWidth = viewer.currentDrawerWidth
+
+        XCTAssertEqual(canvas.frame.width, rootWidth, accuracy: 1,
+                       "unpinned: the canvas owns the whole content area")
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        XCTAssertEqual(canvas.frame.width, rootWidth - drawerWidth, accuracy: 1,
+                       "pinned: the canvas is the remaining area")
+        XCTAssertEqual(canvas.frame.minX, drawerWidth, accuracy: 1)
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        XCTAssertEqual(canvas.frame.width, rootWidth, accuracy: 1,
+                       "unpinning restores the full width")
+    }
+
+    func testDrawerWidthStaysInTheDocumentedRange() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertGreaterThanOrEqual(viewer.currentDrawerWidth, ThumbnailDrawerView.minimumWidth)
+        XCTAssertLessThanOrEqual(viewer.currentDrawerWidth, ThumbnailDrawerView.maximumWidth)
+    }
+
+    // MARK: - Fit follows the canvas
+
+    /// The whole point of moving to real constraints: fit is measured against
+    /// canvas bounds, so nothing has to subtract the sidebar by hand.
+    func testFitIsMeasuredAgainstTheCanvasNotTheWindow() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        // A tall, narrow window, so the canvas *width* is what limits the fit and
+        // the assertion below is meaningful. The remembered window size from other
+        // tests would otherwise make the height the binding constraint.
+        controller.window?.setContentSize(NSSize(width: 400, height: 600))
+        loadImage(viewer)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"] as? ImageCanvasView)
+
+        viewer.perform(.zoomToFit)
+        settle()
+        let unpinnedFit = viewer.viewerState.viewport.fitScale
+        XCTAssertEqual(unpinnedFit,
+                       ViewportState.fitScale(imagePixels: canvas.imagePixelSize,
+                                              viewPoints: canvas.bounds.size),
+                       accuracy: 0.0001)
+        XCTAssertEqual(unpinnedFit, canvas.bounds.width / canvas.imagePixelSize.width,
+                       accuracy: 0.01, "width binds in this geometry")
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        let pinnedFit = viewer.viewerState.viewport.fitScale
+        XCTAssertEqual(canvas.bounds.width, 400 - viewer.currentDrawerWidth, accuracy: 1)
+        XCTAssertEqual(pinnedFit,
+                       ViewportState.fitScale(imagePixels: canvas.imagePixelSize,
+                                              viewPoints: canvas.bounds.size),
+                       accuracy: 0.0001,
+                       "fit is re-measured against the narrower canvas")
+        XCTAssertEqual(pinnedFit, canvas.bounds.width / canvas.imagePixelSize.width,
+                       accuracy: 0.01,
+                       "fit uses the canvas width, not the window width minus a hand-written inset")
+        XCTAssertLessThan(pinnedFit, unpinnedFit,
+                          "the narrower canvas fits the image smaller")
+        XCTAssertTrue(viewer.viewerState.viewport.isAtFit,
+                      "a viewer sitting at Fit stays at Fit after pinning")
+    }
+
+    // MARK: - Panels follow the canvas
+
+    func testDockNavigatorAndInfoFollowTheCanvasWhenPinned() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        loadImage(viewer)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
+        let minimap = try XCTUnwrap(viewer.chromeViewsForTesting["minimap"])
+        let infoCard = try XCTUnwrap(viewer.chromeViewsForTesting["infoCard"])
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"])
+        let bottomBar = try XCTUnwrap(viewer.chromeViewsForTesting["bottomBar"])
+
+        func checkAnchors(_ label: String) {
+            let canvasFrame = canvas.frame
+            for (name, view) in [("minimap", minimap), ("infoCard", infoCard),
+                                 ("toolDock", dock), ("bottomBar", bottomBar)] {
+                XCTAssertGreaterThanOrEqual(view.frame.minX, canvasFrame.minX - 1,
+                                            "\(label): \(name) must sit inside the canvas area")
+            }
+            XCTAssertEqual(minimap.frame.maxX, canvasFrame.maxX - 14, accuracy: 2,
+                           "\(label): the minimap hugs the canvas trailing edge")
+            XCTAssertEqual(dock.frame.midX, canvasFrame.midX, accuracy: 2,
+                           "\(label): the dock stays centred on the canvas")
+            XCTAssertEqual(infoCard.frame.minX, canvasFrame.minX + 14, accuracy: 2,
+                           "\(label): the info card hugs the canvas leading edge")
+        }
+
+        settle()
+        checkAnchors("unpinned")
+        viewer.toggleDrawerPinForTesting()
+        settle(0.6)
+        checkAnchors("pinned")
+    }
+
+    // MARK: - Zoom survives a pin toggle
+
+    func testPinningPreservesAManualZoomAndItsFocalPoint() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        controller.window?.setContentSize(NSSize(width: 400, height: 600))
+        loadImage(viewer)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"] as? ImageCanvasView)
+
+        viewer.perform(.zoomToFit)
+        viewer.perform(.zoomDoubleFit)          // a manual zoom, not Fit any more
+        var viewport = viewer.viewerState.viewport
+        // A focal point that stays inside the clampable range both before and
+        // after pinning, so any movement would be a real defect.
+        viewport.normalizedCenter = CGPoint(x: 0.62, y: 0.5)
+        viewer.canvasViewportForTesting = viewport
+        settle()
+        let zoomBefore = viewer.viewerState.viewport.zoomScale
+        XCTAssertFalse(viewer.viewerState.viewport.isAtFit)
+        // The zoomed image must still be wider than the pinned canvas, otherwise
+        // the axis legitimately re-centres and the check would be vacuous.
+        XCTAssertGreaterThan(canvas.imagePixelSize.width * zoomBefore,
+                             canvas.bounds.width - viewer.currentDrawerWidth)
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        XCTAssertEqual(viewer.viewerState.viewport.zoomScale, zoomBefore, accuracy: 0.0001,
+                       "pinning must not silently reset a manual zoom")
+        XCTAssertEqual(viewer.viewerState.viewport.normalizedCenter.x, 0.62, accuracy: 0.02,
+                       "the focal point is preserved across the re-layout")
+        XCTAssertEqual(viewer.viewerState.viewport.normalizedCenter.y, 0.5, accuracy: 0.02)
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        XCTAssertEqual(viewer.viewerState.viewport.zoomScale, zoomBefore, accuracy: 0.0001,
+                       "unpinning also keeps the manual zoom")
+        XCTAssertEqual(viewer.viewerState.viewport.normalizedCenter.x, 0.62, accuracy: 0.02)
+        let visible = viewer.viewerState.viewport.visibleNormalizedRect(
+            imagePixels: canvas.imagePixelSize, viewPoints: canvas.bounds.size)
+        XCTAssertLessThanOrEqual(visible.maxX, 1.0001, "the viewport stays inside the image")
+        XCTAssertGreaterThanOrEqual(visible.minX, -0.0001)
+    }
+
+    func testMinimumSizeGrowsSoThePinnedCanvasStaysUsable() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        guard let window = controller.window else { return XCTFail("no window") }
+        XCTAssertEqual(window.minSize.width, ViewerWindow.defaultMinimumSize.width, accuracy: 1)
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        XCTAssertGreaterThan(window.minSize.width, ViewerWindow.defaultMinimumSize.width,
+                             "pinned, the minimum width must still leave room for the image")
+        XCTAssertGreaterThanOrEqual(window.minSize.width - viewer.currentDrawerWidth, 320,
+                                    "at least 320 pt of canvas remains at the minimum size")
+
+        viewer.toggleDrawerPinForTesting()
+        settle(0.5)
+        XCTAssertEqual(window.minSize.width, ViewerWindow.defaultMinimumSize.width, accuracy: 1)
+    }
+}
+
+/// The in-viewer information card.
+@MainActor
+final class ImageInfoCardTests: XCTestCase {
+    private func makeViewer() throws -> (controller: ViewerWindowController, viewer: ViewerViewController) {
+        let controller = ViewerWindowController()
+        controller.present()
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        viewer.open(url: Fixtures.url("static.png"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        return (controller, viewer)
+    }
+
+    func testInfoCardTogglesInTheViewerWithoutCreatingAWindow() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        let card = try XCTUnwrap(viewer.chromeViewsForTesting["infoCard"] as? ImageInfoCardView)
+        let windowsBefore = NSApp.windows.count
+
+        viewer.perform(.showImageInfo)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(card.isHidden, "the card appears inside the viewer")
+        XCTAssertTrue(card.isDescendant(of: viewer.view))
+        XCTAssertEqual(NSApp.windows.count, windowsBefore,
+                       "showing image info must not open a window")
+
+        viewer.perform(.showImageInfo)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(card.isHidden, "clicking the info command again hides the card")
+    }
+
+    func testInfoCardSitsAtTheCanvasLowerLeftAndRefreshesWithTheImage() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { controller.close() }
+        let card = try XCTUnwrap(viewer.chromeViewsForTesting["infoCard"] as? ImageInfoCardView)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
+        viewer.perform(.showImageInfo)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+        XCTAssertEqual(card.frame.minX, canvas.frame.minX + 14, accuracy: 2)
+        // Bottom-anchored inside the image area and capped in height, rather than
+        // "centred low": on a short canvas the cap legitimately makes it tall.
+        XCTAssertGreaterThanOrEqual(card.frame.minY, canvas.frame.minY - 1,
+                                    "the card stays inside the image area")
+        XCTAssertLessThan(card.frame.minY, canvas.frame.midY,
+                          "the card is anchored towards the bottom, not the top")
+        XCTAssertLessThanOrEqual(card.frame.maxY, canvas.frame.maxY + 1)
+        XCTAssertLessThanOrEqual(card.frame.height,
+                                 canvas.frame.height * ImageInfoCardView.maximumHeightFraction + 2,
+                                 "the card never takes over the whole image area")
+        XCTAssertLessThanOrEqual(card.frame.width, ImageInfoCardView.maximumWidth + 1)
+        XCTAssertGreaterThan(card.rowCount, 1)
+        XCTAssertEqual(card.shownFile, "static.png")
+
+        // Switching images refreshes the card rather than leaving stale metadata.
+        viewer.session.select(url: Fixtures.url("static.bmp"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertEqual(card.shownFile, "static.bmp", "the card follows the current image")
+    }
+
+    func testInfoRowsComeFromTheReaderNotFromTheCard() {
+        let metadata = ImageMetadata(fileName: "x.jpg", fileSize: 2048,
+                                     colorSpace: "Display P3", bitDepth: 8,
+                                     fields: ["像素尺寸": "100 × 50", "方向": "6"])
+        let descriptor = ImageDescriptor(sourceURL: URL(fileURLWithPath: "/tmp/x.jpg"),
+                                         pixelSize: CGSize(width: 100, height: 50))
+        let rows = ImageInfoCardView.rows(metadata: metadata, descriptor: descriptor)
+        XCTAssertEqual(rows.first?.0, "文件")
+        XCTAssertEqual(rows.first?.1, "x.jpg")
+        XCTAssertTrue(rows.contains { $0.0 == "EXIF 方向" && $0.1 == "6" },
+                      "the stored orientation is reported as stored")
+        XCTAssertTrue(rows.contains { $0.0 == "显示尺寸" && $0.1 == "100 × 50" })
+    }
+}

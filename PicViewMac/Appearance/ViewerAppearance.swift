@@ -45,6 +45,10 @@ public enum ViewerAppearanceMode: String, CaseIterable, Codable, Sendable {
 /// placed over the image canvas for decoration.
 public class MaterialHostView: NSView {
     public enum Style {
+        /// Plain system material. Used for the viewer's own chrome (tool dock,
+        /// info card, bottom bar) where readability matters more than effect.
+        case hud
+        /// Native glass on macOS 26+, a system material before that.
         case chrome
         case drawer
     }
@@ -67,12 +71,15 @@ public class MaterialHostView: NSView {
     /// `true` when this surface is rendered with native Liquid Glass.
     public var usesNativeGlass: Bool { glassView != nil }
 
+    /// `true` when a translucent material is actually installed for the current OS.
+    public var usesSystemMaterial: Bool { effectView != nil }
+
     public init(style: Style) {
         self.style = style
         super.init(frame: .zero)
         wantsLayer = true
 
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, *), style != .hud {
             let glass = NSGlassEffectView()
             glass.style = style == .drawer ? .regular : .clear
             glass.cornerRadius = style == .drawer ? 0 : 10
@@ -87,8 +94,8 @@ public class MaterialHostView: NSView {
             glassView = glass
         } else {
             let effect = NSVisualEffectView()
-            effect.material = style == .chrome ? .hudWindow : .sidebar
-            effect.blendingMode = style == .chrome ? .withinWindow : .behindWindow
+            effect.material = style == .drawer ? .sidebar : .hudWindow
+            effect.blendingMode = style == .drawer ? .behindWindow : .withinWindow
             effect.state = .followsWindowActiveState
             effect.translatesAutoresizingMaskIntoConstraints = false
             effect.wantsLayer = true

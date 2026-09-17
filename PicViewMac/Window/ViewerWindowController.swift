@@ -19,6 +19,9 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onDescriptorAvailable = { [weak self] descriptor in
             self?.applyImageSizedFrameIfNeeded(imagePixels: descriptor.displayPixelSize)
         }
+        viewerViewController.onTitleChanged = { [weak self] name in
+            self?.window?.title = name ?? "PicLight"
+        }
         window.setFrame(contentRect, display: false)
         window.center()
     }
@@ -49,7 +52,9 @@ public final class ViewerWindowController: NSWindowController {
               let window, !window.styleMask.contains(.fullScreen) else { return }
         let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         guard let visible else { return }
-        let insets = NSEdgeInsets(top: TopHoverBarView.height, left: 0, bottom: 40, right: 0)
+        // The titlebar is AppKit's now, so the content area already excludes it;
+        // only the viewer's own bottom chrome needs room.
+        let insets = NSEdgeInsets(top: 0, left: 0, bottom: 40, right: 0)
         let frame = WindowPlacementStore.imageSizedFrame(imagePixels: imagePixels,
                                                         chromeInsets: insets, visibleFrame: visible)
         window.setFrame(frame, display: true)

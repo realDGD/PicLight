@@ -16,8 +16,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let rootView = ViewerRootView()
     private let emptyState = EmptyStateView()
     private let canvas = ImageCanvasView()
-    private let topBar = TopHoverBarView()
-    private let bottomBar = BottomInfoBarView(style: .chrome)
+    private let toolDock = ViewerToolDockView()
+    private let infoCard = ImageInfoCardView()
+    private let bottomBar = BottomInfoBarView(style: .hud)
     private let drawer = ThumbnailDrawerView(style: .drawer)
     private let minimap = NavigatorView()
     private let errorLabel = NSTextField(labelWithString: "")
@@ -26,13 +27,20 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let thumbnails: ThumbnailPipeline
     private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
-    private let infoWindow = ImageInfoWindowController()
 
     private var hover = HoverVisibilityModel()
     private var chromeTimer: Timer?
     private var animationTimer: Timer?
     private let clock = AnimationClock()
     private var drawerWidthConstraint: NSLayoutConstraint?
+    // Canvas leading is switched when the drawer is pinned, so every consumer of
+    // canvas bounds (fit, zoom, navigator, dock, info card) sees the real area.
+    private var canvasLeadingToRoot: NSLayoutConstraint?
+    private var canvasLeadingToDrawer: NSLayoutConstraint?
+    private var infoCardHeightConstraint: NSLayoutConstraint?
+    private var isDrawerReservingSpace = false
+    private var isInfoCardVisible = false
+    private var infoCardSuppressed = false
     private var pendingDirection: NavigationDirection = .unknown
     private var onDemandFrameTask: Task<Void, Never>?
 
@@ -60,9 +68,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// Chrome views by name, for hit-testing and layering tests.
     var chromeViewsForTesting: [String: NSView] {
-        ["topBar": topBar, "bottomBar": bottomBar, "drawer": drawer,
-         "minimap": minimap, "canvas": canvas, "emptyState": emptyState]
+        ["bottomBar": bottomBar, "drawer": drawer, "minimap": minimap,
+         "canvas": canvas, "emptyState": emptyState,
+         "toolDock": toolDock, "infoCard": infoCard]
     }
+
+    /// Chrome that participates in hover/idle visibility (the titlebar does not:
+    /// it is AppKit's and always visible).
+    static let hoverChromeNames: Set<String> = ["bottomBar", "drawer", "minimap", "toolDock"]
 
     /// Re-applies the current hover state without inventing pointer movement.
     func applyChromeVisibilityForTesting() {
@@ -74,8 +87,19 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         emptyState.isHidden ? nil : emptyState.reason
     }
 
+    /// Sets the canvas viewport directly, for layout tests that need a specific
+    /// zoom and focal point.
+    var canvasViewportForTesting: ViewportState {
+        get { canvas.viewport }
+        set { canvas.viewport = newValue; viewerState.viewport = newValue }
+    }
+
     /// Drives the pin button the way the drawer's button does.
     func toggleDrawerPinForTesting() {
+        toggleDrawerPin()
+    }
+
+    private func toggleDrawerPin() {
         let now = Date().timeIntervalSinceReferenceDate
         hover.setDrawerPinned(!hover.drawerPinned, at: now)
         hover.update(at: now)
@@ -89,7 +113,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         view = root
 
         canvas.translatesAutoresizingMaskIntoConstraints = false
-        topBar.translatesAutoresizingMaskIntoConstraints = false
+        toolDock.translatesAutoresizingMaskIntoConstraints = false
+        infoCard.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         drawer.translatesAutoresizingMaskIntoConstraints = false
         minimap.translatesAutoresizingMaskIntoConstraints = false
@@ -102,16 +127,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         root.addSubview(canvas)
         root.addSubview(emptyState)
         root.addSubview(errorLabel)
-        root.addSubview(topBar)
         root.addSubview(bottomBar)
         root.addSubview(drawer)
         root.addSubview(minimap)
+        root.addSubview(toolDock)
+        root.addSubview(infoCard)
 
         let drawerWidth = drawer.widthAnchor.constraint(equalToConstant: ThumbnailDrawerView.minimumWidth)
         drawerWidthConstraint = drawerWidth
+        let canvasLeadingToRoot = canvas.leadingAnchor.constraint(equalTo: root.leadingAnchor)
+        let canvasLeadingToDrawer = canvas.leadingAnchor.constraint(equalTo: drawer.trailingAnchor)
+        self.canvasLeadingToRoot = canvasLeadingToRoot
+        self.canvasLeadingToDrawer = canvasLeadingToDrawer
 
         NSLayoutConstraint.activate([
-            canvas.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            canvasLeadingToRoot,
             canvas.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             canvas.topAnchor.constraint(equalTo: root.topAnchor),
             canvas.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -124,13 +154,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             errorLabel.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             errorLabel.centerYAnchor.constraint(equalTo: root.centerYAnchor),
 
-            topBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            topBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            topBar.topAnchor.constraint(equalTo: root.topAnchor),
-            topBar.heightAnchor.constraint(equalToConstant: TopHoverBarView.height),
-
-            bottomBar.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            bottomBar.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
+            // The bottom cluster is anchored to the canvas, so pinning the drawer
+            // moves it with the image instead of leaving it off-centre.
+            bottomBar.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
+            bottomBar.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -8),
             bottomBar.heightAnchor.constraint(equalToConstant: BottomInfoBarView.height),
 
             drawer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
@@ -138,11 +165,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             drawer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             drawerWidth,
 
-            minimap.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
-            minimap.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -44),
+            minimap.trailingAnchor.constraint(equalTo: canvas.trailingAnchor, constant: -14),
+            minimap.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -34),
             minimap.widthAnchor.constraint(equalToConstant: NavigatorView.defaultSize.width),
             minimap.heightAnchor.constraint(equalToConstant: NavigatorView.defaultSize.height),
+
+            toolDock.centerXAnchor.constraint(equalTo: canvas.centerXAnchor),
+            toolDock.bottomAnchor.constraint(equalTo: canvas.bottomAnchor,
+                                             constant: -ViewerToolDockView.bottomInset),
+
+            infoCard.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
+            infoCard.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
+            infoCard.widthAnchor.constraint(lessThanOrEqualToConstant: ImageInfoCardView.maximumWidth),
         ])
+        // The card grows with its content up to a fraction of the canvas.
+        infoCardHeightConstraint = infoCard.heightAnchor.constraint(equalToConstant: 0)
 
         configureCallbacks()
     }
@@ -171,7 +208,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         startChromeTimer()
         if let window = view.window {
             window.acceptsMouseMovedEvents = true
-            topBar.attachStandardButtons(from: window)
             applyAppearance()
         }
     }
@@ -187,7 +223,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         rootView.onPointerExited = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.hover.pointerExitedTop(at: now)
             self.hover.pointerExitedDrawer(at: now)
             self.hover.update(at: now)
             self.applyChromeVisibility()
@@ -228,8 +263,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.applyChromeVisibility()
         }
 
-        topBar.onCommand = { [weak self] command in
+        toolDock.onCommand = { [weak self] command in
             self?.perform(command)
+        }
+        infoCard.onClose = { [weak self] in
+            self?.setInfoCardVisible(false)
         }
         drawer.onSelect = { [weak self] index in
             guard let self else { return }
@@ -268,7 +306,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.doubleClickMode = settings.doubleClickMode
         canvas.backgroundColor = settings.appearance.canvasBackground
         drawer.filenameMode = settings.thumbnailFilenames
-        topBar.setFilename(session.currentItem?.displayName, visible: settings.showTopFilename)
         applyAppearance()
         refreshBottomBar()
     }
@@ -346,7 +383,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             viewerState.applyEmptyState()
             canvas.image = nil
             errorLabel.isHidden = true
-            topBar.setFilename(nil, visible: false)
             onTitleChanged?(nil)
             refreshBottomBar()
             renderEmptyState()
@@ -363,7 +399,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         stopAnimation()
         errorLabel.isHidden = true
         viewerState.errorMessage = nil
-        topBar.setFilename(item.displayName, visible: settings.showTopFilename)
         onTitleChanged?(item.displayName)
         drawer.setCurrentIndex(index)
         drawer.scrollCurrentIntoView()
@@ -432,6 +467,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         viewerState.viewport = canvas.viewport
         refreshEmptyState()
+        // Fixed chrome (dock, bottom bar) follows the presence of an image, so it
+        // must be re-evaluated when the image changes rather than only on the next
+        // pointer event.
+        applyChromeVisibility()
         regenerateNavigatorPreview()
         refreshMinimap()
         refreshBottomBar()
@@ -495,7 +534,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func refreshPlaybackChrome() {
-        topBar.setAnimated(viewerState.isAnimated, isPlaying: viewerState.playback == .playing)
+        toolDock.setAnimated(viewerState.isAnimated, isPlaying: viewerState.playback == .playing)
+        refreshInfoCard()
     }
 
     // MARK: - Drawer
@@ -546,12 +586,53 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func applyChromeVisibility() {
         let snapshot = hover.snapshot
-        setChrome(topBar, visible: snapshot.top)
-        setChrome(bottomBar, visible: snapshot.bottom)
-        setChrome(drawer, visible: snapshot.drawer)
-        setChrome(minimap, visible: snapshot.minimap)
+        let immersive = hover.immersive
+        // The tool dock is fixed chrome while a viewer is usable; immersive mode
+        // takes the overlay chrome away.
+        setChrome(toolDock, visible: !immersive && viewerState.currentImage != nil)
+        setChrome(bottomBar, visible: !immersive && viewerState.currentImage != nil)
+        setChrome(drawer, visible: snapshot.drawer && !immersive)
+        setChrome(minimap, visible: snapshot.minimap && !immersive)
+        setChrome(infoCard, visible: !immersive && isInfoCardVisible)
+        if immersive { infoCardSuppressed = true } else if infoCardSuppressed {
+            // Leaving immersive mode restores whatever the user had open.
+            infoCardSuppressed = false
+        }
         drawer.setPinned(hover.drawerPinned)
-        fadeStandardButtons(visible: snapshot.top)
+        applyDrawerLayout()
+    }
+
+    /// Switches the canvas between "full width" and "right of the drawer" and
+    /// re-fits around the new area. Because every consumer reads canvas bounds,
+    /// nothing else needs to know about the drawer.
+    private func applyDrawerLayout() {
+        let pinned = hover.drawerPinned
+        guard pinned != isDrawerReservingSpace else { return }
+        isDrawerReservingSpace = pinned
+
+        // Keep the user's focal point across the re-layout.
+        let previousCenter = canvas.viewport.normalizedCenter
+        let wasAtFit = canvas.viewport.isAtFit
+
+        canvasLeadingToRoot?.isActive = !pinned
+        canvasLeadingToDrawer?.isActive = pinned
+        (view.window as? ViewerWindow)?.applyMinimumSize(drawerWidth: pinned ? currentDrawerWidth : 0)
+        view.layoutSubtreeIfNeeded()
+
+        var viewport = canvas.viewport
+        viewport.fitScale = ViewportState.fitScale(imagePixels: canvas.imagePixelSize,
+                                                   viewPoints: canvas.bounds.size)
+        if wasAtFit {
+            // Fit stays Fit, now measured against the smaller area.
+            viewport.zoomScale = viewport.fitScale
+            viewport.normalizedCenter = CGPoint(x: 0.5, y: 0.5)
+        } else {
+            // A manual zoom level is preserved; only its clamping is re-evaluated.
+            viewport.normalizedCenter = previousCenter
+            viewport.clampCenter(imagePixels: canvas.imagePixelSize,
+                                 viewPoints: canvas.bounds.size, backingScale: canvas.backingScale)
+        }
+        canvas.viewport = viewport
     }
 
     /// Fade in, or fade out and then leave the hit-testing hierarchy. Leaving
@@ -595,36 +676,29 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
-    /// The traffic lights are the window's own standard buttons, so they can only
-    /// be faded; hover detection never depends on them.
-    private func fadeStandardButtons(visible: Bool) {
-        guard let window = view.window else { return }
-        let duration = AccessibilityAppearance.chromeFadeDuration
-        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
-            .compactMap { window.standardWindowButton($0) }
-        guard duration > 0 else {
-            buttons.forEach { $0.alphaValue = visible ? 1 : 0 }
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            buttons.forEach { $0.animator().alphaValue = visible ? 1 : 0 }
-        }
-    }
-
     // MARK: - Pointer zones
 
     /// Geometry of the hover regions, derived from the live layout so tests and
     /// the app agree on what "the left edge" means.
     var zoneGeometry: ViewerZoneGeometry {
-        ViewerZoneGeometry(topBarHeight: TopHoverBarView.height,
+        ViewerZoneGeometry(topBarHeight: 0,
                            hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
                            drawerWidth: drawerWidthConstraint?.constant ?? ThumbnailDrawerView.minimumWidth)
     }
 
+    /// Drawer hit region in root coordinates. A pinned drawer owns exactly the
+    /// space it reserves; an unpinned one is only reachable while it is open.
+    var drawerRegion: CGRect {
+        CGRect(x: 0, y: 0, width: currentDrawerWidth, height: rootView.bounds.height)
+    }
+
+    var currentDrawerWidth: CGFloat {
+        drawerWidthConstraint?.constant ?? ThumbnailDrawerView.minimumWidth
+    }
+
     func zone(forRootPoint point: CGPoint) -> ViewerPointerZone {
         zoneGeometry.zone(for: point, in: rootView.bounds,
-                          drawerVisible: hover.drawerVisible,
+                          drawerVisible: hover.drawerVisible || hover.drawerPinned,
                           minimapRect: minimap.isHidden ? nil : minimap.frame)
     }
 
@@ -635,20 +709,16 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         hover.pointerMoved(at: now)
 
         switch zone(forRootPoint: point) {
-        case .topChrome:
-            hover.pointerEnteredTop(at: now)
-        case .leftEdgeHotZone:
+        case .topChrome, .leftEdgeHotZone:
+            // No chrome lives at the top any more; the standard titlebar is
+            // AppKit's. The left edge is the drawer's trigger region.
             hover.pointerEnteredLeftEdge(at: now)
-            hover.pointerExitedTop(at: now)
         case .drawerSurface:
             // Keeping the pointer inside the drawer keeps it open.
             hover.pointerEnteredDrawer(at: now)
-            hover.pointerExitedTop(at: now)
         case .minimapSurface:
             hover.zoomActivity(at: now)
-            hover.pointerExitedTop(at: now)
         case .canvas:
-            hover.pointerExitedTop(at: now)
             hover.pointerExitedDrawer(at: now)
         }
 
@@ -777,9 +847,26 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
+    /// Toggles the in-viewer information card. No window is ever created for it.
     private func showImageInfo() {
-        guard let metadata = viewerState.metadata else { return }
-        infoWindow.show(metadata: metadata, descriptor: viewerState.descriptor, relativeTo: view.window)
+        guard viewerState.metadata != nil else { return }
+        setInfoCardVisible(!isInfoCardVisible)
+    }
+
+    func setInfoCardVisible(_ visible: Bool) {
+        isInfoCardVisible = visible
+        if visible { refreshInfoCard() }
+        applyChromeVisibility()
+    }
+
+    /// Keeps the card in step with the current image; the card scrolls internally
+    /// and is capped to a fraction of the canvas rather than the whole window.
+    private func refreshInfoCard() {
+        infoCard.update(metadata: viewerState.metadata, descriptor: viewerState.descriptor)
+        let maximum = max(80, canvas.bounds.height * ImageInfoCardView.maximumHeightFraction)
+        let target = min(maximum, CGFloat(infoCard.rowCount) * 22 + 44)
+        infoCardHeightConstraint?.constant = target
+        infoCardHeightConstraint?.isActive = isInfoCardVisible
     }
 
     // MARK: - Chrome refresh
@@ -844,17 +931,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     var chromeSnapshot: ChromeSnapshot {
         ChromeSnapshot(
-            top: hover.snapshot.top, bottom: hover.snapshot.bottom,
+            top: false, bottom: !bottomBar.isHidden,
             drawer: hover.snapshot.drawer, minimap: hover.snapshot.minimap,
             drawerRows: drawer.visibleRowCount,
             canvasFrame: canvas.frame,
             zoomScale: canvas.viewport.zoomScale,
             fitScale: canvas.viewport.fitScale,
-            usesNativeSurface: topBar.usesNativeGlass || bottomBar.usesNativeGlass || drawer.usesNativeGlass,
+            usesNativeSurface: bottomBar.usesNativeGlass || drawer.usesNativeGlass
+                || toolDock.usesNativeGlass || infoCard.usesNativeGlass,
             canvasView: canvas,
             drawerView: drawer,
             minimapView: minimap,
-            topBarView: topBar,
+            topBarView: toolDock,
             isAnimationTimerActive: animationTimer != nil,
             activeAnimationClocks: animationTimer == nil ? 0 : 1
         )

@@ -3,7 +3,9 @@ import AppKit
 /// Which part of the viewer a pointer position belongs to. Pure geometry so the
 /// routing can be unit tested without synthesising mouse events.
 public enum ViewerPointerZone: Equatable, Sendable {
-    /// The ~44 px band at the top that reveals the hover bar.
+    /// Reserved: nothing hovers at the top any more, because the standard AppKit
+    /// titlebar lives there and is always visible. Kept so the geometry stays total
+    /// and a future top surface can reuse it.
     case topChrome
     /// The narrow invisible strip at the left edge that opens the drawer.
     case leftEdgeHotZone
@@ -18,6 +20,8 @@ public enum ViewerPointerZone: Equatable, Sendable {
 /// Zone geometry for one viewer. `bounds` is the viewer's content rect and the
 /// point is in the same (non-flipped) coordinate space.
 public struct ViewerZoneGeometry: Equatable, Sendable {
+    /// Height of an optional top surface. Zero in the current layout, where the
+    /// window management strip is the standard titlebar rather than viewer chrome.
     public var topBarHeight: CGFloat
     public var hotZoneWidth: CGFloat
     public var drawerWidth: CGFloat
@@ -28,8 +32,8 @@ public struct ViewerZoneGeometry: Equatable, Sendable {
         self.drawerWidth = drawerWidth
     }
 
-    /// Top band wins over the left edge, which wins over the drawer surface: the
-    /// narrow hot zone is exactly `hotZoneWidth`, never the drawer's full width.
+    /// The left edge wins over the drawer surface: the hot zone is exactly
+    /// `hotZoneWidth`, never the drawer's full width.
     ///
     /// The bounds test is inclusive on every edge on purpose: `CGRect.contains`
     /// excludes `maxX`/`maxY`, which would leave the window's outermost pixel row
@@ -39,7 +43,7 @@ public struct ViewerZoneGeometry: Equatable, Sendable {
         guard bounds.width > 0, bounds.height > 0,
               point.x >= bounds.minX, point.x <= bounds.maxX,
               point.y >= bounds.minY, point.y <= bounds.maxY else { return .canvas }
-        if point.y >= bounds.maxY - topBarHeight { return .topChrome }
+        if topBarHeight > 0, point.y >= bounds.maxY - topBarHeight { return .topChrome }
         if point.x <= bounds.minX + hotZoneWidth { return .leftEdgeHotZone }
         if drawerVisible, point.x <= bounds.minX + drawerWidth { return .drawerSurface }
         if let minimapRect, minimapRect.width > 0, minimapRect.height > 0,

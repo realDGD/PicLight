@@ -4,26 +4,32 @@ import AppKit
 
 /// Pointer-zone geometry: pure, so the routing can be checked without synthesising
 /// mouse events.
+@MainActor
 final class PointerZoneTests: XCTestCase {
-    private let geometry = ViewerZoneGeometry(topBarHeight: 44, hotZoneWidth: 12, drawerWidth: 200)
+    private var geometry: ViewerZoneGeometry {
+        ViewerZoneGeometry(topBarHeight: 0,
+                           hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
+                           drawerWidth: 200)
+    }
     private let bounds = CGRect(x: 0, y: 0, width: 1000, height: 700)
 
-    func testTopBandIsTheTopFortyFourPoints() {
+    /// The window management strip is the standard titlebar, so nothing in the
+    /// content area belongs to it.
+    func testThereIsNoTopChromeZone() {
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 500, y: 700), in: bounds, drawerVisible: false),
-                       .topChrome)
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 500, y: 656), in: bounds, drawerVisible: false),
-                       .topChrome, "exactly 44 pt below the top edge is still the band")
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 500, y: 655), in: bounds, drawerVisible: false),
-                       .canvas, "one point lower is the image area")
+                       .canvas)
+        XCTAssertEqual(geometry.zone(for: CGPoint(x: 500, y: 690), in: bounds, drawerVisible: false),
+                       .canvas, "the content area under the titlebar is image, not chrome")
     }
 
-    func testOnlyTheNarrowLeftEdgeOpensTheDrawer() {
+    func testLeftEdgeHotZoneIsTwentyFourPoints() {
+        XCTAssertEqual(ThumbnailDrawerView.hotZoneWidth, 24)
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 0, y: 350), in: bounds, drawerVisible: false),
                        .leftEdgeHotZone)
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 12, y: 350), in: bounds, drawerVisible: false),
-                       .leftEdgeHotZone, "the hot zone is exactly hotZoneWidth wide")
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 13, y: 350), in: bounds, drawerVisible: false),
-                       .canvas, "13 px in is already the image, not the drawer trigger")
+        XCTAssertEqual(geometry.zone(for: CGPoint(x: 23, y: 350), in: bounds, drawerVisible: false),
+                       .leftEdgeHotZone, "23 px in is still the trigger region")
+        XCTAssertEqual(geometry.zone(for: CGPoint(x: 25, y: 350), in: bounds, drawerVisible: false),
+                       .canvas, "25 px in is already the image")
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 100, y: 350), in: bounds, drawerVisible: false),
                        .canvas, "a hidden drawer must not claim its own width")
     }
@@ -37,10 +43,12 @@ final class PointerZoneTests: XCTestCase {
                        .canvas)
     }
 
-    func testTopBandWinsOverTheLeftEdgeAndDrawer() {
-        // The top-left corner belongs to the window controls, not the drawer.
+    func testTopLeftCornerStillBelongsToTheDrawerTrigger() {
+        // With no top chrome, the left edge works all the way to the top.
+        XCTAssertEqual(geometry.zone(for: CGPoint(x: 5, y: 690), in: bounds, drawerVisible: false),
+                       .leftEdgeHotZone)
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 5, y: 690), in: bounds, drawerVisible: true),
-                       .topChrome)
+                       .leftEdgeHotZone)
     }
 
     func testMinimapSurfaceIsIdentifiedWhenSupplied() {
@@ -88,7 +96,7 @@ final class ViewerHitTestingTests: XCTestCase {
         settle()
 
         let hoverChrome = viewer.chromeViewsForTesting.filter {
-            ["topBar", "bottomBar", "drawer", "minimap"].contains($0.key)
+            ViewerViewController.hoverChromeNames.contains($0.key)
         }
         for (name, chrome) in hoverChrome {
             guard chrome.isHidden else {
@@ -108,17 +116,18 @@ final class ViewerHitTestingTests: XCTestCase {
         defer { controller.close() }
         guard let content = controller.window?.contentView else { return XCTFail("no content view") }
 
-        // Pointer into the top band reveals the hover bar.
-        viewer.view.layoutSubtreeIfNeeded()
-        viewer.handlePointer(atRootPoint: CGPoint(x: viewer.view.bounds.midX,
-                                                 y: viewer.view.bounds.height - 10))
+        // The tool dock is fixed chrome: visible and interactive as soon as there
+        // is an image, with no hover required to reveal it.
+        viewer.open(url: Fixtures.url("static.png"))
+        let dockDeadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < dockDeadline { settle(0.05) }
         settle(0.5)
-        let topBar = viewer.chromeViewsForTesting["topBar"]!
-        XCTAssertFalse(topBar.isHidden, "the top band must reveal the hover bar")
-        let topPoint = topBar.convert(CGPoint(x: topBar.bounds.midX, y: topBar.bounds.midY), to: content)
-        let topHit = content.hitTest(topPoint)
-        XCTAssertTrue(topHit === topBar || topHit?.isDescendant(of: topBar) == true,
-                      "the visible hover bar must be interactive")
+        let dock = viewer.chromeViewsForTesting["toolDock"]!
+        XCTAssertFalse(dock.isHidden, "the tool dock is fixed chrome")
+        let dockPoint = dock.convert(CGPoint(x: dock.bounds.midX, y: dock.bounds.midY), to: content)
+        let dockHit = content.hitTest(dockPoint)
+        XCTAssertTrue(dockHit === dock || dockHit?.isDescendant(of: dock) == true,
+                      "the tool dock must be interactive, got \(String(describing: dockHit))")
 
         // A point in the middle of the image belongs to the canvas once an image
         // is loaded, because the empty state steps aside for it.
@@ -183,16 +192,16 @@ final class ViewerHitTestingTests: XCTestCase {
     func testDrawerHotZoneIsNarrowAndDrawerStaysWide() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
-        XCTAssertLessThanOrEqual(ThumbnailDrawerView.hotZoneWidth, 12)
+        XCTAssertEqual(ThumbnailDrawerView.hotZoneWidth, 24)
         XCTAssertGreaterThanOrEqual(ThumbnailDrawerView.minimumWidth, 180)
         XCTAssertLessThanOrEqual(ThumbnailDrawerView.maximumWidth, 220)
 
-        // 13 px in must not be part of the trigger region on the live view. The
-        // point is derived from the live bounds so the check does not depend on
-        // the remembered window size.
+        // 25 px in must not be part of the trigger region on the live view. Points
+        // are derived from the live bounds so the check does not depend on the
+        // remembered window size.
         let midY = viewer.view.bounds.midY
-        XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 13, y: midY)), .canvas)
-        XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 5, y: midY)), .leftEdgeHotZone)
+        XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 25, y: midY)), .canvas)
+        XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 23, y: midY)), .leftEdgeHotZone)
     }
 }
 
@@ -226,7 +235,7 @@ final class ChromeHideGuaranteeTests: XCTestCase {
         }
     }
 
-    func testChromeReturnsToTheHierarchyWhenRevealed() {
+    func testDrawerReturnsToTheHierarchyWhenRevealed() {
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
@@ -235,16 +244,16 @@ final class ChromeHideGuaranteeTests: XCTestCase {
         viewer.applyChromeVisibilityForTesting()
         let hidden = Date().addingTimeInterval(2)
         while Date() < hidden { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
-        let topBar = viewer.chromeViewsForTesting["topBar"]!
-        XCTAssertTrue(topBar.isHidden)
+        let drawer = viewer.chromeViewsForTesting["drawer"]!
+        XCTAssertTrue(drawer.isHidden)
 
-        viewer.handlePointer(atRootPoint: CGPoint(x: viewer.view.bounds.midX,
-                                                 y: viewer.view.bounds.height - 5))
+        // Pointer into the left edge strip brings it back.
+        viewer.handlePointer(atRootPoint: CGPoint(x: 5, y: viewer.view.bounds.midY))
         let revealed = Date().addingTimeInterval(2)
-        while Date() < revealed, topBar.isHidden {
+        while Date() < revealed, drawer.isHidden {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
-        XCTAssertFalse(topBar.isHidden, "the top band must bring the bar back")
-        XCTAssertEqual(topBar.alphaValue, 1, accuracy: 0.01)
+        XCTAssertFalse(drawer.isHidden, "the left edge must bring the drawer back")
+        XCTAssertEqual(drawer.alphaValue, 1, accuracy: 0.01)
     }
 }

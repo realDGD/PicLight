@@ -142,6 +142,7 @@ enum SelfTest {
         verifyStartupPresentation(environment, reporter)
         verifyChrome(viewer, reporter)
         verifyDrawerPin(viewer, reporter)
+        verifyViewerLayout(viewer, reporter)
         verifyNavigatorLayering(viewer, reporter)
         verifyAnimation(viewer, reporter)
         verifyTrash(reporter)
@@ -186,6 +187,18 @@ enum SelfTest {
         let controller = environment.presentNewViewerWindow()
         drainRunLoop(0.4)
         let viewer = controller.viewerViewController
+
+        // 2a. The window management strip is the standard AppKit titlebar.
+        let window = controller.window
+        check("viewer uses the standard visible titlebar",
+              window?.titleVisibility == .visible
+                && window?.titlebarAppearsTransparent == false
+                && window?.styleMask.contains(.fullSizeContentView) == false,
+              "titleVisibility=\(String(describing: window?.titleVisibility)) "
+                + "transparent=\(String(describing: window?.titlebarAppearsTransparent))")
+        check("viewer has no viewer-owned top bar",
+              viewer.chromeViewsForTesting["topBar"] == nil,
+              "top bar views: \(viewer.chromeViewsForTesting.keys.filter { $0.contains("top") })")
         func mouseMovedTrackingViews(in view: NSView) -> [String] {
             var names: [String] = []
             if view.trackingAreas.contains(where: { $0.options.contains(.mouseMoved) }) {
@@ -211,11 +224,13 @@ enum SelfTest {
 
         // 3. The left edge is a narrow band and a hidden drawer is not clickable.
         let bounds = viewer.view.bounds
-        check("left hot zone is at most 12 px",
-              ThumbnailDrawerView.hotZoneWidth <= 12,
+        check("left hot zone is 24 px",
+              ThumbnailDrawerView.hotZoneWidth == 24,
               "\(ThumbnailDrawerView.hotZoneWidth) px")
-        check("13 px in is not the drawer trigger",
-              viewer.zone(forRootPoint: CGPoint(x: 13, y: bounds.midY)) != .leftEdgeHotZone)
+        check("25 px in is not the drawer trigger",
+              viewer.zone(forRootPoint: CGPoint(x: 25, y: bounds.midY)) != .leftEdgeHotZone)
+        check("23 px in is still the drawer trigger",
+              viewer.zone(forRootPoint: CGPoint(x: 23, y: bounds.midY)) == .leftEdgeHotZone)
         check("drawer width stays in the 180-220 px range",
               ThumbnailDrawerView.minimumWidth >= 180 && ThumbnailDrawerView.maximumWidth <= 220)
         if let content = controller.window?.contentView {
@@ -244,11 +259,12 @@ enum SelfTest {
         let baseline = viewer.chromeSnapshot
         viewer.toggleDrawerPinForTesting()
         drainRunLoop(0.5)
-        check("pinning opens the drawer", viewer.chromeSnapshot.drawer)
-        check("a pinned drawer does not move the canvas",
-              viewer.chromeSnapshot.canvasFrame == baseline.canvasFrame
-                && abs(viewer.chromeSnapshot.zoomScale - baseline.zoomScale) < 0.0001,
-              "frame \(viewer.chromeSnapshot.canvasFrame.size), zoom \(viewer.chromeSnapshot.zoomScale)")
+        let pinned = viewer.chromeSnapshot
+        check("pinning opens the drawer", pinned.drawer)
+        check("a pinned drawer reserves space instead of overlaying",
+              pinned.canvasFrame.width == baseline.canvasFrame.width - viewer.currentDrawerWidth,
+              "canvas \(baseline.canvasFrame.width) -> \(pinned.canvasFrame.width), "
+                + "drawer \(viewer.currentDrawerWidth)")
 
         // Moving the pointer away must not close it while pinned.
         viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
@@ -259,6 +275,88 @@ enum SelfTest {
         viewer.toggleDrawerPinForTesting()
         drainRunLoop(0.8)
         check("unpinning restores hover auto-close", viewer.chromeSnapshot.drawer == false)
+        check("unpinning gives the full width back to the canvas",
+              viewer.chromeSnapshot.canvasFrame.width == baseline.canvasFrame.width,
+              "canvas \(viewer.chromeSnapshot.canvasFrame.width) vs \(baseline.canvasFrame.width)")
+    }
+
+    /// The viewer layout refactor: standard titlebar, fixed dock, canvas-anchored
+    /// panels, and an information card instead of a separate window.
+    private static func verifyViewerLayout(_ viewer: ViewerViewController,
+                                           _ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        let chrome = viewer.chromeViewsForTesting
+        guard let dock = chrome["toolDock"] as? ViewerToolDockView,
+              let canvas = chrome["canvas"],
+              let minimap = chrome["minimap"],
+              let bottomBar = chrome["bottomBar"],
+              let card = chrome["infoCard"] as? ImageInfoCardView else {
+            check("viewer layout views exist", false)
+            return
+        }
+
+        check("tool dock carries the viewer commands",
+              dock.commands == [.rotateClockwise, .toggleMirror, .zoomToFit,
+                                .zoomActualPixels, .moveToTrash, .showImageInfo],
+              "\(dock.commands.count) commands")
+        check("tool dock is a viewer subview, not a window",
+              dock.isDescendant(of: viewer.view))
+
+        drainRunLoop(0.3)
+        let unpinnedCanvas = canvas.frame
+        check("panels sit inside the canvas area",
+              minimap.frame.maxX <= canvas.frame.maxX + 1
+                && bottomBar.frame.minX >= canvas.frame.minX - 1,
+              "minimap \(minimap.frame) canvas \(canvas.frame)")
+        check("tool dock is centred on the canvas",
+              abs(dock.frame.midX - canvas.frame.midX) <= 2,
+              "dock \(dock.frame.midX) canvas \(canvas.frame.midX)")
+
+        // Pinning reserves space, and every canvas-anchored panel follows.
+        viewer.toggleDrawerPinForTesting()
+        drainRunLoop(0.6)
+        let pinnedCanvas = canvas.frame
+        check("pinned drawer shrinks the canvas by exactly its width",
+              abs(pinnedCanvas.width - (unpinnedCanvas.width - viewer.currentDrawerWidth)) <= 1,
+              "\(unpinnedCanvas.width) -> \(pinnedCanvas.width)")
+        check("panels follow the canvas when pinned",
+              abs(dock.frame.midX - pinnedCanvas.midX) <= 2
+                && abs(minimap.frame.maxX - (pinnedCanvas.maxX - 14)) <= 2,
+              "dock \(dock.frame.midX) vs canvas \(pinnedCanvas.midX)")
+        // Measured against whatever image is current, using the canvas's own pixel
+        // size rather than a hard-coded fixture size.
+        let currentPixels = (canvas as? ImageCanvasView)?.imagePixelSize ?? .zero
+        let expectedFit = ViewportState.fitScale(imagePixels: currentPixels,
+                                                viewPoints: pinnedCanvas.size)
+        check("fit is measured against the canvas",
+              abs(viewer.viewerState.viewport.fitScale - expectedFit) < 0.35,
+              "fit \(viewer.viewerState.viewport.fitScale) vs canvas fit \(expectedFit) "
+                + "for \(currentPixels) in \(pinnedCanvas.size)")
+        viewer.toggleDrawerPinForTesting()
+        drainRunLoop(0.6)
+        check("unpinning restores the canvas width",
+              abs(canvas.frame.width - unpinnedCanvas.width) <= 1,
+              "\(canvas.frame.width) vs \(unpinnedCanvas.width)")
+
+        // The information card is inside the viewer; no window is created for it.
+        let windowsBefore = NSApp.windows.count
+        viewer.setInfoCardVisible(true)
+        drainRunLoop(0.4)
+        check("image info opens as an in-viewer card",
+              !card.isHidden && card.isDescendant(of: viewer.view))
+        check("image info creates no window", NSApp.windows.count == windowsBefore,
+              "\(windowsBefore) -> \(NSApp.windows.count)")
+        check("image info card is anchored to the canvas lower-left",
+              abs(card.frame.minX - (canvas.frame.minX + 14)) <= 2
+                && card.frame.minY >= canvas.frame.minY - 1,
+              "card \(card.frame) canvas \(canvas.frame)")
+        viewer.setInfoCardVisible(false)
+        // Long enough for the fade plus its fallback to complete.
+        drainRunLoop(0.7)
+        check("image info card closes again", card.isHidden,
+              "alpha \(card.alphaValue)")
     }
 
     /// The navigator: a bounded preview above the glass, one crisp outline above it.
@@ -316,13 +414,13 @@ enum SelfTest {
         check("drawer lists the whole folder", before.drawerRows == viewer.session.items.count,
               "\(before.drawerRows) rows")
 
-        // Pointer into the ~44 px top region.
-        let top = NSPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.height - 10)
-        viewer.simulatePointer(atWindowPoint: top)
-        drainRunLoop(0.4)
+        // The tool dock is fixed chrome: it must already be visible with an image
+        // on screen, with no hover required.
         var snapshot = viewer.chromeSnapshot
-        check("top hover reveals top chrome", snapshot.top)
-        check("top hover reveals the bottom bar", snapshot.bottom)
+        check("tool dock is fixed chrome, not hover-revealed",
+              !viewer.chromeViewsForTesting["toolDock"]!.isHidden)
+        check("bottom info bar is fixed chrome, not hover-revealed",
+              !viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
 
         // Pointer into the left-edge hot zone.
         let leftEdge = NSPoint(x: 3, y: viewer.view.bounds.midY)
@@ -352,30 +450,28 @@ enum SelfTest {
         check("minimap appears past Fit", zoomed.minimap && zoomed.zoomScale > zoomed.fitScale,
               "zoom \(zoomed.zoomScale) vs fit \(zoomed.fitScale)")
 
-        // A pointer that merely rests in the top zone must not keep chrome alive.
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
-                                                      y: viewer.view.bounds.height - 10))
-        drainRunLoop(0.4)
-        check("hover still works before immersive", viewer.chromeSnapshot.top)
+        // The viewer chrome uses a plain system material; the strong glass look was
+        // removed from the top of the window along with the hover bar.
+        check("viewer chrome uses a system surface",
+              viewer.chromeSnapshot.usesNativeSurface, "material present")
 
-        // The auxiliary surfaces use the native system look: Liquid Glass on
-        // macOS 26+, a system material before that. Never a hand-drawn imitation.
-        check("chrome uses the native system surface",
-              viewer.chromeSnapshot.usesNativeSurface,
-              "glass: \(viewer.chromeSnapshot.usesNativeSurface)")
-
-        // Immersive mode hides chrome but keeps the window.
+        // Immersive hides the viewer's overlay chrome. The standard titlebar and
+        // the window itself are AppKit's and stay as they are.
+        let frameBeforeImmersive = viewer.view.window?.frame
         viewer.simulateImmersive(true)
         drainRunLoop(0.4)
-        check("immersive hides chrome even with the pointer parked",
-              viewer.chromeSnapshot.top == false && viewer.chromeSnapshot.drawer == false
-                && viewer.chromeSnapshot.bottom == false)
-        // Moving the pointer into the top region reveals chrome temporarily.
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
-                                                      y: viewer.view.bounds.height - 10))
-        drainRunLoop(0.4)
-        check("immersive still allows temporary hover reveal", viewer.chromeSnapshot.top)
+        check("immersive hides overlay chrome",
+              viewer.chromeSnapshot.drawer == false
+                && viewer.chromeViewsForTesting["toolDock"]!.isHidden
+                && viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
+        check("immersive does not touch the window or its titlebar",
+              viewer.view.window?.frame == frameBeforeImmersive
+                && viewer.view.window?.styleMask.contains(.fullScreen) == false,
+              "frame \(String(describing: viewer.view.window?.frame.size))")
         viewer.simulateImmersive(false)
+        drainRunLoop(0.4)
+        check("leaving immersive restores the fixed chrome",
+              !viewer.chromeViewsForTesting["toolDock"]!.isHidden)
         viewer.perform(.zoomToFit)
     }
 

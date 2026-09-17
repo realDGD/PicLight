@@ -135,7 +135,7 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.closable))
         XCTAssertTrue(window.styleMask.contains(.miniaturizable))
         XCTAssertTrue(window.styleMask.contains(.resizable))
-        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView))
+        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView))
         XCTAssertNotEqual(window.styleMask, .borderless)
         XCTAssertTrue(window.isVisible)
         XCTAssertTrue(window.canBecomeKey)
@@ -149,8 +149,12 @@ final class WindowArchitectureTests: XCTestCase {
             XCTAssertNotNil(window.standardWindowButton(button),
                             "\(button) must be the real standard window button")
         }
-        XCTAssertEqual(window.titleVisibility, .hidden)
-        XCTAssertTrue(window.titlebarAppearsTransparent)
+        XCTAssertEqual(window.titleVisibility, .visible,
+                       "the window management strip is the standard titlebar")
+        XCTAssertFalse(window.titlebarAppearsTransparent,
+                       "the titlebar is a normal, opaque AppKit bar")
+        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
+                       "content starts below the titlebar instead of underneath it")
     }
 
     func testNativeTabbingIsDisabledOnTheWindowAndAppWide() {
@@ -175,11 +179,12 @@ final class WindowArchitectureTests: XCTestCase {
         let numberBefore = window.windowNumber
         let maskBefore = window.styleMask
 
-        // Reveal chrome first, otherwise "immersive hides it" is not observable.
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
-                                                     y: viewer.view.bounds.height - 10))
+        // Reveal overlay chrome first, otherwise "immersive hides it" is not
+        // observable. The left edge is the drawer's trigger now.
+        viewer.simulatePointer(atWindowPoint: NSPoint(x: 5, y: viewer.view.bounds.midY))
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertTrue(viewer.chromeSnapshot.top, "top chrome must be visible before immersive")
+        XCTAssertTrue(viewer.chromeSnapshot.drawer,
+                      "the drawer must be visible before immersive")
 
         viewer.perform(.toggleImmersive)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
@@ -191,7 +196,7 @@ final class WindowArchitectureTests: XCTestCase {
                        "immersive must not replace the top-level window")
         XCTAssertEqual(window.styleMask, maskBefore,
                        "immersive must not change the window style; it is chrome policy only")
-        XCTAssertFalse(chromeImmersive.top, "immersive must actually hide the chrome")
+        XCTAssertFalse(chromeImmersive.drawer, "immersive must actually hide the overlay chrome")
 
         viewer.perform(.toggleImmersive)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
@@ -203,33 +208,27 @@ final class WindowArchitectureTests: XCTestCase {
         let controller = makeViewer()
         let viewer = controller.viewerViewController
         _ = viewer.view
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
-                                                     y: viewer.view.bounds.height - 10))
+        viewer.simulatePointer(atWindowPoint: NSPoint(x: 5, y: viewer.view.bounds.midY))
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertTrue(viewer.chromeSnapshot.drawer, "the drawer is revealed by the left edge")
 
-        viewer.perform(.toggleImmersive)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         viewer.simulateImmersive(true)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertFalse(viewer.chromeSnapshot.top, "immersive starts with chrome hidden")
-        XCTAssertFalse(viewer.chromeSnapshot.drawer)
+        XCTAssertFalse(viewer.chromeSnapshot.drawer, "immersive starts with overlay chrome hidden")
         XCTAssertFalse(viewer.chromeSnapshot.minimap)
 
         // A stationary pointer must not bring chrome back on its own: the chrome
         // timer keeps ticking here without any new pointer event.
         for _ in 0..<6 { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
-        XCTAssertFalse(viewer.chromeSnapshot.top,
+        XCTAssertFalse(viewer.chromeSnapshot.drawer,
                        "a parked pointer must not re-reveal chrome in immersive mode")
-        XCTAssertFalse(viewer.chromeSnapshot.drawer)
 
-        // Moving into the top region does reveal it temporarily.
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
-                                                     y: viewer.view.bounds.height - 10))
+        // Moving into the left edge does reveal it temporarily.
+        viewer.simulatePointer(atWindowPoint: NSPoint(x: 5, y: viewer.view.bounds.midY))
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertTrue(viewer.chromeSnapshot.top)
+        XCTAssertTrue(viewer.chromeSnapshot.drawer)
 
         viewer.simulateImmersive(false)
-        viewer.perform(.toggleImmersive)
     }
 
     func testFullScreenUsesTheStandardCommandAndIsNotEmulatedByResizing() {

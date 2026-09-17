@@ -196,7 +196,9 @@ final class DrawerPinTests: XCTestCase {
         XCTAssertTrue(model.drawerVisible, "leaving immersive mode restores the pinned drawer")
     }
 
-    func testPinnedDrawerNeverChangesTheCanvas() throws {
+    /// Pinning used to be chrome-only; it now reserves real layout space, so the
+    /// canvas narrows and everything anchored to it follows.
+    func testPinningReservesSpaceAndUnpinningRestoresIt() throws {
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
@@ -213,14 +215,18 @@ final class DrawerPinTests: XCTestCase {
         viewer.toggleDrawerPinForTesting()
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertTrue(viewer.chromeSnapshot.drawer, "pinning opens the drawer")
-        XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame)
-        XCTAssertEqual(viewer.chromeSnapshot.zoomScale, baseline.zoomScale, accuracy: 0.0001)
+        let pinned = viewer.chromeSnapshot.canvasFrame
+        XCTAssertLessThan(pinned.width, baseline.canvasFrame.width,
+                          "a pinned drawer reserves leading space instead of overlaying")
+        XCTAssertEqual(pinned.minX, baseline.canvasFrame.minX + ThumbnailDrawerView.minimumWidth,
+                       accuracy: 1,
+                       "the canvas starts where the drawer ends")
 
         viewer.toggleDrawerPinForTesting()
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertFalse(viewer.chromeSnapshot.drawer)
-        XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame)
-        XCTAssertEqual(viewer.chromeSnapshot.zoomScale, baseline.zoomScale, accuracy: 0.0001)
+        XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
+                       "unpinning gives the full width back to the canvas")
     }
 }
 

@@ -6,7 +6,9 @@ import AppKit
 public final class ThumbnailDrawerView: MaterialHostView {
     public static let minimumWidth: CGFloat = 180
     public static let maximumWidth: CGFloat = 220
-    public static let hotZoneWidth: CGFloat = 12
+    /// Edge strip that reveals the unpinned drawer. Wide enough to hit without
+    /// aiming, narrow enough that it never feels like part of the image.
+    public static let hotZoneWidth: CGFloat = 24
 
     public var onSelect: ((Int) -> Void)?
     /// Toggles the pinned state; the drawer never decides this itself.
