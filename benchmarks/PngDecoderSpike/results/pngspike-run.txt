@@ -1,0 +1,150 @@
+=== Fri Sep 18 01:27:27 WITA 2026 | 27.0 | Apple M4 ===
+
+--- ImageIO control (production shape: CreateThumbnailAtIndex streaming) ---
+control: 万萝图.png budget=2048
+  pass 1: 15706 ms | 2048x1365 | sampled footprint peak 0.10 GiB | bitmap 10.7 MiB
+  pass 2: 15808 ms | 2048x1365 | sampled footprint peak 0.09 GiB | bitmap 10.7 MiB
+
+--- libspng progressive, row-wise box downsample to 2048 ---
+row 31999: reached end-of-image state
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   10% rows      1306 ms   peak RSS 0.00 GiB
+   20% rows      2593 ms   peak RSS 0.00 GiB
+   30% rows      3866 ms   peak RSS 0.01 GiB
+   40% rows      5088 ms   peak RSS 0.01 GiB
+   50% rows      6341 ms   peak RSS 0.01 GiB
+   60% rows      7652 ms   peak RSS 0.01 GiB
+   70% rows      8935 ms   peak RSS 0.01 GiB
+   80% rows     10157 ms   peak RSS 0.01 GiB
+   90% rows     11433 ms   peak RSS 0.01 GiB
+
+--- libspng progressive run 2 (repeatability) ---
+row 31999: reached end-of-image state
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   10% rows      1283 ms   peak RSS 0.00 GiB
+   20% rows      2577 ms   peak RSS 0.00 GiB
+   30% rows      3852 ms   peak RSS 0.01 GiB
+   40% rows      5077 ms   peak RSS 0.01 GiB
+   50% rows      6348 ms   peak RSS 0.01 GiB
+   60% rows      7664 ms   peak RSS 0.01 GiB
+   70% rows      8931 ms   peak RSS 0.01 GiB
+   80% rows     10157 ms   peak RSS 0.01 GiB
+   90% rows     11433 ms   peak RSS 0.01 GiB
+
+--- libspng progressive to 8192 (the bucket a large window asks for) ---
+row 31999: reached end-of-image state
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 8192 -> step 5 -> 9600x6400 level (234.4 MiB)
+   10% rows      1362 ms   peak RSS 0.03 GiB
+   20% rows      2714 ms   peak RSS 0.05 GiB
+   30% rows      4049 ms   peak RSS 0.07 GiB
+   40% rows      5334 ms   peak RSS 0.09 GiB
+   50% rows      6649 ms   peak RSS 0.12 GiB
+   60% rows      8025 ms   peak RSS 0.14 GiB
+   70% rows      9352 ms   peak RSS 0.16 GiB
+   80% rows     10657 ms   peak RSS 0.19 GiB
+   90% rows     11994 ms   peak RSS 0.21 GiB
+
+--- libspng progressive 2048, CRC verified (pass A) ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   10% rows      1296 ms   peak RSS 0.00 GiB
+   20% rows      2567 ms   peak RSS 0.00 GiB
+   30% rows      3823 ms   peak RSS 0.01 GiB
+   40% rows      5031 ms   peak RSS 0.01 GiB
+   50% rows      6271 ms   peak RSS 0.01 GiB
+   60% rows      7569 ms   peak RSS 0.01 GiB
+   70% rows      8823 ms   peak RSS 0.01 GiB
+   80% rows     10035 ms   peak RSS 0.01 GiB
+   90% rows     11304 ms   peak RSS 0.01 GiB
+  100% rows     12520 ms   peak RSS 0.01 GiB
+  total 12520 ms | first row at 1 ms | peak RSS 0.01 GiB | rows/s 2556
+  output checksum e77497d867789df3
+
+--- CRC verified (pass B) ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   10% rows      1280 ms   peak RSS 0.00 GiB
+   20% rows      2571 ms   peak RSS 0.00 GiB
+   30% rows      3842 ms   peak RSS 0.01 GiB
+   40% rows      5065 ms   peak RSS 0.01 GiB
+   50% rows      6319 ms   peak RSS 0.01 GiB
+   60% rows      7630 ms   peak RSS 0.01 GiB
+   70% rows      8895 ms   peak RSS 0.01 GiB
+   80% rows     10119 ms   peak RSS 0.01 GiB
+   90% rows     11396 ms   peak RSS 0.01 GiB
+  100% rows     12645 ms   peak RSS 0.01 GiB
+  total 12645 ms | first row at 0 ms | peak RSS 0.01 GiB | rows/s 2531
+  output checksum e77497d867789df3
+
+--- CRC skipped ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   20% rows      2640 ms   peak RSS 0.00 GiB
+   40% rows      5203 ms   peak RSS 0.01 GiB
+   60% rows      7846 ms   peak RSS 0.01 GiB
+   80% rows     10406 ms   peak RSS 0.01 GiB
+  100% rows     12997 ms   peak RSS 0.01 GiB
+  total 12997 ms | first row at 0 ms | peak RSS 0.01 GiB | rows/s 2462
+  output checksum e77497d867789df3
+
+--- libspng + zlib-ng 2.2.4 (NEON), 2048 level ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   10% rows      1559 ms   peak RSS 0.00 GiB
+   20% rows      3107 ms   peak RSS 0.00 GiB
+   30% rows      4685 ms   peak RSS 0.01 GiB
+   40% rows      6139 ms   peak RSS 0.01 GiB
+   50% rows      7637 ms   peak RSS 0.01 GiB
+   60% rows      9220 ms   peak RSS 0.01 GiB
+   70% rows     10736 ms   peak RSS 0.01 GiB
+   80% rows     12187 ms   peak RSS 0.01 GiB
+   90% rows     13717 ms   peak RSS 0.01 GiB
+  100% rows     15174 ms   peak RSS 0.01 GiB
+  total 15174 ms | first row at 1 ms | peak RSS 0.01 GiB | rows/s 2109
+  output checksum e77497d867789df3
+
+--- libspng + zlib-ng, repeat ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 2048 -> step 23 -> 2087x1392 level (11.1 MiB)
+   20% rows      3114 ms   peak RSS 0.00 GiB
+   40% rows      6140 ms   peak RSS 0.01 GiB
+   60% rows      9248 ms   peak RSS 0.01 GiB
+   80% rows     12235 ms   peak RSS 0.01 GiB
+  100% rows     15268 ms   peak RSS 0.01 GiB
+  total 15268 ms | first row at 0 ms | peak RSS 0.01 GiB | rows/s 2096
+  output checksum e77497d867789df3
+
+--- libspng + zlib-ng, 8192 level ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 8192 -> step 5 -> 9600x6400 level (234.4 MiB)
+   20% rows      3228 ms   peak RSS 0.05 GiB
+   40% rows      6353 ms   peak RSS 0.09 GiB
+   60% rows      9599 ms   peak RSS 0.14 GiB
+   80% rows     12715 ms   peak RSS 0.19 GiB
+  100% rows     15844 ms   peak RSS 0.23 GiB
+  total 15844 ms | first row at 0 ms | peak RSS 0.23 GiB | rows/s 2020
+  output checksum a3ac0a3bf83480aa
+
+--- libspng + Apple system zlib, 8192 level (the bucket a large window asks for) ---
+pngspike: /Users/dgd/Downloads/万萝图/万萝图.png
+  libspng 0.7.4 | 48000x32000 8-bit type 6 | row_bytes 192000
+  target 8192 -> step 5 -> 9600x6400 level (234.4 MiB)
+   20% rows      2637 ms   peak RSS 0.05 GiB
+   40% rows      5221 ms   peak RSS 0.09 GiB
+   60% rows      7883 ms   peak RSS 0.14 GiB
+   80% rows     10477 ms   peak RSS 0.19 GiB
+  100% rows     13079 ms   peak RSS 0.23 GiB
+  total 13079 ms | first row at 0 ms | peak RSS 0.23 GiB | rows/s 2447
+  output checksum a3ac0a3bf83480aa

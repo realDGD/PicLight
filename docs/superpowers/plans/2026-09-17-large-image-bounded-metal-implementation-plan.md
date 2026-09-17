@@ -414,12 +414,19 @@ policy already avoids this cost. Report: `benchmarks/QuickLookSpike/results/repo
 
 ## Task 11: Alternative PNG decoder spike (isolated)
 
-- [ ] Step 1: Benchmark libpng/libspng (optionally zlib-ng) on the same image against the ImageIO baseline
+Result: **negative** — libspng 0.7.4 + system zlib is 20.4 % / 3.2 s better than ImageIO
+(12.58 s vs 15.76 s at the 2048 level, 13.08 s at 8192, repeatable within 1 %) with far better
+memory (0.01 GiB vs 0.10 GiB footprint) and per-row cancellation, but that is under the ≥30 % /
+≥5 s bar, and zlib-ng 2.2.4 (NEON) is 21 % *slower* than Apple's zlib, so the inflate backend
+cannot close the gap. part of the 3.2 s is colour management ImageIO does and raw libspng does
+not. Report: `benchmarks/PngDecoderSpike/results/report.md`.
+
+- [x] Step 1: Benchmark libpng/libspng (optionally zlib-ng) on the same image against the ImageIO baseline
       (≈112 MB/s compressed, ≈83 Mpixel/s, 18.1–19.2 s run-to-run).
-- [ ] Step 2: Bar for a production candidate: ≥30 % wall-time or ≥5 s absolute improvement, repeatable, without
+- [x] Step 2 (**bar not met, recorded**): Bar for a production candidate: ≥30 % wall-time or ≥5 s absolute improvement, repeatable, without
       materially worse peak memory; row-wise downsampling and cancellation checkpoints are the structural wins to
       look for. A single-digit percentage is insufficient.
-- [ ] Step 3: Report only — do not integrate.
+- [x] Step 3: Report only — do not integrate.
 
 ## Task 12: Release gate
 
