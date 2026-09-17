@@ -1,0 +1,1427 @@
+T+  -0.000  T0 user open requested (FileOpenCoordinator.open) fp=   12.3MiB res=   67.6MiB peakRSS=    67.6MiB
+T+   0.102  [MAIN] canvas draw ENTER image=nil zoom=1.0000 bounds=637x727 dirty=637x727
+T+   0.102  canvas draw #1 COMPLETE took=0.000s image=nil bounds=637x727 dirty=637x727 fp=   24.4MiB res=   92.7MiB peakRSS=    92.8MiB
+T+   0.119  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.119  [bg] TRAVERSAL #1 kind=thumbnail(maxPx:300)
+T+   0.119  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.119  [bg] TRAVERSAL #2 kind=thumbnail(maxPx:300)
+T+   0.119  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.119  [bg] TRAVERSAL #3 kind=thumbnail(maxPx:300)
+T+   0.119  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.119  [bg] TRAVERSAL #4 kind=thumbnail(maxPx:300)
+T+   0.119  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.119  [bg] TRAVERSAL #5 kind=thumbnail(maxPx:300)
+T+   0.119  T1 CGImageSourceCreateWithURL ... fp=   26.4MiB res=   97.8MiB peakRSS=    98.2MiB
+T+   0.119  T1 CGImageSourceCreateWithURL ... fp=   26.4MiB res=   97.8MiB peakRSS=    98.2MiB
+T+   0.124  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.130  T2 source created fp=   50.9MiB res=  127.0MiB peakRSS=   127.0MiB
+T+   0.130  T2 source created fp=   51.9MiB res=  128.1MiB peakRSS=   128.1MiB
+T+   0.131  T2 descriptor+metadata properties done fp=   53.6MiB res=  132.1MiB peakRSS=   132.1MiB
+T+   0.131  T3 decode about to start (CGImageSourceCreateImageAtIndex) fp=   53.7MiB res=  132.2MiB peakRSS=   132.2MiB
+T+   0.131  T4 CGImage returned (lazy unless it decoded) fp=   53.8MiB res=  132.3MiB peakRSS=   132.3MiB
+T+   0.133  T4 metadata read done fp=   50.6MiB res=  129.8MiB peakRSS=   133.7MiB
+T+   0.133  T2 descriptor+metadata properties done fp=   50.3MiB res=  129.9MiB peakRSS=   133.7MiB
+T+   0.133  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.133  T3 decode about to start (CGImageSourceCreateImageAtIndex) fp=   50.0MiB res=  128.5MiB peakRSS=   133.7MiB
+T+   0.133  T4 CGImage returned (lazy unless it decoded) fp=   50.1MiB res=  128.6MiB peakRSS=   133.7MiB
+T+   0.134  T4 metadata read done fp=   50.4MiB res=  129.0MiB peakRSS=   133.7MiB
+T+   0.134  T5 ViewerState.apply(head:) — image published to UI fp=   50.4MiB res=  127.8MiB peakRSS=   133.7MiB
+T+   0.148  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x727 dirty=637x727
+T+   0.148  canvas draw #2 COMPLETE took=0.000s image=yes bounds=637x727 dirty=637x727 fp=   57.0MiB res=  140.0MiB peakRSS=   140.0MiB
+T+   0.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.168  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x727 dirty=637x727
+T+   0.168  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.168  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.168  canvas draw #3 COMPLETE took=0.000s image=yes bounds=637x727 dirty=637x727 fp=  133.5MiB res=  158.8MiB peakRSS=   159.3MiB
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.169  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.170  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.173  [bg] ThumbnailPipeline.preview END
+T+   0.192  [bg] ThumbnailPipeline.preview END
+T+   0.195  [bg] ThumbnailPipeline.preview END
+T+   0.205  [bg] ThumbnailPipeline.preview END
+T+   0.225  [bg] ThumbnailPipeline.preview END
+T+   0.226  [bg] ThumbnailPipeline.preview END
+T+   0.238  [bg] ThumbnailPipeline.preview END
+T+   0.243  [bg] ThumbnailPipeline.preview END
+T+   0.259  [bg] ThumbnailPipeline.preview END
+T+   0.274  [bg] ThumbnailPipeline.preview END
+T+   0.286  [bg] ThumbnailPipeline.preview END
+T+   0.293  [bg] ThumbnailPipeline.preview END
+T+   0.300  [bg] ThumbnailPipeline.preview END
+T+   0.308  [bg] ThumbnailPipeline.preview END
+T+   0.318  [pulse] mainThreadLatency=    68ms fp=194MiB res=235MiB peakRSS=236MiB
+T+   0.322  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.322  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x727 dirty=637x727
+T+   0.322  canvas draw #4 COMPLETE took=0.000s image=yes bounds=637x727 dirty=637x727 fp=  218.2MiB res=  258.8MiB peakRSS=   260.9MiB
+T+   0.326  [bg] ThumbnailPipeline.preview END
+T+   0.339  [bg] ThumbnailPipeline.preview END
+T+   0.352  [bg] ThumbnailPipeline.preview END
+T+   0.352  [bg] ThumbnailPipeline.preview END
+T+   0.366  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x727 dirty=637x727
+T+   0.366  canvas draw #5 COMPLETE took=0.000s image=yes bounds=637x727 dirty=637x727 fp=  237.8MiB res=  266.0MiB peakRSS=   271.8MiB
+T+   0.381  [bg] ThumbnailPipeline.preview END
+T+   0.381  [bg] ThumbnailPipeline.preview END
+T+   0.388  [bg] ThumbnailPipeline.preview END
+T+   0.402  [bg] ThumbnailPipeline.preview END
+T+   0.409  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.417  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x727 dirty=637x727
+T+   0.417  canvas draw #6 COMPLETE took=0.000s image=yes bounds=637x727 dirty=637x727 fp=  238.0MiB res=  275.7MiB peakRSS=   278.1MiB
+T+   0.419  [bg] ThumbnailPipeline.preview END
+T+   0.444  [bg] ThumbnailPipeline.preview END
+T+   0.456  [bg] ThumbnailPipeline.preview END
+T+   0.456  [bg] ThumbnailPipeline.preview END
+T+   0.456  [bg] ThumbnailPipeline.preview END
+T+   0.463  forcing extra redraw #1 fp=  233.5MiB res=  273.8MiB peakRSS=   282.2MiB
+T+   0.463  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.469  [bg] ThumbnailPipeline.preview END
+T+   0.472  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x763 dirty=637x763
+T+   0.472  canvas draw #7 COMPLETE took=0.000s image=yes bounds=637x763 dirty=637x763 fp=  230.0MiB res=  271.4MiB peakRSS=   282.2MiB
+T+   0.480  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.480  canvas draw #8 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  240.3MiB res=  266.3MiB peakRSS=   282.2MiB
+T+   0.475  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.485  [bg] ThumbnailPipeline.preview END
+T+   0.485  [bg] ThumbnailPipeline.preview END
+T+   0.526  [bg] ThumbnailPipeline.preview END
+T+   0.533  [bg] ThumbnailPipeline.preview END
+T+   0.535  [pulse] mainThreadLatency=    34ms fp=227MiB res=269MiB peakRSS=282MiB
+T+   0.538  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.538  [bg] ThumbnailPipeline.preview END
+T+   0.539  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.539  canvas draw #9 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  228.6MiB res=  267.3MiB peakRSS=   282.2MiB
+T+   0.577  [bg] ThumbnailPipeline.preview END
+T+   0.592  [bg] ThumbnailPipeline.preview END
+T+   0.594  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.596  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.596  canvas draw #10 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.8MiB res=  275.7MiB peakRSS=   283.1MiB
+T+   0.612  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.643  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.651  [bg] ThumbnailPipeline.preview END
+T+   0.653  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.655  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.655  canvas draw #11 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.2MiB res=  246.6MiB peakRSS=   286.4MiB
+T+   0.714  [bg] ThumbnailPipeline.preview END
+T+   0.715  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.718  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.718  canvas draw #12 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.2MiB res=  259.2MiB peakRSS=   286.4MiB
+T+   0.782  [pulse] mainThreadLatency=    30ms fp=216MiB res=271MiB peakRSS=286MiB
+T+   0.783  [bg] ThumbnailPipeline.preview END
+T+   0.783  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.784  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.784  canvas draw #13 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.9MiB res=  272.8MiB peakRSS=   286.4MiB
+T+   0.809  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.860  [bg] ThumbnailPipeline.preview END
+T+   0.861  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.862  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.863  canvas draw #14 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.3MiB res=  197.7MiB peakRSS=   286.4MiB
+T+   0.946  [bg] ThumbnailPipeline.preview END
+T+   0.947  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   0.951  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   0.951  canvas draw #15 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.5MiB res=  200.9MiB peakRSS=   286.4MiB
+T+   1.039  [pulse] mainThreadLatency=    36ms fp=215MiB res=203MiB peakRSS=286MiB
+T+   1.040  [bg] ThumbnailPipeline.preview END
+T+   1.040  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.042  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.042  canvas draw #16 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.0MiB res=  198.3MiB peakRSS=   286.4MiB
+T+   1.142  [bg] ThumbnailPipeline.preview END
+T+   1.143  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.146  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.146  canvas draw #17 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.1MiB res=  198.5MiB peakRSS=   286.4MiB
+T+   1.257  [pulse] mainThreadLatency=     4ms fp=211MiB res=203MiB peakRSS=286MiB
+T+   1.258  [bg] ThumbnailPipeline.preview END
+T+   1.259  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.259  canvas draw #18 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.5MiB res=  198.3MiB peakRSS=   286.4MiB
+T+   1.382  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.383  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.384  [bg] ThumbnailPipeline.preview END
+T+   1.384  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.384  canvas draw #19 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.6MiB res=  194.2MiB peakRSS=   286.4MiB
+T+   1.393  [bg] ThumbnailPipeline.preview END
+T+   1.441  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.441  canvas draw #20 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  203.3MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   1.455  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.457  [bg] ThumbnailPipeline.preview END
+T+   1.474  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.474  canvas draw #21 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   1.492  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.494  [bg] ThumbnailPipeline.preview END
+T+   1.505  [pulse] mainThreadLatency=     0ms fp=207MiB res=195MiB peakRSS=286MiB
+T+   1.507  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.507  canvas draw #22 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   1.530  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.532  [bg] ThumbnailPipeline.preview END
+T+   1.541  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.541  canvas draw #23 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   1.567  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.569  [bg] ThumbnailPipeline.preview END
+T+   1.607  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.607  canvas draw #24 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   1.639  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.640  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.641  [bg] ThumbnailPipeline.preview END
+T+   1.642  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.642  canvas draw #25 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   1.677  [bg] ThumbnailPipeline.preview END
+T+   1.678  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.679  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.679  canvas draw #26 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   1.719  [bg] ThumbnailPipeline.preview END
+T+   1.719  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.721  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.721  canvas draw #27 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   1.764  [pulse] mainThreadLatency=     8ms fp=212MiB res=200MiB peakRSS=286MiB
+T+   1.765  [bg] ThumbnailPipeline.preview END
+T+   1.765  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.767  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.767  canvas draw #28 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   1.815  [bg] ThumbnailPipeline.preview END
+T+   1.815  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.817  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.817  canvas draw #29 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   1.870  [bg] ThumbnailPipeline.preview END
+T+   1.870  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.871  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.871  canvas draw #30 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   1.933  [bg] ThumbnailPipeline.preview END
+T+   1.934  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   1.938  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   1.938  canvas draw #31 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.7MiB res=  195.1MiB peakRSS=   286.4MiB
+T+   2.001  [bg] ThumbnailPipeline.preview END
+T+   2.002  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.005  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.005  canvas draw #32 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.4MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   2.078  [pulse] mainThreadLatency=    72ms fp=209MiB res=196MiB peakRSS=286MiB
+T+   2.078  [bg] ThumbnailPipeline.preview END
+T+   2.079  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.084  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.084  canvas draw #33 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  209.1MiB res=  196.5MiB peakRSS=   286.4MiB
+T+   2.164  [bg] ThumbnailPipeline.preview END
+T+   2.165  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.167  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.167  canvas draw #34 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.3MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   2.258  [pulse] mainThreadLatency=     1ms fp=209MiB res=201MiB peakRSS=286MiB
+T+   2.258  [bg] ThumbnailPipeline.preview END
+T+   2.259  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.262  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.263  canvas draw #35 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.6MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   2.361  [bg] ThumbnailPipeline.preview END
+T+   2.362  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.362  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.362  canvas draw #36 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.2MiB peakRSS=   286.4MiB
+T+   2.478  [bg] ThumbnailPipeline.preview END
+T+   2.478  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.479  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.479  canvas draw #37 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   2.606  [pulse] mainThreadLatency=    99ms fp=213MiB res=200MiB peakRSS=286MiB
+T+   2.607  [bg] ThumbnailPipeline.preview END
+T+   2.608  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.608  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.608  canvas draw #38 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   2.619  [bg] ThumbnailPipeline.preview END
+T+   2.641  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.641  canvas draw #39 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   2.655  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.657  [bg] ThumbnailPipeline.preview END
+T+   2.674  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.674  canvas draw #40 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   2.692  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.694  [bg] ThumbnailPipeline.preview END
+T+   2.708  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.708  canvas draw #41 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   2.730  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.732  [bg] ThumbnailPipeline.preview END
+T+   2.741  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.741  canvas draw #42 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   2.768  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.768  [pulse] mainThreadLatency=     9ms fp=211MiB res=199MiB peakRSS=286MiB
+T+   2.769  [bg] ThumbnailPipeline.preview END
+T+   2.808  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.808  canvas draw #43 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   2.840  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.841  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.841  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.842  canvas draw #44 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.1MiB res=  198.0MiB peakRSS=   286.4MiB
+T+   2.842  [bg] ThumbnailPipeline.preview END
+T+   2.878  [bg] ThumbnailPipeline.preview END
+T+   2.879  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.879  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.879  canvas draw #45 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  198.1MiB peakRSS=   286.4MiB
+T+   2.919  [bg] ThumbnailPipeline.preview END
+T+   2.920  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.921  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.921  canvas draw #46 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.3MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   2.965  [bg] ThumbnailPipeline.preview END
+T+   2.966  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   2.967  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   2.967  canvas draw #47 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.4MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   3.015  [pulse] mainThreadLatency=     6ms fp=209MiB res=201MiB peakRSS=286MiB
+T+   3.016  [bg] ThumbnailPipeline.preview END
+T+   3.017  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.021  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.021  canvas draw #48 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.1MiB res=  195.5MiB peakRSS=   286.4MiB
+T+   3.072  [bg] ThumbnailPipeline.preview END
+T+   3.073  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.075  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.075  canvas draw #49 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.7MiB res=  195.1MiB peakRSS=   286.4MiB
+T+   3.138  [bg] ThumbnailPipeline.preview END
+T+   3.139  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.140  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.142  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.142  canvas draw #50 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.0MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   3.212  [bg] ThumbnailPipeline.preview END
+T+   3.213  [bg] ThumbnailPipeline.preview END
+T+   3.214  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.217  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.217  canvas draw #51 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.4MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   3.289  [pulse] mainThreadLatency=    28ms fp=213MiB res=200MiB peakRSS=286MiB
+T+   3.290  [bg] ThumbnailPipeline.preview END
+T+   3.290  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.291  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.291  canvas draw #52 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   3.375  [bg] ThumbnailPipeline.preview END
+T+   3.376  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.379  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.379  canvas draw #53 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.7MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   3.468  [bg] ThumbnailPipeline.preview END
+T+   3.469  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.471  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.471  canvas draw #54 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.3MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   3.574  [pulse] mainThreadLatency=    62ms fp=213MiB res=201MiB peakRSS=286MiB
+T+   3.574  [bg] ThumbnailPipeline.preview END
+T+   3.575  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.579  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.579  canvas draw #55 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.6MiB res=  196.0MiB peakRSS=   286.4MiB
+T+   3.690  [bg] ThumbnailPipeline.preview END
+T+   3.690  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.691  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.691  canvas draw #56 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   3.817  [pulse] mainThreadLatency=    54ms fp=213MiB res=201MiB peakRSS=286MiB
+T+   3.818  [bg] ThumbnailPipeline.preview END
+T+   3.818  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.821  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.821  canvas draw #57 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.9MiB res=  195.2MiB peakRSS=   286.4MiB
+T+   3.829  [bg] ThumbnailPipeline.preview END
+T+   3.841  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.841  canvas draw #58 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   3.855  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.857  [bg] ThumbnailPipeline.preview END
+T+   3.874  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.875  canvas draw #59 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   3.893  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.895  [bg] ThumbnailPipeline.preview END
+T+   3.907  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.907  canvas draw #60 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   3.930  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.932  [bg] ThumbnailPipeline.preview END
+T+   3.941  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   3.941  canvas draw #61 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  203.4MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   3.967  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   3.969  [bg] ThumbnailPipeline.preview END
+T+   4.008  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.008  canvas draw #62 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   4.039  [pulse] mainThreadLatency=    26ms fp=211MiB res=199MiB peakRSS=286MiB
+T+   4.039  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.041  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.041  canvas draw #63 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.9MiB res=  195.2MiB peakRSS=   286.4MiB
+T+   4.041  [bg] ThumbnailPipeline.preview END
+T+   4.077  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.078  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.079  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.079  canvas draw #64 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.6MiB res=  202.3MiB peakRSS=   286.4MiB
+T+   4.079  [bg] ThumbnailPipeline.preview END
+T+   4.119  [bg] ThumbnailPipeline.preview END
+T+   4.119  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.120  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.120  canvas draw #65 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.3MiB res=  198.6MiB peakRSS=   286.4MiB
+T+   4.165  [bg] ThumbnailPipeline.preview END
+T+   4.165  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.166  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.166  canvas draw #66 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.2MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   4.215  [bg] ThumbnailPipeline.preview END
+T+   4.216  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.216  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.216  canvas draw #67 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.4MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   4.269  [pulse] mainThreadLatency=     5ms fp=212MiB res=200MiB peakRSS=286MiB
+T+   4.270  [bg] ThumbnailPipeline.preview END
+T+   4.271  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.275  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.275  canvas draw #68 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.1MiB res=  195.5MiB peakRSS=   286.4MiB
+T+   4.333  [bg] ThumbnailPipeline.preview END
+T+   4.334  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.337  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.337  canvas draw #69 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.1MiB res=  195.5MiB peakRSS=   286.4MiB
+T+   4.401  [bg] ThumbnailPipeline.preview END
+T+   4.401  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.404  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.404  canvas draw #70 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.8MiB res=  195.2MiB peakRSS=   286.4MiB
+T+   4.477  [bg] ThumbnailPipeline.preview END
+T+   4.478  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.479  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.479  canvas draw #71 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   4.561  [pulse] mainThreadLatency=    46ms fp=213MiB res=200MiB peakRSS=286MiB
+T+   4.562  [bg] ThumbnailPipeline.preview END
+T+   4.562  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.566  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.566  canvas draw #72 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.1MiB res=  195.5MiB peakRSS=   286.4MiB
+T+   4.656  [bg] ThumbnailPipeline.preview END
+T+   4.656  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.658  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.658  canvas draw #73 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.6MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   4.758  [bg] ThumbnailPipeline.preview END
+T+   4.759  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.762  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.762  canvas draw #74 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.0MiB res=  195.4MiB peakRSS=   286.4MiB
+T+   4.874  [pulse] mainThreadLatency=   107ms fp=212MiB res=199MiB peakRSS=286MiB
+T+   4.875  [bg] ThumbnailPipeline.preview END
+T+   4.875  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   4.879  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   4.879  canvas draw #75 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.8MiB res=  195.2MiB peakRSS=   286.4MiB
+T+   5.004  [bg] ThumbnailPipeline.preview END
+T+   5.004  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.008  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.008  canvas draw #76 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.7MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   5.015  [bg] ThumbnailPipeline.preview END
+T+   5.017  [pulse] mainThreadLatency=     0ms fp=207MiB res=195MiB peakRSS=286MiB
+T+   5.041  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.041  canvas draw #77 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   5.055  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.057  [bg] ThumbnailPipeline.preview END
+T+   5.074  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.074  canvas draw #78 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   5.093  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.095  [bg] ThumbnailPipeline.preview END
+T+   5.107  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.107  canvas draw #79 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   5.129  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.131  [bg] ThumbnailPipeline.preview END
+T+   5.140  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.140  canvas draw #80 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   5.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.169  [bg] ThumbnailPipeline.preview END
+T+   5.207  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.207  canvas draw #81 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  203.1MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   5.239  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.241  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.241  canvas draw #82 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.7MiB res=  198.0MiB peakRSS=   286.4MiB
+T+   5.241  [bg] ThumbnailPipeline.preview END
+T+   5.276  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.276  [pulse] mainThreadLatency=     8ms fp=211MiB res=199MiB peakRSS=286MiB
+T+   5.278  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.278  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.278  canvas draw #83 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.8MiB res=  201.5MiB peakRSS=   286.4MiB
+T+   5.278  [bg] ThumbnailPipeline.preview END
+T+   5.319  [bg] ThumbnailPipeline.preview END
+T+   5.320  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.320  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.320  canvas draw #84 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.7MiB res=  198.0MiB peakRSS=   286.4MiB
+T+   5.365  [bg] ThumbnailPipeline.preview END
+T+   5.366  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.370  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.370  canvas draw #85 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.6MiB res=  195.1MiB peakRSS=   286.4MiB
+T+   5.416  [bg] ThumbnailPipeline.preview END
+T+   5.417  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.420  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.420  canvas draw #86 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   5.471  [bg] ThumbnailPipeline.preview END
+T+   5.471  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.474  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.474  canvas draw #87 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.4MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   5.533  [pulse] mainThreadLatency=    13ms fp=212MiB res=199MiB peakRSS=286MiB
+T+   5.534  [bg] ThumbnailPipeline.preview END
+T+   5.534  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.537  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.537  canvas draw #88 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.3MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   5.601  [bg] ThumbnailPipeline.preview END
+T+   5.602  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.603  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.603  canvas draw #89 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   5.677  [bg] ThumbnailPipeline.preview END
+T+   5.678  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.678  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.678  canvas draw #90 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.8MiB res=  194.1MiB peakRSS=   286.4MiB
+T+   5.762  [bg] ThumbnailPipeline.preview END
+T+   5.763  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.766  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.766  canvas draw #91 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   5.857  [pulse] mainThreadLatency=    86ms fp=211MiB res=199MiB peakRSS=286MiB
+T+   5.858  [bg] ThumbnailPipeline.preview END
+T+   5.858  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.862  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.862  canvas draw #92 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   5.961  [bg] ThumbnailPipeline.preview END
+T+   5.973  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   5.974  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   5.974  canvas draw #93 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   6.090  [pulse] mainThreadLatency=    68ms fp=211MiB res=198MiB peakRSS=286MiB
+T+   6.091  [bg] ThumbnailPipeline.preview END
+T+   6.095  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.095  canvas draw #94 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.7MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   6.227  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.228  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.228  canvas draw #95 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.0MiB res=  198.3MiB peakRSS=   286.4MiB
+T+   6.229  [bg] ThumbnailPipeline.preview END
+T+   6.243  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.245  [bg] ThumbnailPipeline.preview END
+T+   6.273  [pulse] mainThreadLatency=     0ms fp=207MiB res=198MiB peakRSS=286MiB
+T+   6.274  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.274  canvas draw #96 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.7MiB res=  198.3MiB peakRSS=   286.4MiB
+T+   6.293  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.295  [bg] ThumbnailPipeline.preview END
+T+   6.308  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.308  canvas draw #97 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.6MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   6.331  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.333  [bg] ThumbnailPipeline.preview END
+T+   6.341  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.341  canvas draw #98 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.7MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   6.369  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.371  [bg] ThumbnailPipeline.preview END
+T+   6.408  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.408  canvas draw #99 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.8MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   6.440  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.442  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.443  [bg] ThumbnailPipeline.preview END
+T+   6.445  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.445  canvas draw #100 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  203.6MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   6.481  [bg] ThumbnailPipeline.preview END
+T+   6.481  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.482  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.482  canvas draw #101 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   6.524  [pulse] mainThreadLatency=     0ms fp=211MiB res=199MiB peakRSS=286MiB
+T+   6.524  [bg] ThumbnailPipeline.preview END
+T+   6.525  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.528  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.528  canvas draw #102 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   6.572  [bg] ThumbnailPipeline.preview END
+T+   6.573  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.574  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.574  canvas draw #103 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   6.625  [bg] ThumbnailPipeline.preview END
+T+   6.626  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.628  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.628  canvas draw #104 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   6.687  [bg] ThumbnailPipeline.preview END
+T+   6.688  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.690  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.691  canvas draw #105 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.6MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   6.754  [bg] ThumbnailPipeline.preview END
+T+   6.755  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.757  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.757  canvas draw #106 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   6.829  [pulse] mainThreadLatency=    55ms fp=212MiB res=199MiB peakRSS=286MiB
+T+   6.831  [bg] ThumbnailPipeline.preview END
+T+   6.831  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.832  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.832  canvas draw #107 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   6.917  [bg] ThumbnailPipeline.preview END
+T+   6.918  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   6.919  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   6.920  canvas draw #108 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  194.3MiB peakRSS=   286.4MiB
+T+   7.023  [bg] ThumbnailPipeline.preview END
+T+   7.025  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.026  [pulse] mainThreadLatency=     0ms fp=207MiB res=194MiB peakRSS=286MiB
+T+   7.028  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.028  canvas draw #109 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   7.161  [bg] ThumbnailPipeline.preview END
+T+   7.162  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.165  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.165  canvas draw #110 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.4MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   7.282  [pulse] mainThreadLatency=     6ms fp=208MiB res=200MiB peakRSS=286MiB
+T+   7.283  [bg] ThumbnailPipeline.preview END
+T+   7.284  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.286  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.286  canvas draw #111 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.3MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   7.417  [bg] ThumbnailPipeline.preview END
+T+   7.418  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.419  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.419  canvas draw #112 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   7.428  [bg] ThumbnailPipeline.preview END
+T+   7.441  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.441  canvas draw #113 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   7.455  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.457  [bg] ThumbnailPipeline.preview END
+T+   7.474  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.474  canvas draw #114 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   7.492  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.494  [bg] ThumbnailPipeline.preview END
+T+   7.507  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.507  canvas draw #115 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   7.530  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.530  [pulse] mainThreadLatency=     2ms fp=212MiB res=200MiB peakRSS=286MiB
+T+   7.532  [bg] ThumbnailPipeline.preview END
+T+   7.541  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.541  canvas draw #116 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   7.568  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.570  [bg] ThumbnailPipeline.preview END
+T+   7.608  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.608  canvas draw #117 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   7.639  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.641  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.641  canvas draw #118 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.4MiB res=  198.7MiB peakRSS=   286.4MiB
+T+   7.641  [bg] ThumbnailPipeline.preview END
+T+   7.677  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.678  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.679  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.679  canvas draw #119 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.0MiB res=  198.7MiB peakRSS=   286.4MiB
+T+   7.679  [bg] ThumbnailPipeline.preview END
+T+   7.719  [bg] ThumbnailPipeline.preview END
+T+   7.720  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.724  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.724  canvas draw #120 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.8MiB res=  199.2MiB peakRSS=   286.4MiB
+T+   7.766  [bg] ThumbnailPipeline.preview END
+T+   7.766  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.769  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.769  canvas draw #121 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  211.7MiB res=  195.2MiB peakRSS=   286.4MiB
+T+   7.851  [pulse] mainThreadLatency=    72ms fp=216MiB res=200MiB peakRSS=286MiB
+T+   7.854  [bg] ThumbnailPipeline.preview END
+T+   7.856  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.856  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.856  canvas draw #122 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.6MiB res=  195.3MiB peakRSS=   286.4MiB
+T+   7.921  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.922  [bg] ThumbnailPipeline.preview END
+T+   7.923  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.923  canvas draw #123 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   7.992  [bg] ThumbnailPipeline.preview END
+T+   7.992  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   7.994  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   7.994  canvas draw #124 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.1MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   8.070  [pulse] mainThreadLatency=    40ms fp=212MiB res=199MiB peakRSS=286MiB
+T+   8.071  [bg] ThumbnailPipeline.preview END
+T+   8.072  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.073  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.073  canvas draw #125 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.5MiB res=  193.8MiB peakRSS=   286.4MiB
+T+   8.160  [bg] ThumbnailPipeline.preview END
+T+   8.161  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.162  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.162  canvas draw #126 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.5MiB res=  193.9MiB peakRSS=   286.4MiB
+T+   8.256  [bg] ThumbnailPipeline.preview END
+T+   8.257  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.261  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.261  canvas draw #127 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.6MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   8.362  [pulse] mainThreadLatency=    81ms fp=211MiB res=198MiB peakRSS=286MiB
+T+   8.363  [bg] ThumbnailPipeline.preview END
+T+   8.364  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.365  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.365  canvas draw #128 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.4MiB res=  193.8MiB peakRSS=   286.4MiB
+T+   8.485  [bg] ThumbnailPipeline.preview END
+T+   8.486  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.490  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.490  canvas draw #129 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.5MiB res=  194.9MiB peakRSS=   286.4MiB
+T+   8.615  [pulse] mainThreadLatency=    83ms fp=211MiB res=198MiB peakRSS=286MiB
+T+   8.616  [bg] ThumbnailPipeline.preview END
+T+   8.617  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.619  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.619  canvas draw #130 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   8.627  [bg] ThumbnailPipeline.preview END
+T+   8.641  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.641  canvas draw #131 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.6MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   8.655  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.657  [bg] ThumbnailPipeline.preview END
+T+   8.674  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.674  canvas draw #132 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.6MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   8.692  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.694  [bg] ThumbnailPipeline.preview END
+T+   8.707  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.707  canvas draw #133 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  202.8MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   8.730  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.732  [bg] ThumbnailPipeline.preview END
+T+   8.740  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.741  canvas draw #134 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.6MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   8.767  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.769  [bg] ThumbnailPipeline.preview END
+T+   8.783  [pulse] mainThreadLatency=     0ms fp=207MiB res=194MiB peakRSS=286MiB
+T+   8.807  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.807  canvas draw #135 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.6MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   8.841  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.843  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.843  [bg] ThumbnailPipeline.preview END
+T+   8.844  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.844  canvas draw #136 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.4MiB res=  193.7MiB peakRSS=   286.4MiB
+T+   8.882  [bg] ThumbnailPipeline.preview END
+T+   8.882  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.886  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.886  canvas draw #137 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.0MiB res=  198.2MiB peakRSS=   286.4MiB
+T+   8.927  [bg] ThumbnailPipeline.preview END
+T+   8.928  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.929  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.929  canvas draw #138 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.5MiB res=  194.1MiB peakRSS=   286.4MiB
+T+   8.977  [bg] ThumbnailPipeline.preview END
+T+   8.978  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   8.979  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   8.979  canvas draw #139 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  206.9MiB res=  194.2MiB peakRSS=   286.4MiB
+T+   9.031  [bg] ThumbnailPipeline.preview END
+T+   9.032  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.034  [pulse] mainThreadLatency=     0ms fp=209MiB res=195MiB peakRSS=286MiB
+T+   9.036  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.036  canvas draw #140 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  209.1MiB res=  195.1MiB peakRSS=   286.4MiB
+T+   9.094  [bg] ThumbnailPipeline.preview END
+T+   9.095  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.096  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.096  canvas draw #141 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.8MiB res=  193.8MiB peakRSS=   286.4MiB
+T+   9.160  [bg] ThumbnailPipeline.preview END
+T+   9.161  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.162  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.162  canvas draw #142 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.4MiB res=  194.5MiB peakRSS=   286.4MiB
+T+   9.235  [bg] ThumbnailPipeline.preview END
+T+   9.236  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.239  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.239  canvas draw #143 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.8MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   9.321  [pulse] mainThreadLatency=    36ms fp=213MiB res=199MiB peakRSS=286MiB
+T+   9.322  [bg] ThumbnailPipeline.preview END
+T+   9.323  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.327  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.327  canvas draw #144 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.9MiB res=  195.0MiB peakRSS=   286.4MiB
+T+   9.419  [bg] ThumbnailPipeline.preview END
+T+   9.420  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.422  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.423  canvas draw #145 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.6MiB res=  194.7MiB peakRSS=   286.4MiB
+T+   9.522  [bg] ThumbnailPipeline.preview END
+T+   9.523  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.527  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.527  canvas draw #146 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  209.0MiB res=  195.1MiB peakRSS=   286.4MiB
+T+   9.632  [pulse] mainThreadLatency=    97ms fp=213MiB res=199MiB peakRSS=286MiB
+T+   9.633  [bg] ThumbnailPipeline.preview END
+T+   9.634  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.635  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.635  canvas draw #147 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.4MiB res=  194.4MiB peakRSS=   286.4MiB
+T+   9.757  [bg] ThumbnailPipeline.preview END
+T+   9.758  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.760  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.760  canvas draw #148 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.8MiB res=  194.8MiB peakRSS=   286.4MiB
+T+   9.764  [bg] ThumbnailPipeline.preview END
+T+   9.787  [pulse] mainThreadLatency=     0ms fp=208MiB res=195MiB peakRSS=286MiB
+T+   9.808  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.808  canvas draw #149 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   9.818  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.820  [bg] ThumbnailPipeline.preview END
+T+   9.841  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.841  canvas draw #150 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   9.855  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.857  [bg] ThumbnailPipeline.preview END
+T+   9.874  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.874  canvas draw #151 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   9.893  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.895  [bg] ThumbnailPipeline.preview END
+T+   9.908  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.908  canvas draw #152 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   9.931  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.932  [bg] ThumbnailPipeline.preview END
+T+   9.941  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+   9.941  canvas draw #153 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+   9.968  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+   9.970  [bg] ThumbnailPipeline.preview END
+T+  10.008  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.008  canvas draw #154 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  194.6MiB peakRSS=   286.4MiB
+T+  10.039  [pulse] mainThreadLatency=     1ms fp=213MiB res=200MiB peakRSS=286MiB
+T+  10.039  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.041  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.041  [bg] ThumbnailPipeline.preview END
+T+  10.043  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.044  canvas draw #155 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.4MiB res=  194.4MiB peakRSS=   286.4MiB
+T+  10.078  [bg] ThumbnailPipeline.preview END
+T+  10.078  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.079  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.079  canvas draw #156 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.4MiB res=  194.4MiB peakRSS=   286.4MiB
+T+  10.119  [bg] ThumbnailPipeline.preview END
+T+  10.119  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.123  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.123  canvas draw #157 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.9MiB res=  194.9MiB peakRSS=   286.4MiB
+T+  10.165  [bg] ThumbnailPipeline.preview END
+T+  10.165  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.169  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.169  canvas draw #158 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  209.0MiB res=  195.1MiB peakRSS=   286.4MiB
+T+  10.214  [bg] ThumbnailPipeline.preview END
+T+  10.215  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.218  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.219  canvas draw #159 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  207.6MiB res=  195.1MiB peakRSS=   286.4MiB
+T+  10.268  [bg] ThumbnailPipeline.preview END
+T+  10.298  [pulse] mainThreadLatency=    10ms fp=209MiB res=197MiB peakRSS=286MiB
+T+  10.299  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.302  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.302  canvas draw #160 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.2MiB res=  198.2MiB peakRSS=   286.4MiB
+T+  10.366  [bg] ThumbnailPipeline.preview END
+T+  10.366  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.368  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.368  canvas draw #161 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.2MiB res=  198.2MiB peakRSS=   286.4MiB
+T+  10.436  [bg] ThumbnailPipeline.preview END
+T+  10.437  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.439  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.439  canvas draw #162 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.2MiB res=  198.2MiB peakRSS=   286.4MiB
+T+  10.516  [bg] ThumbnailPipeline.preview END
+T+  10.516  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.518  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.518  canvas draw #163 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.2MiB res=  198.2MiB peakRSS=   286.4MiB
+T+  10.602  [pulse] mainThreadLatency=    63ms fp=215MiB res=203MiB peakRSS=286MiB
+T+  10.603  [bg] ThumbnailPipeline.preview END
+T+  10.626  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.626  canvas draw #164 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  209.8MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  10.721  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.721  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.722  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.722  canvas draw #165 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  214.2MiB res=  204.8MiB peakRSS=   286.4MiB
+T+  10.723  [bg] ThumbnailPipeline.preview END
+T+  10.820  [pulse] mainThreadLatency=    30ms fp=214MiB res=204MiB peakRSS=286MiB
+T+  10.821  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.822  [bg] ThumbnailPipeline.preview END
+T+  10.822  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.822  canvas draw #166 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.0MiB res=  203.6MiB peakRSS=   286.4MiB
+T+  10.929  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  10.930  [bg] ThumbnailPipeline.preview END
+T+  10.931  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  10.931  canvas draw #167 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.9MiB res=  199.8MiB peakRSS=   286.4MiB
+T+  11.051  [pulse] mainThreadLatency=    10ms fp=213MiB res=206MiB peakRSS=286MiB
+T+  11.051  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.051  canvas draw #168 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.3MiB res=  203.8MiB peakRSS=   286.4MiB
+T+  11.052  [bg] ThumbnailPipeline.preview END
+T+  11.180  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.182  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.182  [bg] ThumbnailPipeline.preview END
+T+  11.185  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.185  canvas draw #169 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  204.2MiB peakRSS=   286.4MiB
+T+  11.213  [bg] ThumbnailPipeline.preview END
+T+  11.241  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.241  canvas draw #170 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  11.276  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.277  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.278  [bg] ThumbnailPipeline.preview END
+T+  11.279  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.279  canvas draw #171 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.5MiB peakRSS=   286.4MiB
+T+  11.317  [pulse] mainThreadLatency=    24ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  11.317  [bg] ThumbnailPipeline.preview END
+T+  11.318  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.322  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.322  canvas draw #172 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.0MiB res=  200.6MiB peakRSS=   286.4MiB
+T+  11.363  [bg] ThumbnailPipeline.preview END
+T+  11.364  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.364  canvas draw #173 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  11.411  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.413  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.413  canvas draw #174 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.3MiB res=  203.8MiB peakRSS=   286.4MiB
+T+  11.413  [bg] ThumbnailPipeline.preview END
+T+  11.464  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.466  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.466  [bg] ThumbnailPipeline.preview END
+T+  11.468  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.468  canvas draw #175 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  204.0MiB peakRSS=   286.4MiB
+T+  11.527  [bg] ThumbnailPipeline.preview END
+T+  11.527  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.529  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.529  canvas draw #176 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.3MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  11.592  [pulse] mainThreadLatency=    49ms fp=221MiB res=205MiB peakRSS=286MiB
+T+  11.593  [bg] ThumbnailPipeline.preview END
+T+  11.594  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.596  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.596  canvas draw #177 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  11.668  [bg] ThumbnailPipeline.preview END
+T+  11.669  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.672  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.672  canvas draw #178 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  11.751  [bg] ThumbnailPipeline.preview END
+T+  11.752  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.755  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.755  canvas draw #179 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  11.843  [pulse] mainThreadLatency=    48ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  11.843  [bg] ThumbnailPipeline.preview END
+T+  11.844  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.846  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.846  canvas draw #180 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  11.943  [bg] ThumbnailPipeline.preview END
+T+  11.944  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  11.946  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  11.946  canvas draw #181 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.055  [pulse] mainThreadLatency=    10ms fp=218MiB res=206MiB peakRSS=286MiB
+T+  12.056  [bg] ThumbnailPipeline.preview END
+T+  12.057  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.059  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.060  canvas draw #182 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  12.177  [bg] ThumbnailPipeline.preview END
+T+  12.178  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.179  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.179  canvas draw #183 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.3MiB res=  199.8MiB peakRSS=   286.4MiB
+T+  12.184  [bg] ThumbnailPipeline.preview END
+T+  12.208  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.208  canvas draw #184 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  12.217  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.219  [bg] ThumbnailPipeline.preview END
+T+  12.241  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.241  canvas draw #185 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  12.255  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.257  [bg] ThumbnailPipeline.preview END
+T+  12.274  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.274  canvas draw #186 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.292  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.294  [bg] ThumbnailPipeline.preview END
+T+  12.296  [pulse] mainThreadLatency=     0ms fp=212MiB res=200MiB peakRSS=286MiB
+T+  12.308  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.308  canvas draw #187 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.330  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.332  [bg] ThumbnailPipeline.preview END
+T+  12.340  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.340  canvas draw #188 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.366  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.368  [bg] ThumbnailPipeline.preview END
+T+  12.408  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.408  canvas draw #189 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.439  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.441  [bg] ThumbnailPipeline.preview END
+T+  12.441  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.443  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.443  canvas draw #190 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.4MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  12.477  [bg] ThumbnailPipeline.preview END
+T+  12.477  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.479  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.479  canvas draw #191 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.517  [bg] ThumbnailPipeline.preview END
+T+  12.518  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.522  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.522  canvas draw #192 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  12.562  [pulse] mainThreadLatency=    14ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  12.562  [bg] ThumbnailPipeline.preview END
+T+  12.563  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.568  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.568  canvas draw #193 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  215.9MiB res=  203.5MiB peakRSS=   286.4MiB
+T+  12.612  [bg] ThumbnailPipeline.preview END
+T+  12.612  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.612  canvas draw #194 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  12.664  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.665  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.666  [bg] ThumbnailPipeline.preview END
+T+  12.668  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.668  canvas draw #195 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  12.726  [bg] ThumbnailPipeline.preview END
+T+  12.727  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.729  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.729  canvas draw #196 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  12.792  [bg] ThumbnailPipeline.preview END
+T+  12.793  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.796  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.796  canvas draw #197 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  12.866  [pulse] mainThreadLatency=    68ms fp=216MiB res=203MiB peakRSS=286MiB
+T+  12.867  [bg] ThumbnailPipeline.preview END
+T+  12.868  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.872  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.872  canvas draw #198 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.3MiB res=  200.8MiB peakRSS=   286.4MiB
+T+  12.950  [bg] ThumbnailPipeline.preview END
+T+  12.951  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  12.955  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  12.955  canvas draw #199 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.0MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  13.042  [bg] ThumbnailPipeline.preview END
+T+  13.043  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.046  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.046  canvas draw #200 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  13.141  [pulse] mainThreadLatency=    93ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  13.142  [bg] ThumbnailPipeline.preview END
+T+  13.143  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.146  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.146  canvas draw #201 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  13.255  [bg] ThumbnailPipeline.preview END
+T+  13.256  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.259  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.259  canvas draw #202 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  13.376  [pulse] mainThreadLatency=    76ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  13.376  [bg] ThumbnailPipeline.preview END
+T+  13.377  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.379  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.379  canvas draw #203 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  13.383  [bg] ThumbnailPipeline.preview END
+T+  13.408  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.408  canvas draw #204 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.417  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.419  [bg] ThumbnailPipeline.preview END
+T+  13.441  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.441  canvas draw #205 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.455  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.457  [bg] ThumbnailPipeline.preview END
+T+  13.474  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.474  canvas draw #206 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.492  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.494  [bg] ThumbnailPipeline.preview END
+T+  13.507  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.507  canvas draw #207 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.529  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.531  [bg] ThumbnailPipeline.preview END
+T+  13.541  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.541  canvas draw #208 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.567  [pulse] mainThreadLatency=    17ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  13.567  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.569  [bg] ThumbnailPipeline.preview END
+T+  13.608  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.608  canvas draw #209 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.639  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.641  [bg] ThumbnailPipeline.preview END
+T+  13.641  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.642  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.642  canvas draw #210 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.3MiB res=  199.8MiB peakRSS=   286.4MiB
+T+  13.677  [bg] ThumbnailPipeline.preview END
+T+  13.677  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.679  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.679  canvas draw #211 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  13.717  [bg] ThumbnailPipeline.preview END
+T+  13.718  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.721  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.721  canvas draw #212 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  13.762  [bg] ThumbnailPipeline.preview END
+T+  13.763  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.767  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.767  canvas draw #213 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.8MiB res=  204.3MiB peakRSS=   286.4MiB
+T+  13.811  [pulse] mainThreadLatency=     9ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  13.812  [bg] ThumbnailPipeline.preview END
+T+  13.812  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.812  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.812  canvas draw #214 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.2MiB res=  199.7MiB peakRSS=   286.4MiB
+T+  13.865  [bg] ThumbnailPipeline.preview END
+T+  13.865  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.867  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.867  canvas draw #215 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  13.926  [bg] ThumbnailPipeline.preview END
+T+  13.927  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.929  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.929  canvas draw #216 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  13.992  [bg] ThumbnailPipeline.preview END
+T+  13.993  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  13.996  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  13.996  canvas draw #217 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  14.066  [pulse] mainThreadLatency=    14ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  14.067  [bg] ThumbnailPipeline.preview END
+T+  14.068  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.071  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.071  canvas draw #218 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  14.150  [bg] ThumbnailPipeline.preview END
+T+  14.151  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.155  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.155  canvas draw #219 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  14.243  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.245  [bg] ThumbnailPipeline.preview END
+T+  14.246  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.246  canvas draw #220 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  14.343  [pulse] mainThreadLatency=    39ms fp=218MiB res=206MiB peakRSS=286MiB
+T+  14.344  [bg] ThumbnailPipeline.preview END
+T+  14.345  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.346  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.346  canvas draw #221 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.4MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  14.457  [bg] ThumbnailPipeline.preview END
+T+  14.458  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.458  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.459  canvas draw #222 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.3MiB res=  199.8MiB peakRSS=   286.4MiB
+T+  14.577  [pulse] mainThreadLatency=    23ms fp=218MiB res=206MiB peakRSS=286MiB
+T+  14.578  [bg] ThumbnailPipeline.preview END
+T+  14.579  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.579  canvas draw #223 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.1MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.584  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.586  [bg] ThumbnailPipeline.preview END
+T+  14.608  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.608  canvas draw #224 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.617  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.619  [bg] ThumbnailPipeline.preview END
+T+  14.641  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.641  canvas draw #225 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.655  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.657  [bg] ThumbnailPipeline.preview END
+T+  14.674  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.674  canvas draw #226 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.692  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.694  [bg] ThumbnailPipeline.preview END
+T+  14.708  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.708  canvas draw #227 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.730  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.732  [bg] ThumbnailPipeline.preview END
+T+  14.741  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.741  canvas draw #228 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.767  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.769  [bg] ThumbnailPipeline.preview END
+T+  14.805  [pulse] mainThreadLatency=     0ms fp=212MiB res=200MiB peakRSS=286MiB
+T+  14.808  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.808  canvas draw #229 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  14.839  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.841  [bg] ThumbnailPipeline.preview END
+T+  14.841  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.842  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.842  canvas draw #230 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.2MiB res=  199.7MiB peakRSS=   286.4MiB
+T+  14.877  [bg] ThumbnailPipeline.preview END
+T+  14.878  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.879  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.879  canvas draw #231 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.4MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  14.918  [bg] ThumbnailPipeline.preview END
+T+  14.919  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.921  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.921  canvas draw #232 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  14.963  [bg] ThumbnailPipeline.preview END
+T+  14.964  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  14.967  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  14.967  canvas draw #233 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  15.012  [bg] ThumbnailPipeline.preview END
+T+  15.013  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.017  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.017  canvas draw #234 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.0MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  15.065  [pulse] mainThreadLatency=    10ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  15.066  [bg] ThumbnailPipeline.preview END
+T+  15.066  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.066  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.067  canvas draw #235 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.1MiB res=  199.6MiB peakRSS=   286.4MiB
+T+  15.127  [bg] ThumbnailPipeline.preview END
+T+  15.128  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.129  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.129  canvas draw #236 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.3MiB res=  199.8MiB peakRSS=   286.4MiB
+T+  15.193  [bg] ThumbnailPipeline.preview END
+T+  15.194  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.196  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.196  canvas draw #237 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  15.268  [bg] ThumbnailPipeline.preview END
+T+  15.269  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.271  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.271  canvas draw #238 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  15.351  [pulse] mainThreadLatency=    45ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  15.352  [bg] ThumbnailPipeline.preview END
+T+  15.352  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.354  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.354  canvas draw #239 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  15.443  [bg] ThumbnailPipeline.preview END
+T+  15.444  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.446  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.446  canvas draw #240 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  15.543  [bg] ThumbnailPipeline.preview END
+T+  15.544  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.546  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.546  canvas draw #241 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  15.655  [pulse] mainThreadLatency=    98ms fp=217MiB res=204MiB peakRSS=286MiB
+T+  15.656  [bg] ThumbnailPipeline.preview END
+T+  15.656  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.658  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.658  canvas draw #242 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  15.776  [bg] ThumbnailPipeline.preview END
+T+  15.777  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.779  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.779  canvas draw #243 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  15.782  [bg] ThumbnailPipeline.preview END
+T+  15.808  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.808  canvas draw #244 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  15.817  [pulse] mainThreadLatency=     9ms fp=212MiB res=200MiB peakRSS=286MiB
+T+  15.817  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.819  [bg] ThumbnailPipeline.preview END
+T+  15.841  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.841  canvas draw #245 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  15.855  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.857  [bg] ThumbnailPipeline.preview END
+T+  15.874  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.874  canvas draw #246 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  15.892  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.894  [bg] ThumbnailPipeline.preview END
+T+  15.908  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.908  canvas draw #247 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  15.930  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.932  [bg] ThumbnailPipeline.preview END
+T+  15.941  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  15.941  canvas draw #248 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  15.967  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  15.969  [bg] ThumbnailPipeline.preview END
+T+  16.008  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.008  canvas draw #249 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  16.039  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.040  [bg] ThumbnailPipeline.preview END
+T+  16.042  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.046  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.046  canvas draw #250 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  214.3MiB res=  201.9MiB peakRSS=   286.4MiB
+T+  16.076  [pulse] mainThreadLatency=    17ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  16.077  [bg] ThumbnailPipeline.preview END
+T+  16.078  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.079  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.079  canvas draw #251 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.3MiB res=  199.8MiB peakRSS=   286.4MiB
+T+  16.118  [bg] ThumbnailPipeline.preview END
+T+  16.118  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.121  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.121  canvas draw #252 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  16.162  [bg] ThumbnailPipeline.preview END
+T+  16.163  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.166  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.166  canvas draw #253 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  16.212  [bg] ThumbnailPipeline.preview END
+T+  16.212  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.216  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.216  canvas draw #254 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.5MiB res=  201.1MiB peakRSS=   286.4MiB
+T+  16.265  [bg] ThumbnailPipeline.preview END
+T+  16.266  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.266  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.266  canvas draw #255 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.1MiB res=  199.7MiB peakRSS=   286.4MiB
+T+  16.326  [pulse] mainThreadLatency=    16ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  16.327  [bg] ThumbnailPipeline.preview END
+T+  16.327  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.329  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.329  canvas draw #256 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.4MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  16.393  [bg] ThumbnailPipeline.preview END
+T+  16.393  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.395  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.395  canvas draw #257 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  16.467  [bg] ThumbnailPipeline.preview END
+T+  16.468  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.470  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.470  canvas draw #258 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  16.550  [bg] ThumbnailPipeline.preview END
+T+  16.551  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.554  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.554  canvas draw #259 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  16.641  [pulse] mainThreadLatency=    80ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  16.642  [bg] ThumbnailPipeline.preview END
+T+  16.642  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.645  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.645  canvas draw #260 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  16.741  [bg] ThumbnailPipeline.preview END
+T+  16.742  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.745  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.745  canvas draw #261 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  16.853  [pulse] mainThreadLatency=    41ms fp=216MiB res=205MiB peakRSS=286MiB
+T+  16.854  [bg] ThumbnailPipeline.preview END
+T+  16.855  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.858  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.858  canvas draw #262 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  16.975  [bg] ThumbnailPipeline.preview END
+T+  16.976  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  16.978  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  16.978  canvas draw #263 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  16.982  [bg] ThumbnailPipeline.preview END
+T+  17.007  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.008  canvas draw #264 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  17.017  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.019  [bg] ThumbnailPipeline.preview END
+T+  17.041  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.041  canvas draw #265 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  17.055  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.057  [bg] ThumbnailPipeline.preview END
+T+  17.063  [pulse] mainThreadLatency=     0ms fp=212MiB res=200MiB peakRSS=286MiB
+T+  17.074  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.074  canvas draw #266 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  17.092  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.094  [bg] ThumbnailPipeline.preview END
+T+  17.107  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.107  canvas draw #267 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  17.129  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.131  [bg] ThumbnailPipeline.preview END
+T+  17.141  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.141  canvas draw #268 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  17.167  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.169  [bg] ThumbnailPipeline.preview END
+T+  17.208  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.208  canvas draw #269 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  17.239  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.241  [bg] ThumbnailPipeline.preview END
+T+  17.241  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.245  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.245  canvas draw #270 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  213.0MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  17.277  [bg] ThumbnailPipeline.preview END
+T+  17.277  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.278  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.278  canvas draw #271 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.3MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  17.316  [pulse] mainThreadLatency=     2ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  17.317  [bg] ThumbnailPipeline.preview END
+T+  17.318  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.320  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.320  canvas draw #272 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  17.362  [bg] ThumbnailPipeline.preview END
+T+  17.363  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.366  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.366  canvas draw #273 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  17.411  [bg] ThumbnailPipeline.preview END
+T+  17.412  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.412  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.412  canvas draw #274 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  199.6MiB peakRSS=   286.4MiB
+T+  17.465  [bg] ThumbnailPipeline.preview END
+T+  17.465  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.466  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.466  canvas draw #275 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.2MiB res=  199.7MiB peakRSS=   286.4MiB
+T+  17.526  [bg] ThumbnailPipeline.preview END
+T+  17.526  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.528  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.528  canvas draw #276 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.5MiB res=  200.1MiB peakRSS=   286.4MiB
+T+  17.591  [pulse] mainThreadLatency=    26ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  17.592  [bg] ThumbnailPipeline.preview END
+T+  17.592  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.595  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.595  canvas draw #277 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.7MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  17.666  [bg] ThumbnailPipeline.preview END
+T+  17.667  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.670  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.670  canvas draw #278 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  17.749  [bg] ThumbnailPipeline.preview END
+T+  17.750  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.753  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.753  canvas draw #279 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  17.840  [pulse] mainThreadLatency=    24ms fp=216MiB res=205MiB peakRSS=286MiB
+T+  17.841  [bg] ThumbnailPipeline.preview END
+T+  17.841  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.845  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.845  canvas draw #280 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  17.941  [bg] ThumbnailPipeline.preview END
+T+  17.942  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  17.945  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  17.945  canvas draw #281 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  18.053  [bg] ThumbnailPipeline.preview END
+T+  18.054  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.057  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.057  canvas draw #282 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.8MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  18.174  [pulse] mainThreadLatency=   107ms fp=217MiB res=205MiB peakRSS=286MiB
+T+  18.175  [bg] ThumbnailPipeline.preview END
+T+  18.176  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.178  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.178  canvas draw #283 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.6MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  18.182  [bg] ThumbnailPipeline.preview END
+T+  18.208  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.208  canvas draw #284 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.217  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.219  [bg] ThumbnailPipeline.preview END
+T+  18.241  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.241  canvas draw #285 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.255  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.257  [bg] ThumbnailPipeline.preview END
+T+  18.274  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.274  canvas draw #286 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.292  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.294  [bg] ThumbnailPipeline.preview END
+T+  18.308  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.308  canvas draw #287 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.330  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.330  [pulse] mainThreadLatency=    12ms fp=216MiB res=204MiB peakRSS=286MiB
+T+  18.332  [bg] ThumbnailPipeline.preview END
+T+  18.341  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.341  canvas draw #288 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.0MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.367  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.369  [bg] ThumbnailPipeline.preview END
+T+  18.408  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.408  canvas draw #289 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  208.2MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.439  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.441  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.441  canvas draw #290 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.3MiB res=  203.8MiB peakRSS=   286.4MiB
+T+  18.442  [bg] ThumbnailPipeline.preview END
+T+  18.476  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.478  [bg] ThumbnailPipeline.preview END
+T+  18.478  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.479  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.479  canvas draw #291 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.2MiB res=  203.6MiB peakRSS=   286.4MiB
+T+  18.519  [bg] ThumbnailPipeline.preview END
+T+  18.519  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.519  canvas draw #292 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  215.9MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  18.564  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.565  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.565  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.565  canvas draw #293 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.3MiB res=  203.5MiB peakRSS=   286.4MiB
+T+  18.566  [bg] ThumbnailPipeline.preview END
+T+  18.613  [pulse] mainThreadLatency=    45ms fp=213MiB res=201MiB peakRSS=286MiB
+T+  18.614  [bg] ThumbnailPipeline.preview END
+T+  18.615  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.615  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.615  canvas draw #294 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.2MiB res=  203.6MiB peakRSS=   286.4MiB
+T+  18.668  [bg] ThumbnailPipeline.preview END
+T+  18.668  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.670  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.670  canvas draw #295 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  216.2MiB res=  199.9MiB peakRSS=   286.4MiB
+T+  18.731  [bg] ThumbnailPipeline.preview END
+T+  18.732  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.736  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.736  canvas draw #296 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  212.9MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  18.799  [bg] ThumbnailPipeline.preview END
+T+  18.799  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.803  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.803  canvas draw #297 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.6MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  18.874  [pulse] mainThreadLatency=    54ms fp=214MiB res=204MiB peakRSS=286MiB
+T+  18.874  [bg] ThumbnailPipeline.preview END
+T+  18.875  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.878  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.878  canvas draw #298 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.6MiB res=  200.4MiB peakRSS=   286.4MiB
+T+  18.958  [bg] ThumbnailPipeline.preview END
+T+  18.959  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  18.961  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  18.961  canvas draw #299 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.4MiB res=  200.2MiB peakRSS=   286.4MiB
+T+  19.052  [bg] ThumbnailPipeline.preview END
+T+  19.053  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.057  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.057  canvas draw #300 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.7MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  19.154  [pulse] mainThreadLatency=    83ms fp=215MiB res=205MiB peakRSS=286MiB
+T+  19.155  [bg] ThumbnailPipeline.preview END
+T+  19.155  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.157  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.157  canvas draw #301 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.2MiB res=  200.0MiB peakRSS=   286.4MiB
+T+  19.269  [bg] ThumbnailPipeline.preview END
+T+  19.270  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.273  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.273  canvas draw #302 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.6MiB res=  200.5MiB peakRSS=   286.4MiB
+T+  19.395  [pulse] mainThreadLatency=    73ms fp=211MiB res=205MiB peakRSS=286MiB
+T+  19.396  [bg] ThumbnailPipeline.preview END
+T+  19.397  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.398  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.398  canvas draw #303 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  210.5MiB res=  200.3MiB peakRSS=   286.4MiB
+T+  19.408  [bg] ThumbnailPipeline.preview END
+T+  19.441  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.441  canvas draw #304 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.4MiB res=  177.2MiB peakRSS=   286.4MiB
+T+  19.454  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.457  [bg] ThumbnailPipeline.preview END
+T+  19.474  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.474  canvas draw #305 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.4MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.492  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.494  [bg] ThumbnailPipeline.preview END
+T+  19.507  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.507  canvas draw #306 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.4MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.530  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.531  [bg] ThumbnailPipeline.preview END
+T+  19.540  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.540  canvas draw #307 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.4MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.567  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.568  [bg] ThumbnailPipeline.preview END
+T+  19.573  [pulse] mainThreadLatency=     0ms fp=185MiB res=177MiB peakRSS=286MiB
+T+  19.607  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.607  canvas draw #308 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.4MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.638  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.640  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.640  [bg] ThumbnailPipeline.preview END
+T+  19.640  canvas draw #309 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.5MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.675  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.677  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.677  [bg] ThumbnailPipeline.preview END
+T+  19.677  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.677  canvas draw #310 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.2MiB res=  180.0MiB peakRSS=   286.4MiB
+T+  19.717  [bg] ThumbnailPipeline.preview END
+T+  19.718  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.719  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.719  canvas draw #311 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  189.7MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.762  [bg] ThumbnailPipeline.preview END
+T+  19.763  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.765  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.765  canvas draw #312 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  186.0MiB res=  176.9MiB peakRSS=   286.4MiB
+T+  19.812  [bg] ThumbnailPipeline.preview END
+T+  19.813  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.815  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.815  canvas draw #313 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  186.0MiB res=  177.0MiB peakRSS=   286.4MiB
+T+  19.865  [pulse] mainThreadLatency=    41ms fp=190MiB res=181MiB peakRSS=286MiB
+T+  19.866  [bg] ThumbnailPipeline.preview END
+T+  19.866  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.869  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.869  canvas draw #314 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  186.2MiB res=  177.2MiB peakRSS=   286.4MiB
+T+  19.928  [bg] ThumbnailPipeline.preview END
+T+  19.929  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.929  canvas draw #315 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  185.5MiB res=  176.8MiB peakRSS=   286.4MiB
+T+  19.994  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.995  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336) START
+T+  19.995  [MAIN] canvas draw ENTER image=yes zoom=0.6370 bounds=637x770 dirty=637x770
+T+  19.996  canvas draw #316 COMPLETE took=0.000s image=yes bounds=637x770 dirty=637x770 fp=  189.8MiB res=  180.3MiB peakRSS=   286.4MiB
+T+  19.996  [bg] ThumbnailPipeline.preview END
+T+  20.070  [bg] ThumbnailPipeline.preview END

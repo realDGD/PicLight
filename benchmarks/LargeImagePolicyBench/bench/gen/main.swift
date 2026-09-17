@@ -93,6 +93,33 @@ func writeJPEG(width: Int, height: Int, to path: String, quality: Double = 0.9) 
     return CGImageDestinationFinalize(dest)
 }
 
+func writeAnimatedGIF(width: Int, height: Int, frames: Int, to path: String) -> Bool {
+    guard let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL,
+                                                     UTType.gif.identifier as CFString, frames, nil) else { return false }
+    CGImageDestinationSetProperties(dest, [
+        kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]
+    ] as CFDictionary)
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    for f in 0..<frames {
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                            bytesPerRow: width * 4, space: cs,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        // a moving detailed pattern: forces real per-frame decode work
+        for y in stride(from: 0, to: height, by: 4) {
+            for x in stride(from: 0, to: width, by: 4) {
+                let v = CGFloat(((x + y + f * 37) / 4) % 16) / 16.0
+                ctx.setFillColor(CGColor(red: v, green: 1 - v, blue: 0.5, alpha: 1))
+                ctx.fill(CGRect(x: x, y: y, width: 4, height: 4))
+            }
+        }
+        let img = ctx.makeImage()!
+        CGImageDestinationAddImage(dest, img, [
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]
+        ] as CFDictionary)
+    }
+    return CGImageDestinationFinalize(dest)
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
 let root = "/tmp/piclight-bench/fixtures"
 try? FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
@@ -108,6 +135,7 @@ let plan: [Fixture] = [
     Fixture(name: "solid-12000x12000.png", w: 12000, h: 12000, kind: "solid", format: "png"),
     Fixture(name: "noise-8192x8192.png", w: 8192, h: 8192, kind: "noise", format: "png"),
     Fixture(name: "noise-7000x7000.png", w: 7000, h: 7000, kind: "noise", format: "png"),
+    Fixture(name: "anim-1000.gif", w: 1000, h: 1000, kind: "anim", format: "gif"),
 ]
 
 guard let cmd = args.first else {
@@ -121,8 +149,13 @@ case "make":
     guard args.count > 1, let f = plan.first(where: { $0.name == args[1] }) else { print("unknown fixture"); exit(2) }
     let path = "\(root)/\(f.name)"
     let t0 = Date()
-    let ok = f.format == "png" ? writePNG(width: f.w, height: f.h, to: path, kind: f.kind)
-                               : writeJPEG(width: f.w, height: f.h, to: path)
+    let ok: Bool
+    switch f.format {
+    case "png":  ok = writePNG(width: f.w, height: f.h, to: path, kind: f.kind)
+    case "jpeg": ok = writeJPEG(width: f.w, height: f.h, to: path)
+    case "gif":  ok = writeAnimatedGIF(width: f.w, height: f.h, frames: 30, to: path)
+    default:     ok = false
+    }
     let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber)?.int64Value ?? 0
     print("\(f.name) ok=\(ok) \(size / 1048576) MiB in \(String(format: "%.1f", -t0.timeIntervalSinceNow))s")
     if f.kind == "noise" { print("  (incompressible on purpose: decode must do real inflate + Paeth work)") }

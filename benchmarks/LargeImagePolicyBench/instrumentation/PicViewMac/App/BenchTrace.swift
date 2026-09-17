@@ -129,7 +129,15 @@ enum BenchTrace {
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             Task { @MainActor in
                 let t = benchNow() - start
-                if drawCount >= 3 || t > 200 { finish() }
+                // PICLIGHT_BENCH_SECONDS>0 measures a fixed window (needed for animation
+                // playback, where the draw count grows quickly); 0 keeps the still-image
+                // behaviour of finishing after the first image plus two forced redraws.
+                let window = Double(ProcessInfo.processInfo.environment["PICLIGHT_BENCH_SECONDS"] ?? "0") ?? 0
+                if window > 0 {
+                    if t >= window { finish() }
+                } else if drawCount >= 3 || t > 200 {
+                    finish()
+                }
             }
         }
     }

@@ -33,14 +33,15 @@ fragment float4 f_main(VOut in [[stage_in]],
 """
 
 struct Stats {
-    var rms: Double          // RMS vs the Quartz reference
+    var rms: Double          // RMS vs the reference
     var shimmer: Double      // RMS between two sub-pixel offsets
     var detail: Double       // mean |Laplacian| (sharpness proxy)
+    var blocky: Double       // fraction of interior pixels with a hard neighbour step (blockiness)
     var mean: Double
 }
 
 func stats(_ a: [UInt8], _ b: [UInt8]?, _ ref: [UInt8]?, width: Int, height: Int) -> Stats {
-    var sumSq = 0.0, sum = 0.0, shimmerSq = 0.0, lap = 0.0
+    var sumSq = 0.0, sum = 0.0, shimmerSq = 0.0, lap = 0.0, hard = 0.0, hardN = 0.0
     let n = width * height
     for i in 0..<n {
         let o = i * 4
@@ -58,11 +59,14 @@ func stats(_ a: [UInt8], _ b: [UInt8]?, _ ref: [UInt8]?, width: Int, height: Int
                 return (Double(a[o]) + Double(a[o + 1]) + Double(a[o + 2])) / 3.0
             }
             lap += abs(4 * g(x, y) - g(x - 1, y) - g(x + 1, y) - g(x, y - 1) - g(x, y + 1))
+            if abs(g(x, y) - g(x + 1, y)) > 24 { hard += 1 }
+            hardN += 1
             count += 1
         }
     }
     return Stats(rms: sqrt(sumSq / Double(n)), shimmer: sqrt(shimmerSq / Double(n)),
-                 detail: count > 0 ? lap / Double(count) : 0, mean: sum / Double(n))
+                 detail: count > 0 ? lap / Double(count) : 0,
+                 blocky: hardN > 0 ? hard / hardN : 0, mean: sum / Double(n))
 }
 
 final class MinBench {
@@ -115,10 +119,11 @@ final class MinBench {
 
     /// Renders the source at `minification` into an offscreen texture, with the quad
     /// shifted by `subPixel` pixels to expose aliasing instability.
-    func render(tex: MTLTexture, minification: Double, subPixel: Double, mipFilter: MTLSamplerMinMagFilter, mipmapped: Bool) -> ([UInt8], Double) {
+    func render(tex: MTLTexture, minification: Double, subPixel: Double, mipFilter: MTLSamplerMinMagFilter, mipmapped: Bool,
+                magFilter: MTLSamplerMinMagFilter = .linear) -> ([UInt8], Double) {
         let samplerDesc = MTLSamplerDescriptor()
         samplerDesc.minFilter = mipFilter
-        samplerDesc.magFilter = .linear
+        samplerDesc.magFilter = magFilter
         samplerDesc.mipFilter = mipmapped ? .linear : .notMipmapped
         samplerDesc.sAddressMode = .clampToEdge
         samplerDesc.tAddressMode = .clampToEdge
@@ -239,6 +244,48 @@ print("### minbench source=\(image.width)x\(image.height) target=\(W)x\(H) input
 let (texMip, mipMs) = bench.makeTexture(mipmapped: true)
 let (texNoMip, _) = bench.makeTexture(mipmapped: false)
 print("texture = \(image.width * image.height * 4 / 1048576) MiB base, \(image.width * image.height * 4 * 4 / 3 / 1048576) MiB with mips, mip generation = \(mipMs) ms")
+// --- D6: proxy magnification policy -------------------------------------
+if let magArg = args.firstIndex(of: "--magnify"), magArg + 1 < args.count, let factor = Int(args[magArg + 1]) {
+    print("### D6 proxy magnification \(factor)x: source \(image.width)x\(image.height) -> proxy \(image.width/factor)x\(image.height/factor)")
+    // truth: the original pixels, identity draw
+    let truthCS = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+    let truthCtx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                             bytesPerRow: image.width * 4, space: truthCS,
+                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    truthCtx.interpolationQuality = .none
+    truthCtx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    var truth = [UInt8](repeating: 0, count: image.width * image.height * 4)
+    memcpy(&truth, truthCtx.data!, truth.count)
+    // normalise the truth to top-down like the Metal readback
+    var flipped = [UInt8](repeating: 0, count: truth.count)
+    let rb = image.width * 4
+    for y in 0..<image.height {
+        let src = (image.height - 1 - y) * rb, dst = y * rb
+        flipped.replaceSubrange(dst..<(dst + rb), with: truth[src..<(src + rb)])
+    }
+    truth = flipped
+    // proxy: what a bounded decode would hand the renderer
+    let pw = max(1, image.width / factor), ph = max(1, image.height / factor)
+    let proxyCtx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8,
+                             bytesPerRow: pw * 4, space: truthCS,
+                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    proxyCtx.interpolationQuality = .high
+    proxyCtx.draw(image, in: CGRect(x: 0, y: 0, width: pw, height: ph))
+    let proxy = proxyCtx.makeImage()!
+    let magBench = try MinBench(image: proxy, width: image.width, height: image.height)
+    let (magTex, _) = magBench.makeTexture(mipmapped: false)
+    print(String(format: "%-10@ %9@ %9@ %9@", "magFilter" as NSString, "rmse_truth" as NSString,
+                 "blockiness" as NSString, "detail" as NSString))
+    for (label, filter) in [("nearest", MTLSamplerMinMagFilter.nearest), ("linear", .linear)] {
+        let (a, _) = magBench.render(tex: magTex, minification: Double(factor), subPixel: 0,
+                                     mipFilter: .nearest, mipmapped: false, magFilter: filter)
+        let st = stats(a, nil, truth, width: image.width, height: image.height)
+        print(String(format: "%-10@ %9.2f %9.4f %9.3f", label as NSString, st.rms, st.blocky, st.detail))
+    }
+    print("")
+    exit(0)
+}
+
 print("")
 print(String(format: "%-6@ %-22@ %8@ %8@ %8@ %8@", "scale" as NSString, "variant" as NSString, "rmse_ref" as NSString, "shimmer" as NSString, "detail" as NSString, "gpu_ms" as NSString))
 for scale in scales {

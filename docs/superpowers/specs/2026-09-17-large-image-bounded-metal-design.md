@@ -210,6 +210,8 @@ Multi-page TIFF retains `pageIndex` semantics.
 
 Animated giant GIF/WebP frame budgeting is explicitly not solved in this iteration and must be documented as a known limitation.
 
+Measured so the limitation is not hypothetical (E5, §17.5): playing a 1 MPixel, 30-frame GIF in the current app runs at **15.9 fps** against a nominal 25 fps, frame periods p95 = 121 ms, **249 mJ per drawn frame** (3.9 W over a 20 s window), main-thread ping p95 = 98 ms / max 107 ms. Frame decoding stays off the main thread, but the animation path is not free and must not regress.
+
 ### 6.3 Cache identity
 
 Cache identity becomes conceptually:
@@ -299,7 +301,7 @@ Mipmap memory is budgeted at approximately 4/3 of base texture memory (for examp
 
 **Resolved by the D-series gate (§17.5): mipmaps are mandatory.** Bilinear minification without a mip chain regressed against the current Quartz `.high` renderer on real content (shimmer 1.53×/1.93×/2.61× of the reference at 1.7×/3.7×/11.3× minification; up to 41× on a 1-px checkerboard) and inflated high-frequency detail (detail 39.0 vs the reference's 22.8). Mipmapped linear sampling was at parity or better (0.85×–1.04× of the reference's shimmer) and was also *faster* on the GPU (0.49–1.23 ms vs 0.62–2.62 ms per frame), because sampling smaller mips is cache-friendlier. Cost: +33 % texture memory (227 MiB vs 170.7 MiB at the 8192 bucket) and 3–7 ms one-time generation.
 
-Proxy magnification beyond 100 % (nearest vs linear for a proxy whose texels are ~5.9 source pixels each) remains an open, non-blocking gate item (D6).
+**Proxy magnification (D6, §17.5): linear.** For a proxy whose texels cover ~5.9 source pixels, nearest magnification measured worse on every axis against ground truth: RMSE 34.49 vs linear's 31.78 at 6× on the investigation image's proxy (24.61 vs 22.90 at 4× on a photo), and it added 2.2–5.6 % hard-edge pixels — a visible block grid — where linear left 0.0–0.1 %. No content class in the measured set favoured nearest. The real quality lever at high zoom is a level upgrade, not the filter: until a LargeImageBackend exists, linear magnification plus the honest undersampling statement in §4.1 is the policy.
 
 ### 9.5 MTKView lifecycle
 
@@ -565,6 +567,7 @@ Using `/Users/dgd/Downloads/万萝图/万萝图.png` locally (never committed):
 - static Metal renderer does not continuously draw;
 - zoom/pan remain responsive after the render bitmap exists;
 - main-thread ping p95 remains <100 ms during background decode/interaction, measured separately from time-to-image;
+- animation playback does not regress against the recorded baseline (1 MPixel 30-frame GIF: 15.9 fps, 249 mJ per drawn frame, ping p95 98 ms);
 - `phys_footprint`, not RSS, is the primary live pixel-buffer metric;
 - sample `vmmap` while decode/render is active (for example around t+5 s and/or t+10 s) and assert there is no >1 GiB anonymous `Image IO` region analogous to the old 5.86 GiB allocation.
 
@@ -809,6 +812,28 @@ Sanity check: at 1.0× both Metal variants match Quartz (RMSE 0.32). 1-px checke
 
 **E2 — resize/level stability (decides §9.5).** Derived from measured level-change cost (18.1–18.5 s per bucket, uncancellable); only oversized sources are affected.
 
+**D6 — proxy magnification (decides §9.4).** Proxy built by high-quality downsampling, rendered at N× and compared against the original pixels:
+
+| case | magFilter | RMSE vs truth | blockiness | detail |
+|---|---|---|---|---|
+| photo, 4× | nearest | 24.61 | 0.0218 | 15.50 |
+| photo, 4× | linear | **22.90** | **0.0000** | 2.26 |
+| investigation proxy, 6× | nearest | 34.49 | 0.0563 | 13.69 |
+| investigation proxy, 6× | linear | **31.78** | **0.0013** | 1.93 |
+| fine lines, 4× | nearest / linear | 112.56 / 112.52 | 0.0010 / 0.0000 | 0.16 / 0.06 |
+
+Linear wins on every measured axis; nearest's extra Laplacian is the block grid, not detail.
+
+**E5 — animation frame path (decides the §6.2 limitation wording).** 1 MPixel, 30-frame GIF, 20 s window in the instrumented app:
+
+```text
+frames drawn: 313 (15.9 fps vs the 25 fps nominal 40 ms delay)
+frame period: p50 56 ms, p95 121 ms, max 137 ms, stdev 29.5 ms
+main-thread ping: p50 26 ms, p95 98 ms, max 107 ms
+energy: 78.1 J over 20 s = 3.9 W = 249 mJ per drawn frame
+peak footprint 0.185 GiB / RSS 0.280 GiB, no oversized traversal
+```
+
 **E4 — app budget.** Baseline in §16; pass/fail requires the implementation.
 
 ## 18. Quick Look spike
@@ -878,14 +903,14 @@ The reviewer-added tests were incorporated and executed; results are in §17.5. 
 | C4 adversarial small-file giant | run — C3 rejected (§14.1) |
 | C5 cold-cache probe cost | run — C2 chosen (§14.1) |
 | D5 two-frame shimmer | run — mipmaps mandatory (§9.4) |
-| D6 proxy magnification | **open, non-blocking** (plan may pick a default and revisit) |
+| D6 proxy magnification | run — linear magnification chosen (§9.4) |
 | E1 bucket base | run — formula kept (§5.3) |
 | E2 resize/level stability | run — policy added (§9.5) |
 | E3 cache working set | run — budget raised to 768 MiB (§13.3) |
 | E4 one-traversal + energy budget | baseline captured (§16); pass/fail at implementation |
-| E5 animation frame stall | **open, non-blocking** |
+| E5 animation frame stall | run — baseline recorded, non-regression required (§6.2, §16) |
 
-All A/B/C/D decisions needed by an implementation plan are resolved. The plan may proceed; D6 and E5 are its first optional gating items, and E4's acceptance runs against the captured baseline.
+All A/B/C/D and E-series decisions needed by an implementation plan are resolved; D6 and E5 were closed by measurement rather than deferred. The only remaining gate is E4's post-implementation run, which is inherently a property of the change itself: build, then `run-e4.sh <rev>` and compare against the §16 baseline.
 
 ## 21. Error handling
 

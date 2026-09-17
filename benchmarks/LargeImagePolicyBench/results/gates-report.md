@@ -194,6 +194,39 @@ Post-fix targets: traversals **== 1**, main-thread stall p95 **< 100 ms**, open 
 
 ---
 
+## Gate D6 — proxy magnification
+
+Proxy = high-quality downsample of the source; rendered at N× and compared against the original pixels (truth).
+
+| case | magFilter | RMSE vs truth | blockiness | detail (Laplacian) |
+|---|---|---|---|---|
+| photo, 4× | nearest | 24.61 | 0.0218 | 15.50 |
+| photo, 4× | linear | **22.90** | **0.0000** | 2.26 |
+| investigation proxy, 6× (= the real 5.86 source px per texel) | nearest | 34.49 | 0.0563 | 13.69 |
+| " | linear | **31.78** | **0.0013** | 1.93 |
+| fine lines, 4× | nearest / linear | 112.56 / 112.52 | 0.0010 / 0.0000 | 0.16 / 0.06 |
+| 1-px checkerboard, 4× | nearest / linear | 112.50 / 112.50 | 0.0000 / 0.0000 | 0.06 / 0.06 |
+
+**Verdict: linear magnification.** Nearest loses on every measured axis — it is further from ground truth *and* adds
+2.2–5.6 % hard-edge pixels (a visible block grid). Its higher Laplacian is the grid, not detail. No content class
+measured favours nearest. The lever at high zoom is a level upgrade, not the filter.
+
+## Gate E5 — animation frame path
+
+1 MPixel, 30-frame GIF, 20 s window, instrumented app:
+
+| metric | measured |
+|---|---|
+| frames drawn | 313 → **15.9 fps** (nominal 25 fps at the 40 ms GIF delay) |
+| frame period | p50 56 ms, p95 121 ms, max 137 ms, stdev 29.5 ms |
+| main-thread ping | p50 26 ms, **p95 98 ms**, max 107 ms |
+| energy | 78.1 J over 20 s = 3.9 W = **249 mJ per drawn frame** |
+| memory | footprint 0.185 GiB, RSS 0.280 GiB |
+
+**Verdict: frame decoding stays off the main thread and does not blow up memory, but the animation path is not free
+(64 % of nominal speed, ~4 W, ping p95 at the 100 ms boundary).** Recorded as a non-regression baseline; giant
+animations stay out of scope for this iteration.
+
 ## Net changes the data implies for spec v2
 
 1. **§5.1**: keep A3; add "cache flags are non-deterministic and must not be used" (measured 0 ms vs 20.6 s on the
@@ -205,8 +238,9 @@ Post-fix targets: traversals **== 1**, main-thread stall p95 **< 100 ms**, open 
    content, up to 41× on pathological content).
 5. **§5.3**: keep E1a; document the 16× worst-case waste in short-wide windows as accepted (it buys zoom headroom).
 6. **New**: §9.5 must state the resize/debounce policy (E2) — currently absent.
-7. **Still open (GATE, non-blocking)**: proxy magnification policy (nearest vs linear at 100 %+) and the animation
-   frame-path stall check.
+7. **Closed after the first pass**: proxy magnification (D6 → linear) and the animation frame-path check (E5 →
+   baseline recorded, non-regression required). Only E4's post-implementation run remains, and it is inherently a
+   property of the change itself.
 
 ## Reproduce
 

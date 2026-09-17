@@ -1,0 +1,28 @@
+########## D6: real photo proxy at 4x magnification (truth = original pixels)
+texture = 46 MiB base, 62 MiB with mips, mip generation = 6 ms
+### D6 proxy magnification 4x: source 4032x3024 -> proxy 1008x756
+magFilter rmse_truth blockiness detail
+nearest     24.61    0.0218    15.498
+linear     22.90    0.0000     2.256
+
+########## D6: the actual investigation-image proxy at 6x (8192 proxy of 48000 source = 5.86x)
+texture = 170 MiB base, 227 MiB with mips, mip generation = 13 ms
+### D6 proxy magnification 6x: source 8192x5461 -> proxy 1365x910
+magFilter rmse_truth blockiness detail
+nearest     34.49    0.0563    13.691
+linear     31.78    0.0013     1.932
+
+########## D6: line art (fine lines)
+texture = 10 MiB base, 13 MiB with mips, mip generation = 2 ms
+### D6 proxy magnification 4x: source 2048x1280 -> proxy 512x320
+magFilter rmse_truth blockiness detail
+nearest    112.56    0.0010     0.155
+linear    112.52    0.0000     0.058
+
+########## D6: 1-px checkerboard (worst case)
+texture = 10 MiB base, 13 MiB with mips, mip generation = 2 ms
+### D6 proxy magnification 4x: source 2048x1280 -> proxy 512x320
+magFilter rmse_truth blockiness detail
+nearest    112.50    0.0000     0.060
+linear    112.50    0.0000     0.059
+

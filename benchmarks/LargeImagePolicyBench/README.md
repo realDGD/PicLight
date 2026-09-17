@@ -109,6 +109,16 @@ Reports RMSE against the Quartz `.high` reference, two-frame shimmer (sub-pixel 
 Use **non-integer** minification ratios: at exact powers of two a 1-px checkerboard degenerates to flat grey and
 bilinear accidentally equals a box filter. Decision: mipmaps unconditional (`results/gates-D.txt`).
 
+Proxy magnification (D6) compares nearest against linear against ground truth — the original pixels:
+
+```bash
+.work/minbench /path/to/photo --width 4032 --height 3024 --magnify 4
+.work/minbench "$PICLIGHT_BENCH_FIXTURES/noise-8192x5461.png" --width 3200 --height 2000 --magnify 6
+.work/minbench /dev/null --pattern lines --pattern-size 2048 --width 2048 --height 1280 --magnify 4
+```
+
+Decision: linear magnification (`results/gates-D6.txt`) — nearest is both further from ground truth and visibly blocky.
+
 ### E — policy gaps
 
 ```bash
@@ -135,6 +145,17 @@ main_thread_stall_max_ms max main-queue ping latency (baseline 20.9 s, target p9
 peakRSS / peakFootprint  memory (RSS stays ~2-2.7 GiB because the source is mmapped)
 ```
 
+Animation frame path (E5) uses the same harness with a fixed measurement window:
+
+```bash
+PICLIGHT_BENCH_SECONDS=20 benchmarks/LargeImagePolicyBench/run-e4.sh 123d943 "$PICLIGHT_BENCH_FIXTURES/anim-1000.gif"
+```
+
+(`bench/gen make anim-1000.gif` produces a 1 MPixel, 30-frame, 40 ms-delay GIF; `PICLIGHT_BENCH_SECONDS` switches the
+summary loop from "after three draws" to a fixed window, which is required for playback.) Baseline:
+`results/gates-E5-animation.txt` — 15.9 fps against a 25 fps nominal, p95 frame period 121 ms, 249 mJ per drawn frame,
+main-thread ping p95 98 ms.
+
 It needs a logged-in GUI session (the app opens a real window) and hashes the source image before and after the run.
 The instrumentation is deliberately kept as an overlay rather than a patch so it cannot drift with unrelated edits,
 and it is never merged into the production tree.
@@ -148,8 +169,11 @@ and it is never merged into the production tree.
 | `results/gates-B.txt` | preload/cache policy runs |
 | `results/gates-C.txt` | dimension-probe runs |
 | `results/gates-D.txt` | minification/shimmer runs |
+| `results/gates-D6.txt` | proxy magnification: nearest vs linear against ground truth |
+| `results/gates-E5-animation.txt`, `-trace.txt` | animation frame path: cadence, ping, energy |
 | `results/gates-E4-baseline.txt` | instrumented-app baseline (traversals, energy, main-thread stall) |
 
 Frozen policy outcomes (spec §17.5): A3 materialization, B3 preload/cache (768 MiB), C2 dimension probe, mandatory
-mipmapped minification, view-sized bucket formula, resize debounce policy. Open, non-blocking: proxy magnification
-(D6) and animation frame-path stall (E5).
+mipmapped minification, linear proxy magnification, view-sized bucket formula, resize debounce policy, animation
+non-regression baseline. Nothing policy-level is left open; the only remaining gate is E4's post-implementation run
+(`run-e4.sh <rev>`), which measures the change itself.
