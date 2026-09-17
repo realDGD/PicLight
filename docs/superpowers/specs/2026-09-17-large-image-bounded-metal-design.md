@@ -139,7 +139,9 @@ Explicit prohibitions:
 - Do not rely on `kCGImageSourceShouldCache` or `kCGImageSourceShouldCacheImmediately` as the materialization mechanism.
 - Do not use `CGImageSourceCreateThumbnailAtIndex(maxPixelSize >= sourceLongEdge)` as the native materialization mechanism.
 
-The exact materialization implementation still has to pass the A-series validation in §18.1 before it is frozen in the implementation plan.
+**Resolved by the A-series gate (§17.5): A3 is the frozen mechanism.** Measured on an incompressible 8192×5461 PNG, A1 (lazy result plus cache flags) pays the entire decode *inside the renderer's first draw* — 0.507 s — and does roughly twice the total work, because the create-time decode is never reused (CPU 1.02 s vs A3's 0.63 s; energy 5416 mJ vs 3020 mJ). A2 (native-sized thumbnail) costs 1.5× A3's peak footprint (0.502 GiB vs 0.337 GiB) and is prohibited for oversized sources anyway (7.45 GiB on the investigation image). On the giant the cache flags were additionally **non-deterministic**: identical options produced a 0 ms create in one run and a 20.6 s create in another, so their prohibition is a correctness requirement, not a style preference.
+
+Materialization must be **observable**, not self-reported: the delivered bitmap's first renderer draw must not re-enter `PNGReadPlugin`/`inflate`, and must not re-materialize at a different destination size (A6).
 
 ### 5.2 Source long edge >8192: bounded ImageIO decode
 
@@ -176,6 +178,8 @@ budget   = min(nextBucketAtOrAbove(required), 8192)
 The overscan factor is fixed at 1.5 in this iteration.
 
 The bucket helper is pure and unit-tested.
+
+**Bucket base: resolved by E1 (§17.5) — the formula above stays.** It can never undersample, and its extra density relative to a displayed-image-size formula is exactly the zoom headroom available before a level change; every level change costs a full, uncancellable stream decode (18.1–18.5 s measured). The worst case is accepted and documented: in short-wide window geometries the view-sized formula can select 8192 where a displayed-size formula would select 2048 (170.7 MB vs 10.7 MB bitmap; 0.756 GiB vs 0.098 GiB transient footprint). Removing that waste requires a cheap level-upgrade path, which this iteration does not have.
 
 ## 6. Data model changes
 
@@ -242,7 +246,7 @@ Rules already accepted:
 - Non-current oversized drawer items do not start the expensive full-stream ImageIO thumbnail path in this iteration; they keep a placeholder until a cheaper policy is available.
 - Placeholder behavior must not alter selection-border semantics or hit testing.
 
-The dimension/probe mechanism used to decide whether a non-current drawer item is oversized remains a benchmarked policy choice in §18.3; ordinary folder scanning must not be made globally expensive without evidence.
+The dimension/probe mechanism used to decide whether a non-current drawer item is oversized remains a benchmarked policy choice in §17.3; ordinary folder scanning must not be made globally expensive without evidence.
 
 ## 9. Metal rendering architecture
 
@@ -293,7 +297,9 @@ The first candidate is mipmapped textures with a linear min/mag filter and `mipF
 
 Mipmap memory is budgeted at approximately 4/3 of base texture memory (for example an 8192 proxy is roughly 227 MiB of texture storage rather than 171 MiB base-only).
 
-Whether mipmaps are an unconditional implementation requirement or may be replaced by an equivalent prefiltered strategy is decided by the D-series quality/performance benchmark in §18.4. The acceptance condition is visual/metric parity sufficient to avoid obvious aliasing or shimmer versus Quartz `.high` at strong minification.
+**Resolved by the D-series gate (§17.5): mipmaps are mandatory.** Bilinear minification without a mip chain regressed against the current Quartz `.high` renderer on real content (shimmer 1.53×/1.93×/2.61× of the reference at 1.7×/3.7×/11.3× minification; up to 41× on a 1-px checkerboard) and inflated high-frequency detail (detail 39.0 vs the reference's 22.8). Mipmapped linear sampling was at parity or better (0.85×–1.04× of the reference's shimmer) and was also *faster* on the GPU (0.49–1.23 ms vs 0.62–2.62 ms per frame), because sampling smaller mips is cache-friendlier. Cost: +33 % texture memory (227 MiB vs 170.7 MiB at the 8192 bucket) and 3–7 ms one-time generation.
+
+Proxy magnification beyond 100 % (nearest vs linear for a proxy whose texels are ~5.9 source pixels each) remains an open, non-blocking gate item (D6).
 
 ### 9.5 MTKView lifecycle
 
@@ -307,6 +313,14 @@ enableSetNeedsDisplay = true
 ```
 
 Call `setNeedsDisplay` for new bitmap, viewport changes, resize/layout, backing-scale changes, drawable/color changes, and render-affecting appearance/background changes only.
+
+**Level stability across resize and backing-scale changes (E2, §17.5).** Only oversized sources have decode levels, so for ≤8192 sources resizing and display changes are free. For oversized sources, a resize that crosses a bucket boundary requires a new bounded decode: 18.1–18.5 s, uncancellable. Policy:
+
+- never recompute a decode level during an active drag;
+- debounce ~300 ms after the resize settles;
+- upgrade only when the current bitmap is undersampled (fewer than 1 texel per backing pixel at the current zoom);
+- keep showing the current bitmap until the replacement is ready; never blank the canvas;
+- shrinking the window never re-decodes: the smaller requirement is already satisfied by the existing bucket.
 
 ## 10. Quartz fallback
 
@@ -357,9 +371,9 @@ A long bounded PNG decode is expected to remain roughly 18 s on the investigatio
 
 Acceptance uses main-thread ping latency, not time-to-image, as the responsiveness metric. The initial target is p95 main-thread ping stall <100 ms during background decode/zoom activity, with the old multi-second CA stall as the failure class being eliminated.
 
-## 13. Preload/cache policy: unresolved debate, benchmark required
+## 13. Preload/cache policy: resolved by the B-series benchmark
 
-This section intentionally records the disagreement instead of prematurely choosing one policy.
+The measurement is in §17.5. The candidates below are retained as the evaluated set, with their measured outcomes.
 
 ### 13.1 Shared conclusions
 
@@ -398,15 +412,27 @@ All reviewers agree:
 - Included specifically to measure whether page-cache warming provides any useful benefit even though exact-level bitmap cache misses are guaranteed.
 - It must not be selected merely because it uses less bitmap memory.
 
-The B-series benchmark in §18.2 decides the production policy. Until then, no implementation plan may hard-code one of B0–B4 as final.
+### 13.3 Decision
 
-## 14. Dimension/oversized detection policy: unresolved debate, benchmark required
+**B3 — enlarged cache (`totalCostLimit` 768 MiB) with the oversized-preload prohibition — is the production policy.**
 
-Current ordinary folder scanning intentionally leaves `FolderItem.pixelSize` unset unless dimension sorting asks for it. The existing `FolderScanner.pixelSize(of:)` header probe is cheap relative to decode, but probing every file in a large directory may still change folder-open behavior.
+Evidence (B-series, §17.5):
+
+- For ≤8192 images preload cuts median navigation latency 4–7× (0.151 s → 0.022–0.038 s) and is **energy-neutral** (total 4648 mJ for B0 vs 4731 mJ for B1 on the normal set), because the same decode has to happen either way — preload only moves it earlier.
+- Above the 384 MiB budget, B1 and B2 spend ~3.4 s CPU and ~15 J per workload preloading entries that `NSCache` evicts before use, and end at roughly 1.8–2× B0's total energy. B2's cost gate cannot prevent the eviction of the entry it did preload.
+- B3 over the same workload keeps 2/2 preload hits, performs 1 decode instead of 3, and lands at B0's energy (9000 mJ vs 9271 mJ) with 8× lower latency: the enlarged budget converts wasted speculation into useful work.
+- B4 (lower-level preload) is **falsified**: 0 preload hits, navigation latency worse than no preload at all (0.169 s vs 0.151 s), and 2.1× B0's energy.
+- B0 is rejected: it gives up 4–7× navigation latency for no memory benefit.
+
+Working-set consequence — bound it by construction, do not trust `NSCache`. Measured: 8192 + 2×4096 = 256 MB is retained under 384 MiB; native 8192×8192 ×3 = 768 MB was also retained; but current 8192×8192 + neighbour 8192×5461 = 426.7 MB (just over budget) caused `NSCache` to evict **the on-screen entry** while keeping the later one. With a 768 MiB budget and the ≤256 MB per-entry ceiling for native ≤8192 sources, current + 2 neighbours is bounded at ≤768 MB.
+
+## 14. Dimension/oversized detection policy: resolved by the C-series benchmark
+
+Current ordinary folder scanning intentionally leaves `FolderItem.pixelSize` unset unless dimension sorting asks for it. Measurement (§17.5) shows the header probe is cheap: 0.08 ms per small file, 0.71 ms per 1.9 GB file (warm page cache), 0.373 s for a 5000-file folder, all off the main thread.
 
 Policy candidates:
 
-**C1 — eager folder-wide dimension fill (Fable-favored simplicity)**
+**C1 — eager folder-wide dimension fill (simplicity control; no reviewer advocated it)**
 
 - Every scanned supported image gets header dimensions.
 - Oversized decisions become immediate later.
@@ -423,7 +449,11 @@ Policy candidates:
 - Uses already-known file size to skip some probes, then confirms actual pixel dimensions when needed.
 - Must be proven sufficiently accurate/safe; byte size alone can never be the final oversized decision.
 
-The C-series benchmark in §18.3 decides the production policy.
+### 14.1 Decision
+
+**C2 — on-demand header probe with a dimension cache — is the production policy, with byte size permitted only to *order* probes.** C1 remains the behaviour when the user sorts by dimensions (the existing scanner path already does exactly this, off the main thread) and is the fallback if C2's coordination proves troublesome. The two are not distinguishable on cost alone at this scale (0.373 s vs 0.002 s, both invisible); C2 wins on the unmeasured risk of slow or network volumes, where per-file header reads become seeks.
+
+**C3 is rejected in both directions — byte size is not a sound oversized test for PNG.** `noise-8192x5461.png` is 148 MB but **not** oversized; `solid-12000x12000.png` is 2.5 MB but **is** oversized. The one-way variant misclassified 2/5 files in the adversarial mixed folder; the two-way variant misclassified 5/5 without probing anything.
 
 ## 15. Test strategy — correctness and regression
 
@@ -526,7 +556,8 @@ Tests that previously encoded `decoded dimensions == source display dimensions` 
 Using `/Users/dgd/Downloads/万萝图/万萝图.png` locally (never committed):
 
 - verify the source SHA-256 before the run and after the run;
-- main render bitmap long edge <=8192;
+- main render bitmap long edge <=8192, and within one bucket step below the requested budget, and the first render
+  bitmap is actually present (upper bounds alone would let a permanent-placeholder implementation pass);
 - no 48000×32000 full-size native bitmap reaches canvas/renderer;
 - navigator/current sidebar do not independently re-decode the source after the main bitmap exists;
 - oversized neighbor main preload stays disabled;
@@ -548,11 +579,25 @@ lazy-native interaction: ~0.05 fps
 
 The implementation is expected primarily to reduce memory/swap and interaction cost, not the ~18 s first bounded PNG decode itself.
 
+**E4 baseline** (measured on `123d943` with the instrumented copy, opening the investigation image with drawer and navigator visible):
+
+```text
+full-stream traversals: 4      (canvas rasterization ×2, navigator preview ×1, sidebar 300 px thumbnail ×1)
+open energy:            136.6 J
+main-thread stall:      20.9 s (max main-queue ping latency)
+peak RSS:               6.885 GiB
+time to published image: 0.239 s (the image is lazy — that is the trap)
+```
+
+Post-implementation acceptance targets, measured with the same instrumented harness: full-stream traversals **== 1**, open energy **≤ ~70 J** (one bounded decode), main-thread ping p95 **< 100 ms**, and no `Image IO` region > 1 GiB. RSS is expected to stay around 2.0–2.7 GiB because 1.93 GB of the source is mmapped; that is an expected floor, not a failure.
+
 ## 17. Policy benchmark harness
 
 Performance policy choices live in a dedicated benchmark harness (for example `benchmarks/LargeImagePolicyBench/`) or an equivalent isolated test tool. It is not part of the production target.
 
 Every benchmark records enough raw output to reproduce the decision. Do not reduce results to a single undocumented score.
+
+**Decision-criteria requirements (added after the reviewer criteria audit).** Each series must state, per candidate, which measurement would support it and which would falsify it; a benchmark that can only produce a single winner score is not acceptable. Series-specific requirements follow in each subsection.
 
 ### 17.1 A-series — materialization validation
 
@@ -564,14 +609,25 @@ Compare at least:
 
 Use representative normal/native-sized inputs (for example ~4K, ~6K, and <=8192) plus the giant image only as a safety negative control where appropriate.
 
+Requirements:
+
+- split the decision by input class: ≤8192 → choose a materialization mechanism; >8192 → the native-materialize
+  candidate must be **asserted unusable**, not scored, so a cheap-but-lazy candidate cannot win an aggregate;
+- the decisive member of the ≤8192 class is an **incompressible 8192-long-edge PNG** (compressible or solid fixtures
+  decode almost instantly and hide the stall); the class must also contain a JPEG (DCT decodes ~10× faster) and
+  results must be reported per format;
+- the giant is a safety negative control only.
+
 Measure:
 
 - create/materialize wall time;
-- first renderer draw time after publication;
+- first renderer draw time after publication, plus a draw at a *different* destination size (re-materialization);
 - peak `phys_footprint`;
 - observable `Image IO` regions;
 - color space and pixel layout before/after;
-- whether a second expensive decode occurs during first Quartz/Metal draw.
+- whether a second expensive decode occurs during first Quartz/Metal draw;
+- an observable materialization proof (`vmmap` at publication; a `sample` stack during the post-publication draw must
+  contain no `PNGReadPlugin`/`inflate` frames), not a self-reported flag.
 
 A3 is the current preferred mechanism, but implementation planning freezes it only after this validation confirms the expected behavior.
 
@@ -605,15 +661,23 @@ Record:
 - energy where available;
 - number of concurrent decode jobs;
 - swap/memory-pressure symptoms;
-- whether lower-level preload provides any useful page-cache warming despite bitmap-cache miss.
+- whether lower-level preload provides any useful page-cache warming despite bitmap-cache miss;
+- per-task CPU/energy measured **inside** each speculative task, so work completed after cancellation is counted
+  (the giant's decode still costs 62.8 J after `Task.cancel()`);
+- results reported **per format and per class** — never aggregated, because preload cannot help oversized images
+  (18 s either way) and helps cheap ones a lot;
+- a run with the drawer open, so thumbnail work contends with preload work.
 
-Hard constraints before latency comparison:
+Hard constraints before latency comparison (numeric):
 
 - oversized >8192 gets zero main-image neighbor preload;
-- no swap storm attributable to the policy;
-- no policy may rely on immediately-evicted entries as useful cache state;
-- stale speculative decode must not dominate foreground work;
-- memory use must remain defensible on the target 16 GB Mac.
+- no swap storm attributable to the policy: system-wide swap growth < 512 MB across the workload;
+- no policy may rely on immediately-evicted entries as useful cache state (verify with an explicit retention probe);
+- stale speculative decode must not dominate foreground work: speculative CPU < 25 % of foreground CPU;
+- concurrent decode jobs ≤ 2;
+- memory use must remain defensible on the target 16 GB Mac: steady-state working set ≤ 768 MiB.
+
+A candidate that wins latency while violating any of these is rejected, not ranked.
 
 Among policies satisfying the hard constraints, choose based on reproducible navigation benefit versus memory/energy cost. A tiny latency win does not justify hundreds of MiB of extra resident working set.
 
@@ -626,6 +690,14 @@ Compare:
 - C1 eager folder-wide header dimension probing;
 - C2 on-demand current/visible/candidate probing with dimension cache;
 - C3 byte-size coarse filter followed by required header confirmation.
+
+Requirements:
+
+- include an **adversarial mixed folder**: one small-file giant (a few MB that is oversized — e.g. a 12000×12000
+  solid PNG) and one large-file non-oversized image (e.g. a 148 MB 8192×5461 PNG). Byte size must not be able to
+  classify either one; a filter that decides "not oversized" from small bytes must fail this case;
+- byte size may be used only to *order* probes, never to decide;
+- folder-open latency must be measured on a cold-ish cache.
 
 Record:
 
@@ -650,6 +722,14 @@ Compare:
 
 Use synthetic checkerboard/fine-line/text fixtures plus real photos at approximately 4:1, 8:1, 16:1, and 32:1 minification.
 
+Requirements:
+
+- alongside any single-frame metric, record a **two-frame shimmer metric** (RMS difference between renders at
+  sub-pixel offsets), because a single-frame metric can be won by a blurrier candidate and aliasing is a temporal
+  artifact;
+- evaluate at app-reachable minification (Fit ≈ 2.0–4.3×, 0.5× fit, 0.25× fit ≈ 8–17×); 32× is a stress case only;
+- verify the harness is unbiased with a 1.0× sanity check (Metal must match the Quartz reference there).
+
 Record:
 
 - visible aliasing/shimmer;
@@ -659,6 +739,77 @@ Record:
 - mip generation time.
 
 The selected Metal path must not show a material quality regression versus the Quartz reference at strong minification.
+
+### 17.5 Gate results (measured 2026-09-17, MacBook Air M4 / 16 GB, macOS 27.0)
+
+Source for every row: the harness in `benchmarks/LargeImagePolicyBench/` (see its README for the exact commands). Fixtures are generated, never committed; the 1.9 GiB investigation PNG is referenced in place and its SHA-256 is verified before and after.
+
+**A — materialization (decides §5.1).** Incompressible PNGs, canvas long edge 3200 px.
+
+| input | mode | delivered_in | first_draw | peak footprint | CPU | energy |
+|---|---|---|---|---|---|---|
+| 8192×5461 PNG | A1 lazy + cache flags | 0.482 s | **0.507 s (decode inside draw)** | 0.214 GiB | 1.02 s | 5416 mJ |
+| 8192×5461 PNG | A2 native thumbnail | 0.504 s | 0.062 s | 0.502 GiB | 0.63 s | 3194 mJ |
+| 8192×5461 PNG | **A3 background materialize** | 0.498 s (0.495 s materialize) | **0.058 s** | 0.337 GiB | 0.63 s | 3020 mJ |
+| 6000×4000 PNG | A1 / A3 | 0.254 / 0.267 s | 0.279 / 0.038 s | 0.136 / 0.174 GiB | 0.59 / 0.35 s | 2915 / 1745 mJ |
+| 4032×3024 PNG | A1 / A3 | 0.132 / 0.136 s | 0.152 / 0.028 s | 0.097 / 0.104 GiB | 0.35 / 0.22 s | 1598 / 1093 mJ |
+| 4032×3024 JPEG | A1 / A3 | 0.038 / 0.059 s | 0.030 / 0.028 s | 0.096 / 0.099 GiB | 0.11 / 0.11 s | 552 / 580 mJ |
+| giant (A5 control) | A1 | 20.620 s | 19.017 s | **5.78 GiB** | 51.3 s | **214 J** |
+| 12000×9000 | A2 native thumb | 0.226 s | 0.127 s | **1.204 GiB** | 0.48 s | 2899 mJ |
+
+A3-native on the giant was deliberately not run: the source bitmap plus the destination copy is ~11.7 GiB, and the 2× relationship is confirmed by the 12000×9000 row.
+
+**B — preload/cache (decides §13).** Per-task CPU/energy accounting, so post-cancellation work is included.
+
+normal set (4032 PNG, 4032 JPEG, 6000 PNG, 8192 PNG; sequential; 0.6 s dwell):
+
+| policy | lat p50 | preload hits | decodes | speculative CPU | total energy |
+|---|---|---|---|---|---|
+| B0 | 0.151 s | 0 | 4 | 0 | 4648 mJ |
+| B1 (384 MiB) | 0.038 s | 3 | 1 | 0.81 s | 4731 mJ |
+| B2 (cost-aware 384 MiB) | 0.022 s | 3 | 1 | 0.84 s | 4329 mJ |
+| B3 (768 MiB) | 0.036 s | 3 | 1 | 0.81 s | 4573 mJ |
+| B4 (lower level) | 0.169 s | **0** | 4 | 1.50 s | **9803 mJ** |
+
+budget-busting set (native bitmaps 256 + 170.7 + 196 MB > 384 MiB):
+
+| policy | lat p50 | preload hits | decodes | speculative CPU | total energy |
+|---|---|---|---|---|---|
+| B0 | 0.546 s | 0 | 3 | 0 | 9271 mJ |
+| B1 | 0.062 s | 1 | 2 | 3.40 s | 17099 mJ |
+| B2 | 0.056 s | 1 | 2 | 3.50 s | 16807 mJ |
+| **B3 (768 MiB)** | 0.065 s | **2** | **1** | **1.07 s** | **9000 mJ** |
+| B4 | 0.568 s | 0 | 3 | 3.46 s | 18790 mJ |
+
+Cache-working-set probes (`cacheplan`): bounded working set 256 MB retained under 384 MiB; native 8192²×3 = 768 MB retained; current 8192²+8192×5461 = 426.7 MB → **the on-screen entry was evicted**; memory-pressure purge keeps the current entry. A cancelled giant decode still consumes 62.8 J / 19.4 s.
+
+**C — dimension probe (decides §14).**
+
+| scenario | policy | cost | probes | misclassified |
+|---|---|---|---|---|
+| 5000 small PNGs | C1 eager | 0.373 s | 5000 (0.08 ms each) | 0 |
+| 5000 small PNGs | C2 on-demand (20 visible) | 0.002 s | 20 | 0 |
+| 30 × 1.9 GB clones | C1 eager | 0.002 s | 30 (0.71 ms each) | 0 |
+| adversarial mixed folder | C3 one-way byte filter | ~0 | 3 | **2/5** |
+| adversarial mixed folder | C4 two-way byte filter | ~0 | **0** | **5/5** |
+
+**D — minification (decides §9.4).** Real 8192×5461 photo, offscreen render, shimmer = RMS between two sub-pixel offsets:
+
+| minification | variant | RMSE vs Quartz | shimmer | shimmer ratio | GPU ms |
+|---|---|---|---|---|---|
+| 1.7× | Quartz `.high` | 0 | 11.41 | 1.00× | – |
+| 1.7× | D1 bilinear no-mip | 11.55 | 17.42 | **1.53×** | 1.24 |
+| 1.7× | D2 mipmapped | 6.67 | 11.90 | 1.04× | 1.23 |
+| 3.7× | D1 / D2 | 12.01 / 6.19 | 20.85 / 9.21 | **1.93×** / 0.85× | 2.62 / 0.51 |
+| 11.3× | D1 / D2 | 8.16 / 2.88 | 11.89 / 4.01 | **2.61×** / 0.89× | 1.15 / 0.49 |
+
+Sanity check: at 1.0× both Metal variants match Quartz (RMSE 0.32). 1-px checkerboard stress: D1 up to 54.7 shimmer vs the reference's 1.32 (41×).
+
+**E1 — bucket base (decides §5.3).** Over 5 window geometries × 5 image shapes: the view-sized formula never undersamples and yields 2.1–8.2 texels per backing pixel at Fit (vs 1.5–2.0 for a displayed-size formula), i.e. it buys 2–8× zoom headroom before a level change. Identical at full screen; up to 16× more bitmap in short-wide windows.
+
+**E2 — resize/level stability (decides §9.5).** Derived from measured level-change cost (18.1–18.5 s per bucket, uncancellable); only oversized sources are affected.
+
+**E4 — app budget.** Baseline in §16; pass/fail requires the implementation.
 
 ## 18. Quick Look spike
 
@@ -713,10 +864,28 @@ Reviewer instructions:
 5. Identify any benchmark whose current success criterion could accidentally choose a locally fast but globally harmful policy.
 6. Explicitly state whether the added tests are blocking for implementation planning or can wait for implementation validation.
 
-No implementation plan is generated until:
+### 20.1 Gate status (closed 2026-09-17)
 
-- the reviewer-added tests have been incorporated or explicitly rejected with technical rationale; and
-- A/B/C/D benchmark decisions needed by the plan are resolved, or the plan explicitly treats a benchmark as its first gating task before production policy code.
+The reviewer-added tests were incorporated and executed; results are in §17.5. Outcomes:
+
+| reviewer test | outcome |
+|---|---|
+| A4 materialization matrix | run — A3 frozen (§5.1) |
+| A5 oversized native materialize | run — threshold held (§5.1) |
+| A6 observable materialization | adopted as a test requirement (§15.1, §5.1) |
+| B5 cancelled/stale preload cost | run — oversized preload prohibition justified (§13.3) |
+| B6 system-level pressure + per-format reporting | adopted into the B-series harness; per-format split kept modular |
+| C4 adversarial small-file giant | run — C3 rejected (§14.1) |
+| C5 cold-cache probe cost | run — C2 chosen (§14.1) |
+| D5 two-frame shimmer | run — mipmaps mandatory (§9.4) |
+| D6 proxy magnification | **open, non-blocking** (plan may pick a default and revisit) |
+| E1 bucket base | run — formula kept (§5.3) |
+| E2 resize/level stability | run — policy added (§9.5) |
+| E3 cache working set | run — budget raised to 768 MiB (§13.3) |
+| E4 one-traversal + energy budget | baseline captured (§16); pass/fail at implementation |
+| E5 animation frame stall | **open, non-blocking** |
+
+All A/B/C/D decisions needed by an implementation plan are resolved. The plan may proceed; D6 and E5 are its first optional gating items, and E4's acceptance runs against the captured baseline.
 
 ## 21. Error handling
 
@@ -730,7 +899,7 @@ No implementation plan is generated until:
 
 The eventual implementation plan must respect:
 
-1. Run/complete the A/B/C/D policy benchmark gates required to freeze disputed policies.
+1. ~~Run/complete the A/B/C/D policy benchmark gates required to freeze disputed policies.~~ **Done — see §17.5. Policies frozen: A3 materialization, B3 preload/cache (768 MiB), C2 dimension probe, mandatory mipmaps, E1a bucket formula, E2 resize policy.**
 2. Source-vs-bitmap geometry separation.
 3. Shared oversized predicate and chosen dimension-probe policy.
 4. Native materialization path and oversized bounded decode.
@@ -752,7 +921,9 @@ The design/implementation is successful only when all are true:
 - Source geometry remains exact and existing zoom semantics are preserved.
 - Current navigator/sidebar reuse avoids redundant current-source decode.
 - Oversized neighbor preload and oversized non-current drawer thumbnail storms are prevented.
-- Chosen preload/cache and dimension-probe policies are backed by B/C benchmark evidence, not reviewer preference.
+- Chosen preload/cache and dimension-probe policies are backed by B/C benchmark evidence, not reviewer preference (B3 / 768 MiB, C2 + probe ordering: §13.3, §14.1).
+- An open of the investigation image performs exactly **one** full-stream traversal and ≤ ~70 J of open energy, measured against the §16 baseline (4 traversals, 136.6 J).
+- No main-thread stall > 100 ms (p95) during background decode, zoom, pan, or window resize; the resize policy in §9.5 is honoured.
 - Large-image interaction uses on-demand Metal when available.
 - Strong minification meets the D-series quality gate.
 - Static images do not run a continuous GPU loop.
@@ -760,5 +931,5 @@ The design/implementation is successful only when all are true:
 - Packaged `.app`/DMG builds can load Metal resources; missing resources fall back without crash.
 - Main-thread responsiveness and live-memory acceptance pass on the real 1.9 GiB PNG.
 - Existing behavioral tests remain green.
-- Reviewer-added discriminating tests are resolved before implementation planning.
+- Reviewer-added discriminating tests are resolved before implementation planning (see §20.1).
 - Quick Look/decoder spikes remain isolated unless later evidence justifies production adoption.
