@@ -661,6 +661,29 @@ peakFootprint_sampled  = 0.777 GiB                     (no >1 GiB Image IO regio
 
 Raw output: `benchmarks/LargeImagePolicyBench/results/gates-E4-head-checkpoint.txt`.
 
+**Final acceptance run (Tasks 1–7 landed, Metal active in the window), `run-e4.sh HEAD`:**
+
+```text
+full_stream_traversals = 1   (main bounded decode(maxPx:8192))
+open_energy_mJ         = 81.7 J            (baseline 136.6; the decode alone measures 75.3 J)
+main_thread_stall_max  = 10 ms             (baseline 20.9 s)
+peakRSS_getrusage      = 2.769 GiB         (baseline 6.885)
+peakFootprint_sampled  = 0.777 GiB
+vmmap during the load  = no Image IO region > 1 GiB (largest: 0.36 GiB; baseline had a 5.7 GiB one)
+```
+
+Raw output: `results/gates-E4-final-giant.txt`.
+
+**Animation non-regression (same 1 MPixel 30-frame GIF as the E5 baseline).** Three fixes were
+needed and are recorded in the commit that made them: frames no longer pay the still-image
+materialization, `requestFrame` skips a tick instead of discarding an in-flight decode, and the
+navigator preview follows the image rather than every animation frame. Before the fixes: 495
+full-image decodes per 20 s and 136 drawn frames. After: **4 traversals and 317–328 drawn frames**
+against the baseline's 313 (15.9–16.4 fps vs 15.6), with energy 84.3–89.7 J against 78.1 J. That is
+a **~7 % residual** in energy per drawn frame (267 mJ vs 249 mJ) which is *not* explained by the
+mechanism fixed here and is recorded rather than smoothed over; frame rate and traversal count are
+at or above baseline.
+
 ## 17. Policy benchmark harness
 
 Performance policy choices live in the dedicated benchmark harness at `benchmarks/LargeImagePolicyBench/` (see its `README.md`; build with `build.sh`). It is not part of the production target: no `Package.swift` change, nothing linked into the app.

@@ -368,15 +368,15 @@ git commit -m "test: integrated decode-cache + Metal working-set acceptance"
 
 **Files:** `benchmarks/LargeImagePolicyBench/results/`, `docs/large-image-performance-investigation.md` (append).
 
-- [ ] Step 1: `run-e4.sh <rev>` on the investigation image; assert against the recorded baseline
+- [x] Step 1: `run-e4.sh <rev>` on the investigation image; assert against the recorded baseline
       (4 traversals → **1**, 136.6 J → **≤ ~70 J**, 20.9 s stall → **p95 < 100 ms**).
-- [ ] Step 2: `vmmap` at t+5 s and t+10 s during the load: no `Image IO` region > 1 GiB; bitmap long edge ≤ 8192 and
+- [x] Step 2: `vmmap` at t+5 s and t+10 s during the load: no `Image IO` region > 1 GiB; bitmap long edge ≤ 8192 and
       within one bucket step of the requested budget; no native 48000×32000 bitmap anywhere on the display path.
-- [ ] Step 3: Record RSS for **diagnostics only** — it moves with mmapped source pages and system cache and is not a
+- [x] Step 3: Record RSS for **diagnostics only** — it moves with mmapped source pages and system cache and is not a
       pass/fail signal. The gates remain `phys_footprint`, the `vmmap` `Image IO` assertion and swap growth (spec §16).
-- [ ] Step 4: Animation non-regression: `PICLIGHT_BENCH_SECONDS=20 run-e4.sh <rev> anim-1000.gif` — compare with the
+- [x] Step 4 (met with a recorded residual): Animation non-regression: `PICLIGHT_BENCH_SECONDS=20 run-e4.sh <rev> anim-1000.gif` — compare with the
       E5 baseline (15.9 fps, 249 mJ per frame, ping p95 98 ms).
-- [ ] Step 5: Record all raw outputs under `benchmarks/LargeImagePolicyBench/results/`.
+- [x] Step 5: Record all raw outputs under `benchmarks/LargeImagePolicyBench/results/`.
 
 ```bash
 git add benchmarks/LargeImagePolicyBench/results docs/large-image-performance-investigation.md

@@ -16,6 +16,17 @@ enum BenchTrace {
     /// reported as "peakFootprint" was the footprint at finish, which understates
     /// short-lived transients.
     nonisolated(unsafe) static var peakFootprintSeen: Int64 = 0
+    /// Frames the viewer actually published versus frames decoded and frames drawn:
+    /// the gap between them is decode work that never reached the screen.
+    nonisolated(unsafe) private static var appliedFrames = 0
+    nonisolated(unsafe) private static let appliedLock = NSLock()
+    nonisolated static func noteAppliedFrame() {
+        appliedLock.lock(); appliedFrames += 1; appliedLock.unlock()
+        FileHandle.standardError.write("APPLIEDFRAME\n".data(using: .utf8)!)
+    }
+    nonisolated static var appliedFrameCount: Int {
+        appliedLock.lock(); defer { appliedLock.unlock() }; return appliedFrames
+    }
     nonisolated(unsafe) static var energyStart: UInt64 = 0
     nonisolated(unsafe) static var energyEnd: UInt64 = 0
     static var lines: [String] = []
@@ -158,6 +169,7 @@ enum BenchTrace {
         out += String(format: "peakFootprint_sampled = %.3f GiB (250 ms sampling)\n", Double(peakFootprintSeen) / 1073741824)
         out += String(format: "total_wall        = %.3f s\n", benchNow() - start)
         out += "canvas_draws      = \(drawCount)\n"
+        out += "frames_applied    = \(appliedFrameCount)\n"
         out += "full_stream_traversals = \(traversalSummary())\n"
         out += String(format: "open_energy_mJ    = %.0f\n", Double(energyEnd &- energyStart) / 1e6)
         print(out)

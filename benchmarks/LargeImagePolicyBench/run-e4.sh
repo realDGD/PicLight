@@ -31,7 +31,10 @@ shasum -a 256 "$IMAGE"
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 git -C "$ROOT" archive "$REF" | tar -x -C "$WORK"
-cp -R "$HERE/instrumentation/PicViewMac/." "$WORK/PicViewMac/"
+# The instrumentation is *applied* to the exported tree rather than overlaid as whole
+# files: an overlay silently reverts production changes it predates, and the run would
+# measure the old path without saying so.
+python3 "$HERE/instrumentation/apply.py" "$WORK"
 
 echo "== building instrumented app from $REF =="
 ( cd "$WORK" && swift build -c release )
