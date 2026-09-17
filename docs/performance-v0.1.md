@@ -43,7 +43,7 @@ so no other sort mode pays for header reads.
 | Metric | Value |
 | --- | --- |
 | Unit test suite | 138 tests, ≈ 8 s |
-| Full in-app acceptance runner | 46 checks, ≈ 12 s |
+| Full in-app acceptance runner | 43 checks, ≈ 13 s |
 | Release bundle size | ≈ 1.7 MB binary, 708 KB DMG |
 
 ## Not measured (no Instruments run)

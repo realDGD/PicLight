@@ -38,32 +38,107 @@ public enum ViewerAppearanceMode: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Material host that adapts to the running OS instead of imitating newer looks.
-public class MaterialHostView: NSVisualEffectView {
+/// Hosts the native surface behind the auxiliary chrome: the hover bars, the
+/// thumbnail drawer and the minimap. On macOS 26+ that surface is the system's
+/// Liquid Glass (`NSGlassEffectView`); on macOS 14–15 it is a system
+/// `NSVisualEffectView` material. Nothing is hand-drawn, and glass is never
+/// placed over the image canvas for decoration.
+public class MaterialHostView: NSView {
     public enum Style {
         case chrome
         case drawer
     }
 
+    public let style: Style
+
+    private var effectView: NSVisualEffectView?
+    private var glassView: NSView?
+
+    /// System material used on macOS 14–15. Where glass is available the system
+    /// chooses its own material, so this is not applied there.
+    public var material: NSVisualEffectView.Material = .hudWindow {
+        didSet { effectView?.material = material }
+    }
+
+    public var blendingMode: NSVisualEffectView.BlendingMode = .withinWindow {
+        didSet { effectView?.blendingMode = blendingMode }
+    }
+
+    /// `true` when this surface is rendered with native Liquid Glass.
+    public var usesNativeGlass: Bool { glassView != nil }
+
     public init(style: Style) {
+        self.style = style
         super.init(frame: .zero)
-        switch style {
-        case .chrome:
-            material = .hudWindow
-            blendingMode = .withinWindow
-        case .drawer:
-            material = .sidebar
-            blendingMode = .behindWindow
-        }
-        state = .followsWindowActiveState
         wantsLayer = true
-        // Native system material only. macOS 26+ systems already render glass for
-        // these materials, so nothing has to be imitated by hand.
-        layer?.cornerRadius = 10
-        layer?.masksToBounds = true
+
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = style == .drawer ? .regular : .clear
+            glass.cornerRadius = style == .drawer ? 0 : 10
+            glass.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(glass)
+            NSLayoutConstraint.activate([
+                glass.leadingAnchor.constraint(equalTo: leadingAnchor),
+                glass.trailingAnchor.constraint(equalTo: trailingAnchor),
+                glass.topAnchor.constraint(equalTo: topAnchor),
+                glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ])
+            glassView = glass
+        } else {
+            let effect = NSVisualEffectView()
+            effect.material = style == .chrome ? .hudWindow : .sidebar
+            effect.blendingMode = style == .chrome ? .withinWindow : .behindWindow
+            effect.state = .followsWindowActiveState
+            effect.translatesAutoresizingMaskIntoConstraints = false
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = 10
+            effect.layer?.masksToBounds = true
+            addSubview(effect)
+            NSLayoutConstraint.activate([
+                effect.leadingAnchor.constraint(equalTo: leadingAnchor),
+                effect.trailingAnchor.constraint(equalTo: trailingAnchor),
+                effect.topAnchor.constraint(equalTo: topAnchor),
+                effect.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ])
+            effectView = effect
+            material = effect.material
+            blendingMode = effect.blendingMode
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// The system accessibility switches are honored rather than fought.
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateForAccessibility()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(accessibilityDisplayOptionsChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: NSWorkspace.shared
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func accessibilityDisplayOptionsChanged() {
+        updateForAccessibility()
+    }
+
+    /// With Reduce Transparency on, the translucent material is replaced by a
+    /// solid surface instead of being forced back on the user.
+    private func updateForAccessibility() {
+        let reduce = AccessibilityAppearance.reduceTransparency
+        effectView?.isHidden = reduce
+        glassView?.isHidden = reduce
+        layer?.backgroundColor = reduce
+            ? NSColor.windowBackgroundColor.withAlphaComponent(0.98).cgColor
+            : NSColor.clear.cgColor
+        layer?.cornerRadius = reduce ? 10 : 0
+    }
 }
 
 /// Respects the system accessibility switches instead of fighting them.

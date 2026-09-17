@@ -632,6 +632,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         var canvasFrame: NSRect
         var zoomScale: CGFloat
         var fitScale: CGFloat
+        /// True when the chrome surfaces are rendered with native Liquid Glass.
+        var usesNativeSurface: Bool
     }
 
     var chromeSnapshot: ChromeSnapshot {
@@ -641,7 +643,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             drawerRows: drawer.visibleRowCount,
             canvasFrame: canvas.frame,
             zoomScale: canvas.viewport.zoomScale,
-            fitScale: canvas.viewport.fitScale
+            fitScale: canvas.viewport.fitScale,
+            usesNativeSurface: topBar.usesNativeGlass || bottomBar.usesNativeGlass || drawer.usesNativeGlass
         )
     }
 

@@ -181,6 +181,12 @@ enum SelfTest {
         drainRunLoop(0.4)
         check("hover still works before immersive", viewer.chromeSnapshot.top)
 
+        // The auxiliary surfaces use the native system look: Liquid Glass on
+        // macOS 26+, a system material before that. Never a hand-drawn imitation.
+        check("chrome uses the native system surface",
+              viewer.chromeSnapshot.usesNativeSurface,
+              "glass: \(viewer.chromeSnapshot.usesNativeSurface)")
+
         // Immersive mode hides chrome but keeps the window.
         viewer.simulateImmersive(true)
         drainRunLoop(0.4)

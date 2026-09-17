@@ -3,7 +3,7 @@ import AppKit
 /// The top hover region: the real standard window buttons placed in the
 /// full-size titlebar, a middle-truncated filename and the J2 tool controls.
 /// The remaining strip stays a normal window drag surface.
-public final class TopHoverBarView: NSView {
+public final class TopHoverBarView: MaterialHostView {
     public static let height: CGFloat = 44
 
     public var onCommand: ((ViewerCommand) -> Void)?
@@ -14,9 +14,8 @@ public final class TopHoverBarView: NSView {
     private var standardButtons: [NSButton] = []
 
     public init() {
-        super.init(frame: .zero)
+        super.init(style: .chrome)
         translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
 
         filenameField.font = .systemFont(ofSize: 13, weight: .medium)
         filenameField.textColor = .labelColor
