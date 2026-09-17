@@ -73,6 +73,12 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
 - EXIF orientation is honored for display without ever rewriting the file;
   rotation and mirroring are view-only.
 - Color-managed SDR rendering (sRGB and Display P3 preserved through decode).
+- Large images decode into a bounded level (1024–8192) chosen from the canvas
+  size, and the bitmap is materialized off the main thread, so opening a 1.9 GiB
+  48000×32000 PNG costs one decode pass instead of four and no main-thread stall.
+  Rendering is on-demand Metal with mandatory mipmaps and a Quartz fallback
+  (`PICLIGHT_DISABLE_METAL=1` forces Quartz); a window resize upgrades the level
+  only after a 300 ms debounce and never during a drag.
 - Folder watching with debounced rescans that preserve the current file by
   identity, and Move to Trash with smart next/previous selection.
 - Configurable settings and customizable viewer shortcuts with conflict
@@ -121,3 +127,11 @@ Tracked in `docs/release/v0.1-checklist.md`. In short: the visual/interaction
 matrix (Mission Control, tiling, Stage Manager, native Full Screen, third-party
 window managers), a visual pass on Light/Dark and accessibility appearance, and
 an Instruments memory profile all still need a human at a display.
+
+Two deliberate limits of the large-image work: 100 % zoom on a source above 8192
+shows the 8192 proxy rather than native pixels (streaming tiles need a
+`LargeImageBackend`, which is out of scope for v0.1), and a released build wants a
+compiled `default.metallib` — `scripts/build-release.sh` fails loudly without the
+Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) instead of
+shipping a fallback-only app, while a local run compiles the shipped
+`ImageShaders.metal` source at startup and says so.

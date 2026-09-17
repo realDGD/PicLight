@@ -31,7 +31,14 @@ public final class ImageCanvasView: NSView {
     // MARK: - Metal
 
     /// Creates the renderer; injectable so a test can force the Quartz fallback.
-    var metalRendererFactory: () -> MetalImageRenderer? = { MetalImageRenderer() }
+    ///
+    /// `PICLIGHT_DISABLE_METAL=1` forces the Quartz path at runtime. It exists for A/B
+    /// measurement and support triage (the animation frame path is measured both ways
+    /// in the large-image notes) and never changes behaviour unless set.
+    var metalRendererFactory: () -> MetalImageRenderer? = {
+        if ProcessInfo.processInfo.environment["PICLIGHT_DISABLE_METAL"] == "1" { return nil }
+        return MetalImageRenderer()
+    }
     private var metalSurface: MetalCanvasSurface?
 
     /// True when this canvas is drawing through Metal rather than Quartz.

@@ -22,10 +22,14 @@ so no other sort mode pays for header reads.
 - `ImageIODecoder` runs every decode in a detached task at `userInitiated`
   priority; the main thread never performs file I/O or decode work.
 - Decoded images are cached by **real decoded byte cost**
-  (`bytesPerRow × height`) with a 384 MB ceiling and a 24-entry cap, so one 8K
-  image evicts before a folder of small images does.
-- Memory pressure purges everything except the image currently on screen
-  (`DecodeCache.purge(keeping:)` fed by the coordinator's current URL).
+  (`bytesPerRow × height`) under a 768 MiB ceiling, so one 8K image evicts before
+  a folder of small images does. The budget is sized from measurement: at 384 MiB
+  the integrated large-image working set silently evicted the entry on screen
+  (`results/gates-15.8-integrated.txt`).
+- Cache entries are keyed by `DecodeCacheKey` — source URL, representation index
+  and decode level — because the same file can legitimately exist at several
+  sizes. `currentHeadKey` names the entry on screen, and memory pressure purges
+  everything except it (`DecodeCache.purge(keeping:)`).
 - Animation frames are decoded on demand (`decodeFrame(_:index:)`) instead of
   holding a whole animation in memory; a cancelled/older generation can never
   publish over a newer one (asserted in `DecodeCoordinatorTests`).
@@ -42,7 +46,7 @@ so no other sort mode pays for header reads.
 
 | Metric | Value |
 | --- | --- |
-| Unit test suite | 138 tests, ≈ 8 s |
+| Unit test suite | 375 tests, ≈ 96 s |
 | Full in-app acceptance runner | 46 checks, ≈ 14 s |
 | Release bundle size | ≈ 1.7 MB binary, 708 KB DMG |
 
@@ -72,6 +76,43 @@ empirically recorded. Run before making performance claims in a release note:
 xcrun xctrace record --template 'Time Profiler' --launch -- \
   dist/PicViewMac.app/Contents/MacOS/PicViewMac /path/to/large/photo.jpg
 ```
+
+## Large images (bounded decode and on-demand Metal)
+
+Sources whose long edge is at most 8192 decode at native resolution; anything
+larger is decoded straight into a bounded level (1024 / 2048 / 4096 / 8192, chose
+by `ceil(max(canvasWidth, canvasHeight) × backingScale × 1.5)`, snapped up, never
+above native). Behaviour that follows from that design:
+
+- Decoding a bounded level costs what the *decode* costs, not what the output
+  size costs: on the 48000×32000 investigation image every level costs ≈ 18 s and
+  ≈ 75 J, which is why the level is picked from canvas geometry and a header-only
+  size probe rather than re-decoded at each zoom step.
+- The bitmap is materialized in the background (`BitmapMaterializer`) before it is
+  published, so the first frame on screen never pays for PNG inflate; the file is
+  streamed once per load and the source depth/colour space is preserved (indexed
+  sources expand losslessly, > 8-bit sources stay deep).
+- Metal draws the current bitmap on demand (`enableSetNeedsDisplay`, `isPaused`)
+  with mandatory mipmaps and `linear` min/mag/mip filtering; the Quartz path
+  remains and is semantically identical (`PICLIGHT_DISABLE_METAL=1` forces it for
+  A/B measurement).
+- Level upgrades triggered by a window resize wait for the 300 ms debounce, only
+  run when the level is actually undersampled, and never start during a drag.
+- Oversized drawer items render a placeholder instead of decoding; the current
+  item is served from the bitmap already on screen.
+
+| Scenario (48000×32000 PNG, 1.929 GiB) | Before | After |
+| --- | --- | --- |
+| Full-file decode passes per load | 4 | 1 |
+| Main-thread stall | 20.9 s | 10 ms |
+| Load energy | 136.6 J | 81.7 J |
+| Peak RSS | 6.885 GiB | 2.769 GiB |
+| Largest `Image IO` region in vmmap | 5.7 GiB | 0.36 GiB |
+
+**Known limitation (v0.1).** 100 % zoom on a source above 8192 is intentionally
+undersampled to the current level: detail beyond the 8192 proxy needs a
+`LargeImageBackend` that streams tiles, which is out of scope here. Zooming to
+100 % therefore shows a 8192-class image, not 48000×32000 pixels.
 
 ## Large-image working set (integrated DecodeCache + mipmapped Metal texture)
 

@@ -385,14 +385,14 @@ git commit -m "test: real-image acceptance for bounded decode and Metal renderin
 
 ## Task 9: Regression sweep and documentation
 
-- [ ] Step 1: Full `swift test`; fix every regression rather than relaxing a test. Confirm the narrowed invariant tests
+- [x] Step 1: Full `swift test`; fix every regression rather than relaxing a test. Confirm the narrowed invariant tests
       still cover native-resolution behaviour.
-- [ ] Step 2: Sweep the existing behavioural suites explicitly: gesture routing, pointer-centered zoom, drawer
+- [x] Step 2: Sweep the existing behavioural suites explicitly: gesture routing, pointer-centered zoom, drawer
       pin/unpin, navigator, animation, multi-page TIFF, thumbnail selection border, window/layout.
-- [ ] Step 3: Update `docs/performance-v0.1.md` and the README with the new behaviour (bounded decode, on-demand Metal,
+- [x] Step 3: Update `docs/performance-v0.1.md` and the README with the new behaviour (bounded decode, on-demand Metal,
       the resize policy, and the fact that 100 % zoom on an oversized image is intentionally undersampled until a
       LargeImageBackend exists).
-- [ ] Step 4: Confirm the two spikes remain isolated (no production dependency added).
+- [x] Step 4: Confirm the two spikes remain isolated (no production dependency added).
 
 ```bash
 git add PicViewMac PicViewMacTests docs README.md
