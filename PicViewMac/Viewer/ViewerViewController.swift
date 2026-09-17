@@ -38,6 +38,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var canvasLeadingToRoot: NSLayoutConstraint?
     private var canvasLeadingToDrawer: NSLayoutConstraint?
     private var infoCardHeightConstraint: NSLayoutConstraint?
+    private var minimapSizeConstraints: [NSLayoutConstraint] = []
     private var isDrawerReservingSpace = false
     private var isInfoCardVisible = false
     private var infoCardSuppressed = false
@@ -141,6 +142,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         root.addSubview(toolDock)
         root.addSubview(infoCard)
 
+        let minimapWidth = minimap.widthAnchor.constraint(
+            equalToConstant: NavigatorView.defaultSize.width)
+        let minimapHeight = minimap.heightAnchor.constraint(
+            equalToConstant: NavigatorView.defaultSize.height)
+        minimapSizeConstraints = [minimapWidth, minimapHeight]
+
         let drawerWidth = drawer.widthAnchor.constraint(equalToConstant: ThumbnailDrawerView.minimumWidth)
         drawerWidthConstraint = drawerWidth
         let canvasLeadingToRoot = canvas.leadingAnchor.constraint(equalTo: root.leadingAnchor)
@@ -150,6 +157,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
         NSLayoutConstraint.activate([
             canvasLeadingToRoot,
+            minimapWidth,
+            minimapHeight,
             canvas.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             canvas.topAnchor.constraint(equalTo: root.topAnchor),
             canvas.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -173,10 +182,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             drawer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             drawerWidth,
 
+            // Anchored by its trailing and bottom edges, so following the image
+            // aspect grows the navigator up and to the left, never off the corner.
             minimap.trailingAnchor.constraint(equalTo: canvas.trailingAnchor, constant: -14),
             minimap.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -34),
-            minimap.widthAnchor.constraint(equalToConstant: NavigatorView.defaultSize.width),
-            minimap.heightAnchor.constraint(equalToConstant: NavigatorView.defaultSize.height),
 
             toolDock.centerXAnchor.constraint(equalTo: canvas.centerXAnchor),
             toolDock.bottomAnchor.constraint(equalTo: canvas.bottomAnchor,
@@ -433,7 +442,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 startAnimation(descriptor: head.descriptor, autoplay: settings.autoplayAnimations)
             }
         case let .frame(frame):
-            if let descriptor = viewerState.descriptor, !descriptor.animated {
+            // Streamed frames are animation frames. A multi-page document keeps its
+            // first page until the user navigates.
+            if viewerState.isAnimated {
                 viewerState.apply(frame: frame)
             }
         case let .failure(message):
@@ -897,11 +908,22 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// Image-change update: builds the navigator preview once per displayed image,
     /// as a bounded downsample rather than a re-sample of the full source.
+    /// The navigator takes the shape of the image it describes, within clamps so an
+    /// extreme aspect does not turn it into a sliver.
+    private func applyNavigatorSize(for pixelSize: CGSize) {
+        let size = NavigatorView.size(forImagePixels: pixelSize, maximum: NavigatorView.defaultSize)
+        guard minimapSizeConstraints.count == 2 else { return }
+        minimapSizeConstraints[0].constant = size.width
+        minimapSizeConstraints[1].constant = size.height
+        view.layoutSubtreeIfNeeded()
+    }
+
     private func regenerateNavigatorPreview() {
         guard let image = viewerState.currentImage else {
             minimap.setPreviewImage(nil)
             return
         }
+        applyNavigatorSize(for: CGSize(width: image.width, height: image.height))
         let maxPixel = NavigatorView.previewPixelSize
         Task { [weak self] in
             guard let self else { return }

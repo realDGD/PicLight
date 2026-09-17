@@ -81,23 +81,26 @@ public struct GestureRouter: Sendable {
     /// Trackpad two-finger scroll / swipe.
     /// - Parameters:
     ///   - deltaX: positive means the content is being dragged to the right.
+    ///   - deltaY: the vertical part of the same gesture, panned together with the
+    ///     horizontal one so a diagonal gesture moves the image instead of splitting
+    ///     into a pan and a switch.
     ///   - canPanInDirection: `false` when the image is already at the edge that
     ///     this swipe direction would reveal.
-    public mutating func routeSwipe(deltaX: CGFloat, viewWidth: CGFloat, isZoomedIn: Bool,
-                                    canPanInDirection: Bool) -> GestureIntent {
+    public mutating func routeSwipe(deltaX: CGFloat, deltaY: CGFloat = 0, viewWidth: CGFloat,
+                                    isZoomedIn: Bool, canPanInDirection: Bool) -> GestureIntent {
         guard viewWidth > 0 else { return .none }
         switch swipeMode {
         case .disabled:
-            return isZoomedIn ? .pan(CGSize(width: deltaX, height: 0)) : .none
+            return isZoomedIn ? .pan(CGSize(width: deltaX, height: deltaY)) : .none
         case .alwaysPan:
             guard isZoomedIn else { return switchIntent(deltaX: deltaX, viewWidth: viewWidth) }
-            return .pan(CGSize(width: deltaX, height: 0))
+            return .pan(CGSize(width: deltaX, height: deltaY))
         case .alwaysSwitch:
             return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         case .smart:
             if isZoomedIn && canPanInDirection {
                 accumulated = 0
-                return .pan(CGSize(width: deltaX, height: 0))
+                return .pan(CGSize(width: deltaX, height: deltaY))
             }
             return switchIntent(deltaX: deltaX, viewWidth: viewWidth)
         }

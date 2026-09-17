@@ -532,3 +532,104 @@ final class ToolDockAppearanceTests: XCTestCase {
                        "an appearance change re-applies the adaptive tint")
     }
 }
+
+/// The navigator takes the shape of the image it describes.
+@MainActor
+final class NavigatorSizingTests: XCTestCase {
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
+
+    private let maximum = NSSize(width: 168, height: 120)
+
+    func testSizeFollowsTheImageAspectInsideTheMaximumBox() {
+        let landscape = NavigatorView.size(forImagePixels: CGSize(width: 400, height: 300),
+                                           maximum: maximum)
+        XCTAssertEqual(landscape.width / landscape.height, 4.0 / 3.0, accuracy: 0.02)
+        XCTAssertLessThanOrEqual(landscape.width, maximum.width + 0.001)
+        XCTAssertLessThanOrEqual(landscape.height, maximum.height + 0.001)
+
+        let portrait = NavigatorView.size(forImagePixels: CGSize(width: 300, height: 400),
+                                          maximum: maximum)
+        XCTAssertEqual(portrait.height / portrait.width, 4.0 / 3.0, accuracy: 0.02,
+                       "a portrait image gives a portrait navigator")
+        // The box is height-limited, so the portrait case shows up as a narrower
+        // navigator at the same height.
+        XCTAssertLessThan(portrait.width, landscape.width)
+        XCTAssertEqual(portrait.height, landscape.height, accuracy: 0.5)
+    }
+
+    func testSquareImageGetsTheTallestBoxThatFits() {
+        let square = NavigatorView.size(forImagePixels: CGSize(width: 500, height: 500),
+                                        maximum: maximum)
+        XCTAssertEqual(square.width, square.height, accuracy: 0.01)
+        XCTAssertEqual(square.height, maximum.height, accuracy: 0.01,
+                       "a square fills the box's height")
+    }
+
+    /// A panorama or a very tall image would otherwise collapse the navigator into a
+    /// sliver, so the aspect is clamped and the image letterboxes inside.
+    func testExtremeAspectsAreClamped() {
+        let panorama = NavigatorView.size(forImagePixels: CGSize(width: 8000, height: 500),
+                                          maximum: maximum)
+        XCTAssertEqual(panorama.width / panorama.height,
+                       NavigatorView.maximumAspect, accuracy: 0.02)
+        XCTAssertGreaterThanOrEqual(panorama.height, NavigatorView.preferredMinimumShortSide - 0.001,
+                                    "a 2:1 clamp still leaves a comfortable short side")
+
+        let skyscraper = NavigatorView.size(forImagePixels: CGSize(width: 400, height: 8000),
+                                            maximum: maximum)
+        XCTAssertEqual(skyscraper.height / skyscraper.width,
+                       1 / NavigatorView.minimumAspect, accuracy: 0.02)
+        // The maximum box wins over the preferred short side at this extreme: the
+        // navigator gets narrow rather than exceeding its box.
+        XCTAssertLessThanOrEqual(skyscraper.height, maximum.height + 0.001)
+        XCTAssertLessThanOrEqual(skyscraper.width, maximum.width + 0.001)
+        XCTAssertGreaterThan(skyscraper.width, 40, "still wide enough to aim at")
+    }
+
+    func testUnknownImageKeepsTheDefaultBox() {
+        XCTAssertEqual(NavigatorView.size(forImagePixels: .zero, maximum: maximum), maximum)
+    }
+
+    func testNavigatorResizesWithTheImageAndKeepsItsBottomRightCorner() throws {
+        let controller = ViewerWindowController()
+        defer { controller.close() }
+        TestAppKit.presentOffScreen(controller)
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        controller.window?.setContentSize(NSSize(width: 900, height: 600))
+
+        func load(_ name: String) {
+            viewer.open(url: Fixtures.url(name))
+            let deadline = Date().addingTimeInterval(10)
+            while viewer.viewerState.currentImage == nil, Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        load("static.png")           // 64x48, landscape
+        let navigator = try XCTUnwrap(viewer.chromeViewsForTesting["minimap"] as? NavigatorView)
+        let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
+        let landscapeFrame = navigator.frame
+        XCTAssertEqual(landscapeFrame.width / landscapeFrame.height, 4.0 / 3.0, accuracy: 0.05,
+                       "the navigator matches the image aspect")
+        XCTAssertEqual(navigator.frame.maxX, canvas.frame.maxX - 14, accuracy: 2,
+                       "the trailing edge stays anchored")
+        XCTAssertEqual(navigator.frame.minY, canvas.frame.minY + 34, accuracy: 2,
+                       "the bottom edge stays anchored")
+
+        // A multi-page document opens on its first page (40x30), and the navigator
+        // follows whatever is actually displayed.
+        load("oriented-6.jpg")       // 40x20 stored, displayed 20x40 after EXIF
+        let portraitFrame = navigator.frame
+        XCTAssertLessThan(portraitFrame.width, landscapeFrame.width,
+                          "a portrait image gives a narrower navigator")
+        XCTAssertEqual(portraitFrame.width / portraitFrame.height, 0.5, accuracy: 0.05,
+                       "and its shape matches the displayed image")
+        XCTAssertEqual(navigator.frame.maxX, canvas.frame.maxX - 14, accuracy: 2)
+        XCTAssertEqual(navigator.frame.minY, canvas.frame.minY + 34, accuracy: 2)
+    }
+}

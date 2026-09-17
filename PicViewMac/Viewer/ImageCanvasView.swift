@@ -162,14 +162,33 @@ public final class ImageCanvasView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let deltaX = event.scrollingDeltaX
         let deltaY = event.scrollingDeltaY
+        let isTrackpad = event.hasPreciseScrollingDeltas
 
-        // A mostly-horizontal trackpad gesture goes to the swipe router; a
-        // vertical wheel keeps its configured behavior.
-        if abs(deltaX) > abs(deltaY) {
+        // While the image is zoomed, a trackpad gesture moves the image. Routing each
+        // event by whichever axis happened to be larger split one two-finger gesture
+        // into pans for some events and zooms or image switches for others, so
+        // panning appeared to change the picture.
+        if isTrackpad, viewport.isZoomedIn {
+            if event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
+            // Only a clearly horizontal gesture may reach the edge and switch; a
+            // diagonal one pans on both axes.
+            let horizontalDominant = abs(deltaX) > abs(deltaY) * 1.5
+            let intent = horizontalDominant
+                ? router.routeSwipe(deltaX: deltaX, deltaY: deltaY, viewWidth: bounds.width,
+                                    isZoomedIn: true, canPanInDirection: canPan(deltaX: deltaX))
+                : .pan(CGSize(width: deltaX, height: deltaY))
+            apply(intent)
+            if event.phase == .ended || event.phase == .cancelled { router.endGesture() }
+            return
+        }
+
+        // At Fit, or with a real mouse wheel, the configured behavior applies. A
+        // clearly horizontal trackpad gesture is still a swipe.
+        if abs(deltaX) > abs(deltaY) * 1.5 {
             if event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
             let intent = router.routeSwipe(
                 deltaX: deltaX, viewWidth: bounds.width,
-                isZoomedIn: viewport.isZoomedIn, canPanInDirection: canPan(deltaX: deltaX)
+                isZoomedIn: false, canPanInDirection: false
             )
             apply(intent)
             if event.phase == .ended || event.phase == .cancelled { router.endGesture() }

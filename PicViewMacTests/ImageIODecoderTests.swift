@@ -207,3 +207,65 @@ final class ImageIODecoderTests: XCTestCase {
         }
     }
 }
+
+/// Pages and frames are different things, and the difference is visible in the UI.
+final class MultiPageDocumentTests: XCTestCase {
+    @MainActor
+    func testOpeningAMultiPageTIFFShowsTheFirstPage() async throws {
+        let viewer = ViewerViewController()
+        _ = viewer.view
+        viewer.open(url: Fixtures.url("multipage.tiff"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)   // give any stream a chance
+
+        let image = try XCTUnwrap(viewer.viewerState.currentImage)
+        XCTAssertEqual(CGSize(width: image.width, height: image.height),
+                       CGSize(width: 40, height: 30),
+                       "a multi-page document opens on page 1, not on its last page")
+        XCTAssertEqual(viewer.viewerState.pageIndex, 0)
+        XCTAssertEqual(viewer.viewerState.pageDescription, "1 / 3")
+    }
+
+    @MainActor
+    func testOpeningAMultiPageTIFFDoesNotDecodeEveryPage() async throws {
+        // A multi-page document: several pages, not animated, so the decoder must
+        // not stream them as frames.
+        let decoder = CountingDecoder(document: .multiPage(pageCount: 3))
+        let viewer = ViewerViewController(decoder: decoder)
+        _ = viewer.view
+        viewer.open(url: Fixtures.url("multipage.tiff"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        XCTAssertEqual(decoder.frameRequestCount, 0,
+                       "pages must be decoded on demand, not streamed as animation frames")
+    }
+
+    @MainActor
+    func testPagesStillAdvanceOnRequest() async throws {
+        let viewer = ViewerViewController()
+        _ = viewer.view
+        viewer.open(url: Fixtures.url("multipage.tiff"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        viewer.perform(.nextPage)
+        // The index advances immediately; the pixels arrive when the page decodes.
+        let advance = Date().addingTimeInterval(5)
+        while viewer.viewerState.currentImage?.width != 30, Date() < advance {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertEqual(viewer.viewerState.pageIndex, 1)
+        XCTAssertEqual(CGSize(width: viewer.viewerState.currentImage?.width ?? 0,
+                             height: viewer.viewerState.currentImage?.height ?? 0),
+                       CGSize(width: 30, height: 40),
+                       "page 2 is the portrait page")
+    }
+}

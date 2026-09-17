@@ -54,10 +54,19 @@ public struct ImageIODecoder: ImageDecoding {
         }.value
     }
 
+    /// Streams the frames of an animated image.
+    ///
+    /// Multi-page documents are deliberately excluded: their pages are not animation
+    /// frames, and streaming them made the viewer display the last page of a TIFF on
+    /// load while decoding every page up front. Pages are decoded on demand through
+    /// `decodeFrame(_:index:)`.
     public func decodeRemainingFrames(
         _ url: URL, descriptor: ImageDescriptor
     ) -> AsyncThrowingStream<DecodedFrame, Error> {
-        let total = descriptor.animated ? descriptor.frameCount : descriptor.pageCount
+        guard descriptor.animated else {
+            return AsyncThrowingStream { $0.finish() }
+        }
+        let total = descriptor.frameCount
         return AsyncThrowingStream { continuation in
             let task = Task.detached(priority: .utility) {
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {

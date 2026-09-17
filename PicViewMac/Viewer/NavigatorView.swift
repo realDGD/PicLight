@@ -9,13 +9,53 @@ import AppKit
 /// which blurred both the preview and the viewport frame and made the frame
 /// refract into several ghost outlines.
 public final class NavigatorView: NSView {
-    public static let defaultSize = NSSize(width: 168, height: 120)
+    /// The largest box the navigator may occupy. Its actual size follows the image
+    /// aspect inside this box, so a portrait image does not sit in a landscape frame
+    /// surrounded by empty glass.
+    public nonisolated static let defaultSize = NSSize(width: 168, height: 120)
+    /// Aspect ratios are only followed within these bounds: a panorama or a very tall
+    /// image would otherwise collapse the navigator into a sliver.
+    public nonisolated static let minimumAspect: CGFloat = 0.5      // 1:2
+    public nonisolated static let maximumAspect: CGFloat = 2.0      // 2:1
+    /// Preferred minimum length of the shorter side, so the navigator stays readable
+    /// and clickable.
+    ///
+    /// This is a preference, not a guarantee: for an image whose aspect is clamped to
+    /// the extremes (1:2 or 2:1), the maximum box cannot honour it - a 1:2 image
+    /// filling a 120 pt height is only 60 pt wide. In that case the aspect clamp and
+    /// the maximum box win, and the navigator simply gets narrow.
+    public nonisolated static let preferredMinimumShortSide: CGFloat = 68
+
+    /// The navigator's size for an image, clamped to the rules above.
+    public nonisolated static func size(forImagePixels pixels: CGSize,
+                                        maximum: NSSize,
+                                        minimumShortSide: CGFloat = preferredMinimumShortSide) -> NSSize {
+        guard pixels.width > 0, pixels.height > 0 else { return maximum }
+        let aspect = min(max(pixels.width / pixels.height, minimumAspect), maximumAspect)
+        var width = maximum.width
+        var height = width / aspect
+        if height > maximum.height {
+            height = maximum.height
+            width = height * aspect
+        }
+        if width < minimumShortSide && aspect >= 1 {
+            width = minimumShortSide
+            height = width / aspect
+        } else if height < minimumShortSide && aspect < 1 {
+            height = minimumShortSide
+            width = height * aspect
+        }
+        return NSSize(width: min(width, maximum.width), height: min(height, maximum.height))
+    }
 
     /// Preview resolution: the logical size at 2x, so the preview is never a
     /// re-sample of a full-resolution source and never blurry on Retina.
     public nonisolated static var previewPixelSize: Int {
-        Int(max(defaultSize.width, defaultSize.height) * 2)
+        Int(Self.maximumPreviewSide * 2)
     }
+
+    /// Largest preview side the navigator can need, independent of actor state.
+    public nonisolated static let maximumPreviewSide: CGFloat = 168
 
     public var onCenterRequested: ((CGPoint) -> Void)?
 
@@ -28,6 +68,7 @@ public final class NavigatorView: NSView {
     private let viewportOverlayView = PassthroughView()
     private let viewportLayer = CAShapeLayer()
 
+    private var sizeConstraints: [NSLayoutConstraint] = []
     private var previewImage: CGImage?
     private var isDraggingViewport = false
 

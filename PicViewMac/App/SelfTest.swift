@@ -130,11 +130,19 @@ enum SelfTest {
             viewer.session.select(url: tiff.url)
             waitForDecode(viewer, timeout: 10)
             let pageBefore = viewer.viewerState.pageDescription
+            let sizeBefore = viewer.viewerState.currentImage.map { "\($0.width)x\($0.height)" } ?? "-"
             viewer.perform(.nextPage)
-            waitForDecode(viewer, timeout: 10)
+            let pageDeadline = Date().addingTimeInterval(5)
+            while viewer.viewerState.currentImage.map({ "\($0.width)x\($0.height)" }) == sizeBefore,
+                  Date() < pageDeadline {
+                drainRunLoop(0.05)
+            }
+            let sizeAfter = viewer.viewerState.currentImage.map { "\($0.width)x\($0.height)" } ?? "-"
             check("TIFF page navigation works",
                   viewer.viewerState.pageDescription != pageBefore,
                   "\(pageBefore ?? "-") -> \(viewer.viewerState.pageDescription ?? "-")")
+            check("TIFF page navigation changes the pixels, not just the counter",
+                  sizeAfter != sizeBefore, "\(sizeBefore) -> \(sizeAfter)")
             check("folder index is unchanged by page navigation",
                   viewer.session.currentItem?.url == tiff.url)
         }

@@ -155,3 +155,62 @@ final class GestureRouterTests: XCTestCase {
                                          isZoomedIn: false, canPanInDirection: false), .none)
     }
 }
+
+/// Trackpad routing while zoomed: a two-finger gesture must move the image.
+///
+/// The router used to be entered only for events whose horizontal delta happened to
+/// exceed the vertical one, and it returned a horizontal-only pan. One gesture was
+/// therefore split into pans, zooms and image switches, and panning appeared to
+/// change the picture.
+final class ZoomedTrackpadPanningTests: XCTestCase {
+    func testZoomedPanCarriesBothAxes() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        let intent = router.routeSwipe(deltaX: -6, deltaY: -4, viewWidth: 900,
+                                       isZoomedIn: true, canPanInDirection: true)
+        XCTAssertEqual(intent, .pan(CGSize(width: -6, height: -4)),
+                       "the vertical part of the gesture moves the image too")
+    }
+
+    func testZoomedPanNeverSwitchesWhileTheImageCanStillMove() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.05)
+        router.beginGesture()
+        for _ in 0..<40 {
+            let intent = router.routeSwipe(deltaX: -40, deltaY: -3, viewWidth: 900,
+                                           isZoomedIn: true, canPanInDirection: true)
+            if case .nextImage = intent {
+                XCTFail("panning to the edge of a movable axis must not switch images")
+            }
+        }
+    }
+
+    func testSwitchingStillWorksAfterARealHorizontalOverscroll() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.1)
+        router.beginGesture()
+        var result: GestureIntent = .none
+        for _ in 0..<20 where result == .none {
+            result = router.routeSwipe(deltaX: -40, deltaY: 0, viewWidth: 900,
+                                       isZoomedIn: true, canPanInDirection: false)
+        }
+        XCTAssertEqual(result, .nextImage,
+                       "a deliberate horizontal overscroll at the edge still switches")
+    }
+
+    /// A portrait image in a wide window cannot pan horizontally at all, which is the
+    /// case where the old routing switched on the slightest nudge.
+    func testAnAxisThatCannotPanDoesNotSwitchOnASmallNudge() {
+        var router = GestureRouter(swipeMode: .smart, switchThreshold: 0.12)
+        router.beginGesture()
+        let nudge = router.routeSwipe(deltaX: -30, deltaY: 0, viewWidth: 900,
+                                      isZoomedIn: true, canPanInDirection: false)
+        XCTAssertEqual(nudge, .none, "well below the overscroll threshold")
+    }
+
+    func testDisabledModeStillPansBothAxes() {
+        var router = GestureRouter(swipeMode: .disabled)
+        router.beginGesture()
+        XCTAssertEqual(router.routeSwipe(deltaX: -8, deltaY: 3, viewWidth: 900,
+                                         isZoomedIn: true, canPanInDirection: false),
+                       .pan(CGSize(width: -8, height: 3)))
+    }
+}

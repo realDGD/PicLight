@@ -70,6 +70,9 @@ public actor DecodeCoordinator {
                 cache.store(head: head, for: url)
                 onEvent(.head(head))
 
+                // Pages of a multi-page document are not animation frames; they are
+                // decoded only when the user asks for one.
+                guard head.descriptor.animated else { return }
                 let stream = decoder.decodeRemainingFrames(url, descriptor: head.descriptor)
                 for try await frame in stream {
                     guard !Task.isCancelled, self.isCurrent(token) else { return }

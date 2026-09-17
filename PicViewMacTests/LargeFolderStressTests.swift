@@ -6,6 +6,13 @@ import AppKit
 /// Counting decoder: records every decode request so tests can prove that a
 /// folder is never eagerly decoded and that thumbnail work stays bounded.
 final class CountingDecoder: ImageDecoding, @unchecked Sendable {
+    /// What the fake source looks like: an animation or a multi-page document.
+    enum Document {
+        case animation(frameCount: Int)
+        case multiPage(pageCount: Int)
+        case still
+    }
+
     /// A serial queue guards the counters: `NSLock` is not usable from async
     /// contexts, and these calls happen inside decode tasks.
     private let queue = DispatchQueue(label: "picviewmac.tests.countingdecoder")
@@ -15,10 +22,25 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
 
     let payload: CGImage
     let delay: TimeInterval
+    let document: Document
 
-    init(payload: CGImage = FakeDecoder.pixel, delay: TimeInterval = 0) {
+    init(payload: CGImage = FakeDecoder.pixel, delay: TimeInterval = 0,
+         document: Document = .animation(frameCount: 3)) {
         self.payload = payload
         self.delay = delay
+        self.document = document
+    }
+
+    private var descriptorShape: (frameCount: Int, pageCount: Int, animated: Bool,
+                                 loopCount: Int?, durations: [TimeInterval]) {
+        switch document {
+        case let .animation(frameCount):
+            return (frameCount, 1, true, 0, Array(repeating: 0.1, count: frameCount))
+        case let .multiPage(pageCount):
+            return (1, pageCount, false, nil, [])
+        case .still:
+            return (1, 1, false, nil, [])
+        }
     }
 
     private func withState<T>(_ body: (inout [String], inout Int, inout Int) -> T) -> T {
@@ -50,11 +72,13 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
             head += 1
         }
         if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+        let shape = descriptorShape
         return DecodedImageHead(
             image: payload,
             descriptor: ImageDescriptor(sourceURL: url, pixelSize: CGSize(width: 64, height: 48),
-                                        frameCount: 3, pageCount: 1, animated: true,
-                                        loopCount: 0, frameDurations: [0.1, 0.1, 0.1]),
+                                        frameCount: shape.frameCount, pageCount: shape.pageCount,
+                                        animated: shape.animated, loopCount: shape.loopCount,
+                                        frameDurations: shape.durations),
             metadata: ImageMetadata(fileName: url.lastPathComponent)
         )
     }
@@ -62,6 +86,10 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
     func decodeRemainingFrames(_ url: URL, descriptor: ImageDescriptor) -> AsyncThrowingStream<DecodedFrame, Error> {
         withState { _, _, frames in frames += 1 }
         return AsyncThrowingStream { $0.finish() }
+    }
+
+    func decodeFrame(_ url: URL, index: Int, target: DecodeTarget) async throws -> DecodedFrame {
+        DecodedFrame(image: payload, index: index, duration: nil)
     }
 }
 
