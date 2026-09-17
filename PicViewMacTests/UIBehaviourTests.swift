@@ -205,6 +205,18 @@ final class DrawerPinTests: XCTestCase {
         XCTAssertTrue(model.drawerVisible, "leaving immersive mode restores the pinned drawer")
     }
 
+    /// Waits for a condition instead of assuming the chrome timer ticked in time.
+    /// A fixed drain is not enough on a loaded machine, where a 0.1 s timer can be
+    /// delayed past the delay it is supposed to deliver.
+    private func waitUntil(timeout: TimeInterval = 3,
+                           _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return condition()
+    }
+
     /// Pinning used to be chrome-only; it now reserves real layout space, so the
     /// canvas narrows and everything anchored to it follows.
     func testPinningReservesSpaceAndUnpinningRestoresIt() throws {
@@ -223,8 +235,7 @@ final class DrawerPinTests: XCTestCase {
         let baseline = viewer.chromeSnapshot
 
         viewer.toggleDrawerPinForTesting()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertTrue(viewer.chromeSnapshot.drawer, "pinning opens the drawer")
+        XCTAssertTrue(waitUntil { viewer.chromeSnapshot.drawer }, "pinning opens the drawer")
         let pinned = viewer.chromeSnapshot.canvasFrame
         XCTAssertLessThan(pinned.width, baseline.canvasFrame.width,
                           "a pinned drawer reserves leading space instead of overlaying")
@@ -233,8 +244,8 @@ final class DrawerPinTests: XCTestCase {
                        "the canvas starts where the drawer ends")
 
         viewer.toggleDrawerPinForTesting()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertFalse(viewer.chromeSnapshot.drawer)
+        XCTAssertTrue(waitUntil { !viewer.chromeSnapshot.drawer },
+                      "unpinning closes the drawer after its hover delay")
         XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
                        "unpinning gives the full width back to the canvas")
     }
