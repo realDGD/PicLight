@@ -11,6 +11,9 @@ final class ThumbnailCellView: NSTableCellView {
     private let imageView2 = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let selectionBackground = NSView()
+    /// Drawn above the thumbnail so the current-item frame can never be covered by
+    /// the image it frames.
+    private let selectionBorder = PassthroughView()
     private var trackingArea: NSTrackingArea?
     private var isHovering = false
 
@@ -35,8 +38,15 @@ final class ThumbnailCellView: NSTableCellView {
         nameLabel.alignment = .center
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        selectionBorder.wantsLayer = true
+        selectionBorder.layer?.borderWidth = 2
+        selectionBorder.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        selectionBorder.layer?.cornerRadius = 6
+        selectionBorder.translatesAutoresizingMaskIntoConstraints = false
+
         addSubview(selectionBackground)
         addSubview(imageView2)
+        addSubview(selectionBorder)
         addSubview(nameLabel)
 
         NSLayoutConstraint.activate([
@@ -49,6 +59,11 @@ final class ThumbnailCellView: NSTableCellView {
             imageView2.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             imageView2.heightAnchor.constraint(equalToConstant: Self.thumbnailHeight),
             imageView2.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -20),
+
+            selectionBorder.centerXAnchor.constraint(equalTo: imageView2.centerXAnchor),
+            selectionBorder.centerYAnchor.constraint(equalTo: imageView2.centerYAnchor),
+            selectionBorder.widthAnchor.constraint(equalTo: imageView2.widthAnchor, constant: 8),
+            selectionBorder.heightAnchor.constraint(equalTo: imageView2.heightAnchor, constant: 8),
 
             nameLabel.topAnchor.constraint(equalTo: imageView2.bottomAnchor, constant: 4),
             nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
@@ -73,11 +88,17 @@ final class ThumbnailCellView: NSTableCellView {
 
     func setCurrent(_ isCurrent: Bool) {
         selectionBackground.layer?.backgroundColor = isCurrent
-            ? NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor
+            ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
             : NSColor.clear.cgColor
-        selectionBackground.layer?.borderWidth = isCurrent ? 1 : 0
-        selectionBackground.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        selectionBackground.layer?.borderWidth = 0
+        // The frame around the image is the visible selection cue, and it is the
+        // topmost layer of the cell.
+        selectionBorder.isHidden = !isCurrent
     }
+
+    /// Exposed for tests: the current-item frame must outrank the thumbnail.
+    var selectionBorderView: NSView { selectionBorder }
+    var thumbnailImageView: NSView { imageView2 }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -106,4 +127,11 @@ final class ThumbnailCellView: NSTableCellView {
         case .hover: nameLabel.isHidden = !isHovering
         }
     }
+}
+
+
+/// A view that draws but never takes part in hit-testing, so an overlay frame
+/// cannot swallow clicks meant for the cell underneath.
+final class PassthroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
