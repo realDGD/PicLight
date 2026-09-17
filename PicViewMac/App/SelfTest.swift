@@ -5,7 +5,7 @@ import ImageIO
 /// where the screen cannot be captured (CI, remote shells). It drives the exact
 /// production code paths and prints a report, then terminates.
 ///
-/// Usage: PICVIEW_SELFTEST=<image file> PicViewMac.app/Contents/MacOS/PicViewMac
+/// Usage: PICVIEW_SELFTEST=<image file> PicLight.app/Contents/MacOS/PicLight
 @MainActor
 final class SelfTestReporter {
     private(set) var lines: [String] = []
@@ -43,7 +43,6 @@ enum SelfTest {
             NSApp.terminate(nil)
             return
         }
-        controller.showWindow(nil)
 
         // Wait for the asynchronous decode to publish pixels.
         let deadline = Date().addingTimeInterval(timeout)
@@ -117,10 +116,14 @@ enum SelfTest {
               "100% reported \(zoomedPercent)%, Fit restored: \(fitted)")
 
         // Immersive mode changes chrome only.
+        let windowsBeforeImmersive = NSApp.windows.filter { $0.isVisible }.count
         viewer.perform(.toggleImmersive)
+        drainRunLoop(0.3)
         check("immersive does not close or add windows",
-              NSApp.windows.filter { $0.isVisible }.count == 1)
+              NSApp.windows.filter { $0.isVisible }.count == windowsBeforeImmersive,
+              "\(windowsBeforeImmersive) -> \(NSApp.windows.filter { $0.isVisible }.count)")
         viewer.perform(.toggleImmersive)
+        drainRunLoop(0.3)
 
         // TIFF pages stay separate from the folder index.
         if let tiff = viewer.session.items.first(where: { $0.url.pathExtension.lowercased() == "tiff" }) {
@@ -136,7 +139,10 @@ enum SelfTest {
                   viewer.session.currentItem?.url == tiff.url)
         }
 
+        verifyStartupPresentation(environment, reporter)
         verifyChrome(viewer, reporter)
+        verifyDrawerPin(viewer, reporter)
+        verifyNavigatorLayering(viewer, reporter)
         verifyAnimation(viewer, reporter)
         verifyTrash(reporter)
         verifyBundleDeclaration(reporter)
@@ -145,6 +151,142 @@ enum SelfTest {
         verifyAppearance(viewer, reporter)
 
         finish(reporter)
+    }
+
+    /// The four symptoms reported from the first real GUI pass. Each is checked
+    /// through the production code path, not by calling a test-only shortcut.
+    private static func verifyStartupPresentation(_ environment: AppEnvironment,
+                                                 _ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        // 1. Bare launch must present a window, not just create one. The count is
+        //    measured as a delta because the runner already has a viewer open.
+        func visibleViewerWindows() -> Int {
+            NSApp.windows.compactMap { $0 as? ViewerWindow }.filter { $0.isVisible }.count
+        }
+        let beforeBare = visibleViewerWindows()
+        let bare = environment.presentNewViewerWindow()
+        drainRunLoop(0.5)
+        check("bare launch path presents a visible window",
+              bare.window?.isVisible == true,
+              "visible: \(bare.window?.isVisible == true)")
+        check("bare launch shows the welcome state",
+              bare.viewerViewController.emptyStateReasonForTesting == .noImageOpened,
+              String(describing: bare.viewerViewController.emptyStateReasonForTesting))
+        check("bare launch adds exactly one window and no phantom",
+              visibleViewerWindows() == beforeBare + 1,
+              "\(beforeBare) -> \(visibleViewerWindows())")
+        bare.close()
+        drainRunLoop(0.5)
+        check("closing the bare window restores the previous window count",
+              visibleViewerWindows() == beforeBare, "\(visibleViewerWindows())")
+
+        // 2. Hover must be driven by the root view, not by whichever subview is on top.
+        let controller = environment.presentNewViewerWindow()
+        drainRunLoop(0.4)
+        let viewer = controller.viewerViewController
+        func mouseMovedTrackingViews(in view: NSView) -> [String] {
+            var names: [String] = []
+            if view.trackingAreas.contains(where: { $0.options.contains(.mouseMoved) }) {
+                names.append(String(describing: type(of: view)))
+            }
+            for subview in view.subviews { names.append(contentsOf: mouseMovedTrackingViews(in: subview)) }
+            return names
+        }
+        let trackingOwners = mouseMovedTrackingViews(in: viewer.view)
+        check("pointer tracking belongs to the viewer root only",
+              trackingOwners == ["ViewerRootView"], trackingOwners.joined(separator: ", "))
+
+        // 3. The left edge is a narrow band and a hidden drawer is not clickable.
+        let bounds = viewer.view.bounds
+        check("left hot zone is at most 12 px",
+              ThumbnailDrawerView.hotZoneWidth <= 12,
+              "\(ThumbnailDrawerView.hotZoneWidth) px")
+        check("13 px in is not the drawer trigger",
+              viewer.zone(forRootPoint: CGPoint(x: 13, y: bounds.midY)) != .leftEdgeHotZone)
+        check("drawer width stays in the 180-220 px range",
+              ThumbnailDrawerView.minimumWidth >= 180 && ThumbnailDrawerView.maximumWidth <= 220)
+        if let content = controller.window?.contentView {
+            let midPoint = CGPoint(x: content.bounds.midX, y: content.bounds.midY)
+            let hit = content.hitTest(midPoint)
+            let drawerView = viewer.chromeViewsForTesting["drawer"]!
+            let emptyStateView = viewer.chromeViewsForTesting["emptyState"]!
+            let canvasView = viewer.chromeViewsForTesting["canvas"]!
+            // With no image loaded the welcome surface legitimately owns the middle;
+            // what must never happen is a hidden drawer owning it.
+            let legitimate = hit === canvasView
+                || hit?.isDescendant(of: canvasView) == true
+                || hit?.isDescendant(of: emptyStateView) == true
+            check("hidden chrome leaves the image area clickable",
+                  legitimate && hit?.isDescendant(of: drawerView) != true,
+                  String(describing: hit))
+        }
+        controller.close()
+    }
+
+    /// Pinning keeps the drawer open without moving the canvas.
+    private static func verifyDrawerPin(_ viewer: ViewerViewController, _ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        let baseline = viewer.chromeSnapshot
+        viewer.toggleDrawerPinForTesting()
+        drainRunLoop(0.5)
+        check("pinning opens the drawer", viewer.chromeSnapshot.drawer)
+        check("a pinned drawer does not move the canvas",
+              viewer.chromeSnapshot.canvasFrame == baseline.canvasFrame
+                && abs(viewer.chromeSnapshot.zoomScale - baseline.zoomScale) < 0.0001,
+              "frame \(viewer.chromeSnapshot.canvasFrame.size), zoom \(viewer.chromeSnapshot.zoomScale)")
+
+        // Moving the pointer away must not close it while pinned.
+        viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
+                                                     y: viewer.view.bounds.midY))
+        drainRunLoop(0.8)
+        check("a pinned drawer survives the pointer leaving", viewer.chromeSnapshot.drawer)
+
+        viewer.toggleDrawerPinForTesting()
+        drainRunLoop(0.8)
+        check("unpinning restores hover auto-close", viewer.chromeSnapshot.drawer == false)
+    }
+
+    /// The navigator: a bounded preview above the glass, one crisp outline above it.
+    private static func verifyNavigatorLayering(_ viewer: ViewerViewController,
+                                                _ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        guard let navigator = viewer.chromeViewsForTesting["minimap"] as? NavigatorView else {
+            check("navigator exists", false)
+            return
+        }
+        let background = navigator.backgroundSurface
+        let preview = navigator.previewSurface
+        let backgroundIndex = navigator.subviews.firstIndex(of: background) ?? .max
+        let previewIndex = navigator.subviews.firstIndex(of: preview) ?? .min
+        check("navigator glass is behind the preview", backgroundIndex < previewIndex,
+              "glass at \(backgroundIndex), preview at \(previewIndex)")
+        check("navigator viewport overlay is above the preview",
+              navigator.viewportOverlayLayer.superlayer === navigator.layer)
+        check("navigator preview is a bounded downsample",
+              navigator.hasPreviewImage
+                && max(navigator.previewPixelSize.width, navigator.previewPixelSize.height)
+                    <= CGFloat(NavigatorView.previewPixelSize),
+              "\(navigator.previewPixelSize)")
+        check("navigator viewport outline has a single crisp stroke",
+              navigator.viewportOverlayLayer.lineWidth <= 2
+                && navigator.layer?.sublayers?.filter { $0 is CAShapeLayer }.count == 1,
+              "lineWidth \(navigator.viewportOverlayLayer.lineWidth)")
+
+        let generations = navigator.previewGenerationCount
+        viewer.perform(.zoomDoubleFit)
+        viewer.perform(.zoomToFit)
+        viewer.perform(.zoomDoubleFit)
+        drainRunLoop(0.3)
+        check("pan and zoom do not rebuild the navigator preview",
+              navigator.previewGenerationCount == generations,
+              "\(generations) -> \(navigator.previewGenerationCount)")
+        viewer.perform(.zoomToFit)
     }
 
     /// Hover chrome must not disturb the canvas, and the minimap appears only
@@ -280,12 +422,11 @@ enum SelfTest {
         }
         defer { try? FileManager.default.removeItem(at: scratch) }
 
-        let controller = AppEnvironment.shared.newViewerWindow()
+        let controller = AppEnvironment.shared.presentNewViewerWindow()
         guard let viewer = controller.viewerViewController as ViewerViewController? else {
             check("trash scenario viewer", false)
             return
         }
-        controller.showWindow(nil)
         viewer.open(url: scratch.appendingPathComponent("a.png"))
         let deadline = Date().addingTimeInterval(10)
         while viewer.viewerState.currentImage == nil, Date() < deadline { drainRunLoop(0.05) }
@@ -340,12 +481,11 @@ enum SelfTest {
         }
         defer { try? FileManager.default.removeItem(at: scratch) }
 
-        let controller = AppEnvironment.shared.newViewerWindow()
+        let controller = AppEnvironment.shared.presentNewViewerWindow()
         guard let viewer = controller.viewerViewController as ViewerViewController? else {
             check("error scenario viewer", false)
             return
         }
-        controller.showWindow(nil)
         viewer.open(url: scratch.appendingPathComponent("a-corrupt.png"))
         drainRunLoop(1.5)
         check("a corrupt image reports an error instead of crashing",
@@ -405,7 +545,7 @@ enum SelfTest {
         let original = settings.windowSizing
         defer { settings.windowSizing = original }
 
-        let controller = AppEnvironment.shared.newViewerWindow()
+        let controller = AppEnvironment.shared.presentNewViewerWindow()
         guard let viewer = controller.viewerViewController as ViewerViewController?,
               let window = controller.window else {
             check("sizing scenario window", false)
@@ -420,7 +560,6 @@ enum SelfTest {
         // `large.png` is deliberately bigger than a laptop screen.
         writeTestImage(named: "large.png", in: scratch, width: 6000, height: 4000)
 
-        controller.showWindow(nil)
         viewer.open(url: scratch.appendingPathComponent("small.png"))
         drainRunLoop(1.5)
 

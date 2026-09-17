@@ -151,7 +151,19 @@ final class ThumbnailDrawerTests: XCTestCase {
         drawer.rebuild(items: items, currentIndex: 500)
         XCTAssertEqual(drawer.visibleRowCount, 1_000)
         drawer.scrollCurrentIntoView()
-        XCTAssertTrue(drawer.subviews.count <= 2, "rows must be virtualized, not eagerly built")
+
+        // The invariant is that rows are virtualized: no row cell may exist until
+        // the table actually displays one. The drawer's own subviews are its
+        // material surface, the scroll view and the pin header strip.
+        func thumbnailCells(in view: NSView) -> Int {
+            var count = view is ThumbnailCellView ? 1 : 0
+            for subview in view.subviews { count += thumbnailCells(in: subview) }
+            return count
+        }
+        XCTAssertEqual(thumbnailCells(in: drawer), 0,
+                       "1000 items must not materialise 1000 row views")
+        XCTAssertLessThanOrEqual(drawer.subviews.count, 4,
+                                 "the drawer keeps a bounded number of chrome subviews")
     }
 
     func testDrawerSelectionReportsTheRowWithoutChangingTheCanvas() {
