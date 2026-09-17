@@ -579,7 +579,7 @@ lazy-native interaction: ~0.05 fps
 
 The implementation is expected primarily to reduce memory/swap and interaction cost, not the ~18 s first bounded PNG decode itself.
 
-**E4 baseline** (measured on `123d943` with the instrumented copy, opening the investigation image with drawer and navigator visible):
+**E4 baseline** (measured on `123d943` with the instrumented copy, opening the investigation image with drawer and navigator visible; reproduce with `benchmarks/LargeImagePolicyBench/run-e4.sh`):
 
 ```text
 full-stream traversals: 4      (canvas rasterization ×2, navigator preview ×1, sidebar 300 px thumbnail ×1)
@@ -589,11 +589,11 @@ peak RSS:               6.885 GiB
 time to published image: 0.239 s (the image is lazy — that is the trap)
 ```
 
-Post-implementation acceptance targets, measured with the same instrumented harness: full-stream traversals **== 1**, open energy **≤ ~70 J** (one bounded decode), main-thread ping p95 **< 100 ms**, and no `Image IO` region > 1 GiB. RSS is expected to stay around 2.0–2.7 GiB because 1.93 GB of the source is mmapped; that is an expected floor, not a failure.
+Post-implementation acceptance targets, measured with the same command (`run-e4.sh <rev>`): full-stream traversals **== 1**, open energy **≤ ~70 J** (one bounded decode), main-thread ping p95 **< 100 ms**, and no `Image IO` region > 1 GiB. RSS is expected to stay around 2.0–2.7 GiB because 1.93 GB of the source is mmapped; that is an expected floor, not a failure.
 
 ## 17. Policy benchmark harness
 
-Performance policy choices live in a dedicated benchmark harness (for example `benchmarks/LargeImagePolicyBench/`) or an equivalent isolated test tool. It is not part of the production target.
+Performance policy choices live in the dedicated benchmark harness at `benchmarks/LargeImagePolicyBench/` (see its `README.md`; build with `build.sh`). It is not part of the production target: no `Package.swift` change, nothing linked into the app.
 
 Every benchmark records enough raw output to reproduce the decision. Do not reduce results to a single undocumented score.
 

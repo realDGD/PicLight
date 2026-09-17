@@ -118,8 +118,26 @@ bilinear accidentally equals a box filter. Decision: mipmaps unconditional (`res
 .work/picbench cancel   "$PICLIGHT_BENCH_GIANT" "$PICLIGHT_BENCH_FIXTURES/noise-4032x3024.png"
 ```
 
-E4 (app-level traversal/energy/stall) needs the instrumented app copy described in `results/gates-report.md`; the
-baseline is captured there and re-measured after implementation.
+### E4 — app-level acceptance (traversals, energy, main-thread stall)
+
+```bash
+benchmarks/LargeImagePolicyBench/run-e4.sh            # measures 123d943 (pre-change baseline)
+benchmarks/LargeImagePolicyBench/run-e4.sh <rev>      # measures any revision, e.g. after implementation
+```
+
+`run-e4.sh` exports the revision into `.work/e4-app/`, overlays the temporary instrumentation from
+`instrumentation/PicViewMac/`, builds, opens the image through the production path, and prints:
+
+```text
+full_stream_traversals   how many times the whole compressed stream is read (baseline 4, target 1)
+open_energy_mJ           energy for the whole open (baseline 136.6 J, target <= ~70 J)
+main_thread_stall_max_ms max main-queue ping latency (baseline 20.9 s, target p95 < 100 ms)
+peakRSS / peakFootprint  memory (RSS stays ~2-2.7 GiB because the source is mmapped)
+```
+
+It needs a logged-in GUI session (the app opens a real window) and hashes the source image before and after the run.
+The instrumentation is deliberately kept as an overlay rather than a patch so it cannot drift with unrelated edits,
+and it is never merged into the production tree.
 
 ## Results
 
