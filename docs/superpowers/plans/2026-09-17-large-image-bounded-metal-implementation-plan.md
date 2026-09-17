@@ -229,15 +229,23 @@ enum BitmapMaterializer {
       `.up` returns the native `CGImage` untouched (`decodeOriented` early-returns on `.up`), so it keeps full
       precision; an unconditional 8-bit materialization would quietly downgrade it. Policy:
       ```text
-      <=8 bits/component     -> A3 canonical 8-bit layout (premultipliedLast, source colour space preserved)
-      >8 bits/component,
-      float, or indexed      -> materialize into a context at the SAME bitsPerComponent and colour space
-                                (no canonical flattening); the renderer's exotic-layout policy (spec §7) then
-                                routes it to Quartz exactly as today
+      8-bit RGB/RGBA/gray      -> A3 canonical 8-bit layout (premultipliedLast for RGB, 8-bit gray for gray),
+                                  colour space object preserved
+      indexed / palette        -> expand to 8-bit RGBA in the source's backing colour space. This is LOSSY-FREE
+                                  (palette entries are 8-bit; a tRNS alpha is preserved) and it is the only option:
+                                  a bitmap context cannot be created with an indexed colour space, so "preserve the
+                                  palette layout" is not implementable. The expanded bitmap is 8-bit-class and stays
+                                  on the Metal path — indexed images must NOT be pushed to the Quartz fallback just
+                                  because their file storage was indexed.
+      >8 bits/component, float -> materialize at the SAME bitsPerComponent and colour space (16-bit int or float
+                                  context); the renderer's exotic-layout policy (spec §7) routes it to Quartz
+                                  exactly as today
       ```
-      Add `depth16.png` and `depth16.tiff` fixtures (small, committed under `PicViewMacTests/Fixtures`) and a test
-      asserting `bitsPerComponent` and colour space survive delivery and the image still renders. Note in the PR that
-      this refines spec §7 with an explicit no-downgrade rule.
+      Add `depth16.png`, `depth16.tiff` and `indexed-palette.png` fixtures (small, committed under
+      `PicViewMacTests/Fixtures`). Tests assert: 16-bit keeps `bitsPerComponent == 16` and its colour space; the
+      palette image's expanded pixels **exactly equal** the palette's RGB values (per-index), including a transparent
+      index staying transparent; and both still render. Note in the PR that this refines spec §7 with an explicit
+      no-downgrade rule.
 - [ ] Step 6: `DecodeCoordinator` passes the per-item budget; neighbour preload uses the same policy; **skip oversized
       neighbours before starting any task** (no cancellation-based mitigation: ImageIO ignores cancellation).
 - [ ] Step 7: Tests — bounded long edge ≤ bucket; `displayPixelSize` unchanged; orientation applied exactly once;

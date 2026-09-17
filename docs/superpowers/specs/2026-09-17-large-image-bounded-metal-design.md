@@ -223,6 +223,10 @@ Animation-frame identity also includes frame index.
 
 Exact level matching is the default. A smaller preload level must not be assumed to satisfy a later larger current-image request.
 
+**Cache identity is one value, not a URL plus implied state.** The current-entry bookkeeping must carry the same identity as the lookup, or memory-pressure purge cannot know which entry is on screen. Concretely, identity becomes a single hashable value — conceptually `DecodeCacheKey { url, pageIndex, level }` — and `setCurrent`/`purge(keeping:)` take that key rather than a bare `URL`. The pre-existing `currentURL`-only bookkeeping is insufficient once levels exist: it cannot distinguish "page 0 / bucket(8192)" from "page 0 / bucket(4096)" for the same file, and the purge would keep the wrong bitmap.
+
+Do not encode the level into a URL or path string to fit the old key shape; the key type is the only place that knows how identity is spelled.
+
 Cost remains actual render-bitmap bytes (`bytesPerRow × height`), not source dimensions.
 
 ## 7. Pixel layout and color
@@ -236,6 +240,21 @@ For common 8-bit RGBA/BGRA inputs:
 - preserve the source color space.
 
 For unsupported/exotic layouts (for example some 16-bit, float, or indexed forms), either normalize explicitly with a tested conversion path or fall back to Quartz. Incorrect color is not an acceptable Metal fallback mode.
+
+**Materialization must not reduce precision.** The bounded/limited materialization pass (§5.1) is where a silent downgrade would happen, so the rule is stated here as well as in the implementation plan:
+
+```text
+8-bit RGB/RGBA/gray   -> materialize into an 8-bit context; preserve the source CGColorSpace object
+indexed / palette     -> expand losslessly to 8-bit RGBA in the source's backing colour space.
+                         Palette entries are 8-bit and a tRNS alpha carries over, so nothing is lost; this is also
+                         the only implementable option, because a bitmap context cannot be created with an indexed
+                         colour space. The expanded bitmap is 8-bit-class and stays on the Metal path — an indexed
+                         source must not be pushed to the Quartz fallback merely because its file storage was indexed.
+>8 bits/component,    -> materialize with the SAME bitsPerComponent and colour space (16-bit integer or float
+float                    context) and let the exotic-layout path above decide between Metal and Quartz.
+```
+
+Today only non-`.up` orientations run a materialization pass at all, so a 16-bit image with orientation `.up` currently keeps full precision end to end; the rule above exists to keep it that way once limited materialization becomes the default for every limited source.
 
 ## 8. Avoid redundant source-stream work
 
@@ -504,6 +523,8 @@ Verify:
 - memory-pressure purge semantics remain correct;
 - entries whose individual cost exceeds the cache budget behave explicitly (no tests should assume they remain cached);
 - exact-level preload hit/miss behavior is observable;
+- a memory-pressure purge keeps the entry for the currently shown **(page, level)** while a different level of the same URL is dropped;
+- the cache key is a value type (url + page + level); no test or production path may construct a lookup key by string concatenation;
 - B3 respects the 768 MiB **DecodeCache** limit; do not treat that value as a whole-app working-set limit.
 
 ### 15.4 Renderer tests
