@@ -408,7 +408,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         guard let item = session.currentItem else {
             viewerState.clearForNewImage()
             viewerState.applyEmptyState()
-            canvas.image = nil
+            canvas.renderImage = nil
             errorLabel.isHidden = true
             onTitleChanged?(nil)
             refreshBottomBar()
@@ -466,7 +466,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func renderEmptyState() {
-        canvas.image = nil
+        canvas.renderImage = nil
         refreshEmptyState()
     }
 
@@ -489,7 +489,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func refreshCanvas() {
-        canvas.image = viewerState.currentImage
+        // Publish pixels and geometry together: the bitmap may be a bounded proxy,
+        // so the descriptor is what tells the canvas how large the source is.
+        if let bitmap = viewerState.currentImage, let descriptor = viewerState.descriptor {
+            canvas.renderImage = RenderImage(bitmap: bitmap, descriptor: descriptor)
+        } else {
+            canvas.renderImage = nil
+        }
         canvas.refit()
         if viewerState.viewport.zoomScale == 1 || viewerState.currentImage == nil {
             canvas.setZoomToFit()
@@ -929,11 +935,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func regenerateNavigatorPreview() {
-        guard let image = viewerState.currentImage else {
+        guard let image = viewerState.currentImage, let descriptor = viewerState.descriptor else {
             minimap.setPreviewImage(nil)
             return
         }
-        applyNavigatorSize(for: CGSize(width: image.width, height: image.height))
+        // Source geometry, never the bitmap's own pixels: a bounded proxy is
+        // smaller than the source it stands for.
+        applyNavigatorSize(for: descriptor.displayPixelSize)
         let maxPixel = NavigatorView.previewPixelSize
         Task { [weak self] in
             guard let self else { return }

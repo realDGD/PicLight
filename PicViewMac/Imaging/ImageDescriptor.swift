@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 import ImageIO
 
-public struct ImageDescriptor: Sendable {
+public struct ImageDescriptor: Sendable, Equatable {
     public let sourceURL: URL
     public let pixelSize: CGSize
     public let frameCount: Int

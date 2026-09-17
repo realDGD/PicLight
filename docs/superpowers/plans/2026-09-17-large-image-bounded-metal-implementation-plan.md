@@ -118,20 +118,20 @@ struct RenderImage: Equatable {
 The animated-frame path (`ViewerState.apply(frame:)`) must reuse the descriptor already published by
 `apply(head:)` — a frame changes pixels, never geometry. Do not add a size field to `DecodedFrame`.
 
-- [ ] Step 1: Add `RenderImage`; change `ImageCanvasView` to render a `RenderImage` and to take all geometry
+- [x] Step 1: Add `RenderImage`; change `ImageCanvasView` to render a `RenderImage` and to take all geometry
       (`imagePixelSize`, the drawn rect in `draw(_:)`) from `sourcePixelSize`. No code path may fall back to
       `bitmap.width/height` for geometry.
-- [ ] Step 2: The Quartz draw maps the bitmap into the **source** rectangle
+- [x] Step 2: The Quartz draw maps the bitmap into the **source** rectangle
       (`CGRect(x: -source.w/2, y: -source.h/2, width: source.w, height: source.h)`), so the fallback and Metal agree
       even when the bitmap is a proxy. Keep the existing `interpolationQuality` rule keyed off `zoomScale`.
-- [ ] Step 3: `ViewerViewController` publishes `RenderImage(bitmap:sourcePixelSize:)` from the decoded head and uses
+- [x] Step 3: `ViewerViewController` publishes `RenderImage(bitmap:sourcePixelSize:)` from the decoded head and uses
       `descriptor.displayPixelSize` for `applyNavigatorSize` (currently `image.width/height`).
-- [ ] Step 4: Leave `ThumbnailItemView.swift` alone — drawer cells legitimately size by the thumbnail's own pixels.
-- [ ] Step 5: Tests — `LargeImageGeometryTests`: source 48000×32000 with an 8192×5461 bitmap asserts Fit, Fit Width,
+- [x] Step 4: Leave `ThumbnailItemView.swift` alone — drawer cells legitimately size by the thumbnail's own pixels.
+- [x] Step 5: Tests — `LargeImageGeometryTests`: source 48000×32000 with an 8192×5461 bitmap asserts Fit, Fit Width,
       100 %, Fit ×2, pointer-centered zoom, pan/clamp, navigator rect, rotation and mirror all behave exactly as they
       do for a native-size bitmap. Narrow the invariant assertions in `ImageIODecoderTests` to native cases and add a
       bounded-case test asserting bitmap dims ≠ display dims while aspect and orientation stay correct.
-- [ ] Step 6: Run `swift test`; all geometry, viewport, layout and gesture tests green.
+- [x] Step 6: Run `swift test`; all geometry, viewport, layout and gesture tests green.
 
 ```bash
 git add PicViewMac/Viewer/RenderImage.swift PicViewMac/Viewer/ImageCanvasView.swift PicViewMac/Viewer/ViewerViewController.swift PicViewMacTests/LargeImageGeometryTests.swift PicViewMacTests/ImageIODecoderTests.swift

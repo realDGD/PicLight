@@ -48,9 +48,14 @@ final class ImageIODecoderTests: XCTestCase {
                        "a 90° rotation swaps the displayed dimensions")
 
         let head = try await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
+        // Native-resolution delivery only. For a source at or below the decode budget the
+        // bitmap *is* the rendered source, so the two sizes agree. Once limited
+        // materialization is the default (spec §5.1) a bounded deliverable may be smaller
+        // than `displayPixelSize`; geometry is then taken from the descriptor, never from
+        // the bitmap — see LargeImageGeometryTests.
         XCTAssertEqual(CGSize(width: head.image.width, height: head.image.height),
                        descriptor.displayPixelSize,
-                       "decoded pixels must already be oriented, so the canvas never rotates twice")
+                       "a native-resolution decode must already be oriented, so the canvas never rotates twice")
         XCTAssertEqual(try Data(contentsOf: url), originalBytes,
                        "view-only behavior must never rewrite the source file")
     }
