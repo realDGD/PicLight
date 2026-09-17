@@ -161,13 +161,21 @@ final class DockButton: NSButton {
     /// The tint actually in force, for tests.
     var iconTint: NSColor? { contentTintColor }
 
+    /// Enlarges the button about its own centre.
+    ///
+    /// The scaling is expressed as a transform around the middle of the layer's
+    /// bounds rather than by moving the layer's anchor point: AppKit computes a
+    /// layer's position from the anchor point, so changing the anchor point after
+    /// layout shifts the button by half its size - which is what made the icons
+    /// appear to jump downwards the first time the pointer entered the dock.
     func setScale(_ scale: CGFloat, duration: TimeInterval) {
         guard let layer else { return }
-        // Keep the layer centred while scaling: AppKit anchors layers bottom-left.
-        if layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
-            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        }
-        let transform = CATransform3DMakeScale(scale, scale, 1)
+        let bounds = layer.bounds
+        var transform = CATransform3DIdentity
+        transform = CATransform3DTranslate(transform, bounds.width / 2, bounds.height / 2, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        transform = CATransform3DTranslate(transform, -bounds.width / 2, -bounds.height / 2, 0)
+
         guard duration > 0 else {
             layer.transform = transform
             return
@@ -180,6 +188,11 @@ final class DockButton: NSButton {
         layer.transform = transform
         layer.add(animation, forKey: "hoverScale")
     }
+
+    /// The layer transform currently applied, for tests that check the enlargement
+    /// happens about the button's centre.
+    var layerTransform: CATransform3D? { layer?.transform }
+    var layerAnchorPoint: CGPoint? { layer?.anchorPoint }
 
     /// The rendered icon, exposed so tests can prove the button is actually
     /// visible rather than merely present.

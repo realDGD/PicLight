@@ -260,8 +260,12 @@ final class NavigatorLayeringTests: XCTestCase {
         XCTAssertLessThan(navigator.subviews.firstIndex(of: background) ?? .max,
                           navigator.subviews.firstIndex(of: preview) ?? .min,
                           "the material must be behind the preview, never composited over it")
-        XCTAssertTrue(navigator.viewportOverlayLayer.superlayer === navigator.layer,
-                      "the viewport outline is drawn in its own layer above the preview")
+        let overlay = navigator.viewportOverlaySurface
+        XCTAssertGreaterThan(navigator.subviews.firstIndex(of: overlay) ?? -1,
+                             navigator.subviews.firstIndex(of: preview) ?? .max,
+                             "the viewport outline view sits above the preview view")
+        XCTAssertTrue(navigator.viewportOverlayLayer.superlayer === overlay.layer,
+                      "the outline is drawn inside that overlay view's layer")
     }
 
     func testPreviewIsABoundedDownsampleNotTheSourceImage() async throws {
@@ -340,7 +344,8 @@ final class NavigatorLayeringTests: XCTestCase {
                      "no shadow on the outline: it must read as one crisp frame")
         // A single shape layer cannot produce the multiple refracted frames that a
         // material composited over the outline did.
-        XCTAssertEqual(navigator.layer?.sublayers?.filter { $0 is CAShapeLayer }.count, 1)
+        XCTAssertEqual(navigator.viewportOverlaySurface.layer?.sublayers?
+            .filter { $0 is CAShapeLayer }.count, 1)
     }
 }
 

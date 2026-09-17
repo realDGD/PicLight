@@ -456,8 +456,17 @@ enum SelfTest {
         let previewIndex = navigator.subviews.firstIndex(of: preview) ?? .min
         check("navigator glass is behind the preview", backgroundIndex < previewIndex,
               "glass at \(backgroundIndex), preview at \(previewIndex)")
-        check("navigator viewport overlay is above the preview",
-              navigator.viewportOverlayLayer.superlayer === navigator.layer)
+        // The outline must be a *view* above the preview: as a bare sublayer it was
+        // covered by the preview's lazily created layer and disappeared.
+        let overlayIndex = navigator.subviews.firstIndex(of: navigator.viewportOverlaySurface) ?? .min
+        check("navigator viewport overlay sits above the preview",
+              overlayIndex > previewIndex
+                && navigator.viewportOverlayLayer.superlayer === navigator.viewportOverlaySurface.layer,
+              "preview at \(previewIndex), overlay at \(overlayIndex)")
+        check("navigator viewport outline is built for the current viewport",
+              navigator.viewportOverlayLayer.path != nil
+                && !navigator.viewportOverlayLayer.isHidden,
+              "path present: \(navigator.viewportOverlayLayer.path != nil)")
         check("navigator preview is a bounded downsample",
               navigator.hasPreviewImage
                 && max(navigator.previewPixelSize.width, navigator.previewPixelSize.height)
@@ -465,8 +474,10 @@ enum SelfTest {
               "\(navigator.previewPixelSize)")
         check("navigator viewport outline has a single crisp stroke",
               navigator.viewportOverlayLayer.lineWidth <= 2
-                && navigator.layer?.sublayers?.filter { $0 is CAShapeLayer }.count == 1,
-              "lineWidth \(navigator.viewportOverlayLayer.lineWidth)")
+                && navigator.viewportOverlaySurface.layer?.sublayers?
+                    .filter { $0 is CAShapeLayer }.count == 1,
+              "lineWidth \(navigator.viewportOverlayLayer.lineWidth), "
+                + "shape layers \(navigator.viewportOverlaySurface.layer?.sublayers?.count ?? 0)")
 
         let generations = navigator.previewGenerationCount
         viewer.perform(.zoomDoubleFit)
@@ -538,7 +549,16 @@ enum SelfTest {
 
         // Immersive hides the viewer's overlay chrome. The standard titlebar and
         // the window itself are AppKit's and stay as they are.
-        let frameBeforeImmersive = viewer.view.window?.frame
+        // The window may still be settling (the image-sized window policy resizes it
+        // when a descriptor arrives), so wait for the frame to stop changing before
+        // treating it as a baseline.
+        var frameBeforeImmersive = viewer.view.window?.frame
+        for _ in 0..<12 {
+            drainRunLoop(0.1)
+            let current = viewer.view.window?.frame
+            if current == frameBeforeImmersive { break }
+            frameBeforeImmersive = current
+        }
         viewer.simulateImmersive(true)
         drainRunLoop(0.4)
         check("immersive hides overlay chrome",

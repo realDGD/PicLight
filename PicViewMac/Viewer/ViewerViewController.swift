@@ -94,6 +94,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         set { canvas.viewport = newValue; viewerState.viewport = newValue }
     }
 
+    /// Navigator internals, for diagnostics.
+    func debugNavigatorReport() {
+        print("DIAG   navigator hidden=\(minimap.isHidden) hasPreview=\(minimap.hasPreviewImage) "
+            + "previewSize=\(minimap.previewPixelSize) generations=\(minimap.previewGenerationCount) "
+            + "normalized=\(minimap.visibleNormalizedRect) hasPath=\(minimap.viewportOverlayLayer.path != nil) "
+            + "bounds=\(minimap.bounds.size) canvasPixels=\(canvas.imagePixelSize)")
+    }
+
     /// Drives the pin button the way the drawer's button does.
     func toggleDrawerPinForTesting() {
         toggleDrawerPin()

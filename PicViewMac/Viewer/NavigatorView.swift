@@ -22,6 +22,10 @@ public final class NavigatorView: NSView {
     private let background = MaterialHostView(style: .chrome)
     private let previewLayerView = NSView()
     private let previewImageView = NSImageView()
+    /// The outline lives in its own view above the preview. Adding the shape layer
+    /// straight to the navigator's layer was not enough: the preview view's layer is
+    /// created lazily, so it could end up appended *after* the outline and cover it.
+    private let viewportOverlayView = PassthroughView()
     private let viewportLayer = CAShapeLayer()
 
     private var previewImage: CGImage?
@@ -54,13 +58,16 @@ public final class NavigatorView: NSView {
         previewLayerView.addSubview(previewImageView)
         addSubview(previewLayerView)
 
-        // 3. Viewport outline, above the preview, drawn by a shape layer so the
-        //    stroke is crisp instead of a resampled bitmap.
+        // 3. Viewport outline, in its own view above the preview.
+        viewportOverlayView.translatesAutoresizingMaskIntoConstraints = false
+        viewportOverlayView.wantsLayer = true
+        viewportOverlayView.layer?.addSublayer(viewportLayer)
+        addSubview(viewportOverlayView)
+
         viewportLayer.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.12).cgColor
         viewportLayer.strokeColor = NSColor.controlAccentColor.cgColor
         viewportLayer.lineWidth = 1.5
         viewportLayer.isGeometryFlipped = false
-        self.layer?.addSublayer(viewportLayer)
 
         NSLayoutConstraint.activate([
             background.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -77,6 +84,11 @@ public final class NavigatorView: NSView {
             previewImageView.trailingAnchor.constraint(equalTo: previewLayerView.trailingAnchor),
             previewImageView.topAnchor.constraint(equalTo: previewLayerView.topAnchor),
             previewImageView.bottomAnchor.constraint(equalTo: previewLayerView.bottomAnchor),
+
+            viewportOverlayView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            viewportOverlayView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            viewportOverlayView.topAnchor.constraint(equalTo: topAnchor),
+            viewportOverlayView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
@@ -110,6 +122,7 @@ public final class NavigatorView: NSView {
     /// crisp: background first, then preview, then the viewport overlay.
     var backgroundSurface: NSView { background }
     var previewSurface: NSView { previewLayerView }
+    var viewportOverlaySurface: NSView { viewportOverlayView }
     var viewportOverlayLayer: CAShapeLayer { viewportLayer }
 
     // MARK: - Geometry
@@ -159,12 +172,14 @@ public final class NavigatorView: NSView {
         }
         let rect = Self.viewportRect(in: imageRect, normalized: visibleNormalizedRect)
         viewportLayer.path = CGPath(rect: aligned(rect), transform: nil)
+        viewportLayer.isHidden = false
     }
 
     public override func layout() {
         super.layout()
-        // The shape layer is not constraint driven; keep it in step with the view.
-        viewportLayer.frame = bounds
+        // The shape layer is not constraint driven; keep it in step with its view,
+        // and express the rectangle in that view's coordinates.
+        viewportLayer.frame = viewportOverlayView.bounds
         updateViewportOverlay()
     }
 

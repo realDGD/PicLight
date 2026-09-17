@@ -128,6 +128,45 @@ final class ViewerLayoutTests: XCTestCase {
                           "the dock sits near the bottom of the image area")
     }
 
+    /// The dock must not move when the pointer enters it. The first version moved
+    /// the layer's anchor point at hover time, which shifted every icon.
+    func testHoveringTheDockDoesNotMoveAnyButton() throws {
+        let dock = ViewerToolDockView()
+        dock.frame = NSRect(x: 0, y: 0, width: 300, height: 38)
+        dock.layoutSubtreeIfNeeded()
+        let buttons = dock.subviews.compactMap { $0 as? NSStackView }
+            .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
+        XCTAssertEqual(buttons.count, 7)
+
+        let framesBefore = buttons.map(\.frame)
+        let positionsBefore = buttons.map { $0.layer?.position }
+        let anchorsBefore = buttons.map { $0.layer?.anchorPoint }
+
+        buttons[2].onHoverChanged?(true)
+        let zoomed = try XCTUnwrap(buttons[2].currentScale)
+        XCTAssertEqual(zoomed, ViewerToolDockView.hoveredScale, accuracy: 0.001)
+
+        XCTAssertEqual(buttons.map(\.frame), framesBefore,
+                       "hovering must not change any button's frame")
+        XCTAssertEqual(buttons.map { $0.layer?.position }, positionsBefore,
+                       "hovering must not relocate any button's layer")
+        XCTAssertEqual(buttons.map { $0.layer?.anchorPoint }, anchorsBefore,
+                       "the anchor point must never be touched after layout")
+
+        // The enlargement is centred on the button, not applied from a corner.
+        let transform = try XCTUnwrap(buttons[2].layerTransform)
+        let bounds = try XCTUnwrap(buttons[2].layer?.bounds)
+        let centre = CGPoint(x: bounds.midX, y: bounds.midY)
+        let mapped = CGPoint(x: centre.x * transform.m11 + transform.m41,
+                             y: centre.y * transform.m22 + transform.m42)
+        XCTAssertEqual(mapped.x, centre.x, accuracy: 0.01,
+                       "scaling must keep the button's centre in place")
+        XCTAssertEqual(mapped.y, centre.y, accuracy: 0.01)
+
+        buttons[2].onHoverChanged?(false)
+        XCTAssertEqual(buttons[2].currentScale, 1, accuracy: 0.001)
+    }
+
     func testDockHoverScalesButtonsAndReturnsToBaseline() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
