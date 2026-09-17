@@ -213,21 +213,16 @@ public final class ImageCanvasView: NSView {
         guard let renderImage else { return }
 
         // The bitmap is mapped over the source rectangle: a bounded proxy and a
-        // native bitmap must produce identical geometry for the same source.
+        // native bitmap must produce identical geometry for the same source. The
+        // transform is shared with the Metal path so a rotated view cannot mean two
+        // different things.
         let source = renderImage.sourcePixelSize
-        let quarterTurns = viewport.normalizedQuarterTurns
-        let displayed = ViewportState.displayedPixelSize(imagePixelSize, quarterTurns: quarterTurns)
         let zoom = viewport.zoomScale
 
         context.saveGState()
         context.interpolationQuality = zoom < 0.999 ? .high : .none
-        context.translateBy(x: bounds.midX, y: bounds.midY)
-        context.scaleBy(x: zoom, y: zoom)
-        context.rotate(by: CGFloat(quarterTurns) * .pi / 2)
-        if viewport.mirroredHorizontally { context.scaleBy(x: -1, y: 1) }
-        let offsetX = (viewport.normalizedCenter.x - 0.5) * displayed.width
-        let offsetY = (viewport.normalizedCenter.y - 0.5) * displayed.height
-        context.translateBy(x: -offsetX, y: -offsetY)
+        context.concatenate(viewport.imageToViewTransform(sourcePixelSize: source,
+                                                         viewSize: bounds.size))
         context.draw(renderImage.bitmap, in: CGRect(x: -source.width / 2, y: -source.height / 2,
                                                     width: source.width, height: source.height))
         context.restoreGState()

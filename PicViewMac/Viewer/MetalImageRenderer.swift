@@ -221,15 +221,10 @@ public final class MetalImageRenderer {
     /// or doubles the image.
     static func quadCorners(sourcePixelSize: CGSize, viewport: ViewportState, viewSize: CGSize,
                             contentsScale: CGFloat, drawableSize: CGSize) -> [SIMD2<Float>] {
-        let displayed = ViewportState.displayedPixelSize(sourcePixelSize,
-                                                        quarterTurns: viewport.normalizedQuarterTurns)
-        var transform = CGAffineTransform.identity
-        transform = transform.translatedBy(x: viewSize.width / 2, y: viewSize.height / 2)
-        transform = transform.scaledBy(x: viewport.zoomScale, y: viewport.zoomScale)
-        transform = transform.rotated(by: CGFloat(viewport.normalizedQuarterTurns) * .pi / 2)
-        if viewport.mirroredHorizontally { transform = transform.scaledBy(x: -1, y: 1) }
-        transform = transform.translatedBy(x: -(viewport.normalizedCenter.x - 0.5) * displayed.width,
-                                          y: -(viewport.normalizedCenter.y - 0.5) * displayed.height)
+        // One transform for both renderers: the Quartz path concatenates the same
+        // value, so a rotated or mirrored view cannot drift between the two.
+        let transform = viewport.imageToViewTransform(sourcePixelSize: sourcePixelSize,
+                                                     viewSize: viewSize)
         let halfWidth = sourcePixelSize.width / 2
         let halfHeight = sourcePixelSize.height / 2
         // Order matches `uvs`: bottom-left, bottom-right, top-left, top-right.

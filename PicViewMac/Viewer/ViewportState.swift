@@ -61,6 +61,53 @@ public struct ViewportState: Equatable, Sendable {
             : CGSize(width: pixelSize.height, height: pixelSize.width)
     }
 
+    // MARK: - Render transform
+
+    /// The offset a renderer subtracts **in the image's own axes** so the displayed
+    /// point at `normalizedCenter` lands at the view centre.
+    ///
+    /// `normalizedCenter` lives in displayed (post-rotation) space, but a renderer
+    /// subtracts its offset *before* applying the rotation, so the vector has to be
+    /// rotated back through the inverse view rotation and mirror. Getting this wrong
+    /// is not a visual detail: the offset then moves the image along the wrong axis
+    /// and a drag appears to go the wrong way.
+    public static func imageSpaceOffset(normalizedCenter: CGPoint,
+                                        displayedPixelSize: CGSize,
+                                        quarterTurns: Int,
+                                        mirroredHorizontally: Bool) -> CGPoint {
+        var x = (normalizedCenter.x - 0.5) * displayedPixelSize.width
+        var y = (normalizedCenter.y - 0.5) * displayedPixelSize.height
+        switch ((quarterTurns % 4) + 4) % 4 {
+        case 1: (x, y) = (y, -x)
+        case 2: (x, y) = (-x, -y)
+        case 3: (x, y) = (-y, x)
+        default: break
+        }
+        if mirroredHorizontally { x = -x }
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Image space → view space, exactly as both renderers build it (Quartz
+    /// concatenates it, Metal maps quad corners through it). One implementation so
+    /// the two paths cannot drift, and so tests can assert the mapping itself.
+    public func imageToViewTransform(sourcePixelSize: CGSize, viewSize: CGSize) -> CGAffineTransform {
+        let displayed = ViewportState.displayedPixelSize(sourcePixelSize,
+                                                        quarterTurns: normalizedQuarterTurns)
+        let offset = ViewportState.imageSpaceOffset(
+            normalizedCenter: normalizedCenter,
+            displayedPixelSize: displayed,
+            quarterTurns: normalizedQuarterTurns,
+            mirroredHorizontally: mirroredHorizontally
+        )
+        var transform = CGAffineTransform.identity
+        transform = transform.translatedBy(x: viewSize.width / 2, y: viewSize.height / 2)
+        transform = transform.scaledBy(x: zoomScale, y: zoomScale)
+        transform = transform.rotated(by: CGFloat(normalizedQuarterTurns) * .pi / 2)
+        if mirroredHorizontally { transform = transform.scaledBy(x: -1, y: 1) }
+        transform = transform.translatedBy(x: -offset.x, y: -offset.y)
+        return transform
+    }
+
     // MARK: - Center clamping
 
     /// Keeps the visible rectangle inside the image when the image is larger

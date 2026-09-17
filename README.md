@@ -77,8 +77,9 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   size, and the bitmap is materialized off the main thread, so opening a 1.9 GiB
   48000×32000 PNG costs one decode pass instead of four and no main-thread stall.
   Rendering is on-demand Metal with mandatory mipmaps and a Quartz fallback
-  (`PICLIGHT_DISABLE_METAL=1` forces Quartz); a window resize upgrades the level
-  only after a 300 ms debounce and never during a drag.
+  (`PICLIGHT_DISABLE_METAL=1` forces Quartz); a resize or a zoom-in upgrades the
+  level only after a 300 ms debounce and never during a drag, and the viewer says
+  "正在解码…" while the first frame of a big file is still being decoded.
 - Folder watching with debounced rescans that preserve the current file by
   identity, and Move to Trash with smart next/previous selection.
 - Configurable settings and customizable viewer shortcuts with conflict

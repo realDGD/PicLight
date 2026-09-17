@@ -785,7 +785,16 @@ enum SelfTest {
         }
         let settings = AppSettings.shared
         let original = settings.windowSizing
-        defer { settings.windowSizing = original }
+        let originalSize = settings.lastWindowSize
+        defer {
+            settings.windowSizing = original
+            settings.lastWindowSize = originalSize
+        }
+        // The scenario asks what the policy does to *this image*, so it starts from a
+        // known window: whatever size the user last dragged to is remembered across
+        // launches, and a stale value made the first run after a manual session size
+        // the window from that memory instead of from the image.
+        settings.lastWindowSize = nil
 
         let controller = AppEnvironment.shared.presentNewViewerWindow()
         guard let viewer = controller.viewerViewController as ViewerViewController?,

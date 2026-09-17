@@ -181,3 +181,61 @@ final class ResizeWiringTests: XCTestCase {
                        "the replaced image must not be decoded again by a stale upgrade")
     }
 }
+
+/// The other half of the user-visible promise: zooming in sharpens the bitmap.
+/// The level check is the same debounced one as for a resize, with the policy's zoom
+/// term supplying the requirement, so the assertions live beside the resize ones.
+extension ResizeWiringTests {
+
+    func testZoomingInBuysTheCoarserLevelAfterTheDebounce() throws {
+        let (directory, url) = try scratchImage("giant.png")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let harness = makeHarness(pixelSize: CGSize(width: 48000, height: 32000), probeEdge: 48000)
+        defer { harness.controller.close() }
+        harness.window.setContentSize(NSSize(width: 420, height: 320))
+        pump(0.2)
+        harness.viewer.open(url: url)
+        XCTAssertTrue(pump(until: { harness.decoder.requestedBudgets.count >= 1 }))
+        let loadBudget = harness.decoder.requestedBudgets.first ?? nil
+        harness.decoder.reset()
+        pump(0.6)
+
+        // 100 %: one image pixel per backing pixel. On a 2× display that is a 0.5
+        // zoom factor, i.e. the 48000-pixel source shown across 24000 points — far
+        // past the load budget, so the bitmap is undersampled and must be replaced.
+        harness.viewer.perform(.zoomActualPixels)
+        pump(0.1)
+        XCTAssertEqual(harness.decoder.requestedBudgets.count, 0,
+                       "a zoom gesture must not decode synchronously")
+
+        XCTAssertTrue(pump(until: {
+            guard let last = harness.decoder.requestedBudgets.last ?? nil else { return false }
+            return last > (loadBudget ?? 0)
+        }), "zooming past the headroom must buy a sharper level, got "
+             + "\(String(describing: harness.decoder.requestedBudgets)) after load \(String(describing: loadBudget))")
+        XCTAssertEqual(harness.decoder.requestedBudgets.last ?? nil, DecodeBudget.maximumLongEdge,
+                       "the sharpest level available is the 8192 proxy")
+    }
+
+    func testZoomingOutDoesNotBuyAnything() throws {
+        let (directory, url) = try scratchImage("giant.png")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let harness = makeHarness(pixelSize: CGSize(width: 48000, height: 32000), probeEdge: 48000)
+        defer { harness.controller.close() }
+        harness.window.setContentSize(NSSize(width: 420, height: 320))
+        pump(0.2)
+        harness.viewer.open(url: url)
+        XCTAssertTrue(pump(until: { harness.decoder.requestedBudgets.count >= 1 }))
+        harness.viewer.perform(.zoomActualPixels)
+        XCTAssertTrue(pump(until: { harness.decoder.requestedBudgets.count >= 1 }))
+        pump(0.6)
+        harness.decoder.reset()
+
+        harness.viewer.perform(.zoomToFit)
+        pump(1.2)
+        XCTAssertEqual(harness.decoder.requestedBudgets.count, 0,
+                       "fitting the image is already covered by the bitmap on screen")
+    }
+}

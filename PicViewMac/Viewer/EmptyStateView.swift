@@ -1,7 +1,9 @@
 import AppKit
 
-/// Present when there is no image to show: a bare launch, or a folder that holds
-/// no supported images. It is a normal subview of the viewer window (never a
+/// Present when there is no image to show: a bare launch, a folder that holds no
+/// supported images, or a bounded decode still running (an oversized PNG takes
+/// ~16 s, and saying "this folder has no supported images" during that window is
+/// both wrong and alarming). It is a normal subview of the viewer window (never a
 /// window of its own) and it steps out of hit-testing as soon as an image loads.
 final class EmptyStateView: NSView {
     enum Reason: Equatable {
@@ -9,11 +11,14 @@ final class EmptyStateView: NSView {
         case noImageOpened
         /// A folder was opened but contains no supported images.
         case folderHasNoImages
+        /// An image was found and its decode is still running (spec §12).
+        case loading
 
         var title: String {
             switch self {
             case .noImageOpened: return "打开图片…"
             case .folderHasNoImages: return "此文件夹中没有支持的图像"
+            case .loading: return "正在解码…"
             }
         }
 
@@ -21,6 +26,7 @@ final class EmptyStateView: NSView {
             switch self {
             case .noImageOpened: return "拖放图片到这里，或按 ⌘O"
             case .folderHasNoImages: return "支持 BMP、GIF、ICO、PNG、JPEG、TIFF、WebP"
+            case .loading: return "超大图片需要十几秒，完成后会自动显示"
             }
         }
     }
@@ -94,7 +100,7 @@ final class EmptyStateView: NSView {
         self.reason = reason
         titleLabel.stringValue = reason.title
         hintLabel.stringValue = reason.hint
-        openButton.isHidden = reason == .folderHasNoImages
+        openButton.isHidden = reason != .noImageOpened
     }
 
     @objc private func requestOpen() {

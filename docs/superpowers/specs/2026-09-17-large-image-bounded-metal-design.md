@@ -349,8 +349,20 @@ live resize is still moving. The same formula drives the *load* path, so the lev
 with is the level its own canvas implies (§5.3) rather than the 8192 ceiling — the release-gate
 measurement of the investigation image fell from a 134 MB bitmap to a 10.7 MB one for a 637×212 pt
 canvas, peak footprint 0.780 → 0.198 GiB, with the decode cost unchanged because it is inflate-bound.
-Level changes remain geometry-triggered: zooming past the 1.5× headroom does not start a decode,
-which is the E1 trade-off stated above (every level change is a full, uncancellable stream decode).
+Level changes are triggered by the *settled geometry and zoom together*: a resize or a
+backing-scale change fires the check through the canvas's geometry hook, and a zoom fires it through
+`onZoomChanged`, both behind the same 300 ms debounce. The policy's zoom term is what makes the
+second case work — the requirement is
+`max(ceil(canvas × backingScale × 1.5), displayedExtentAtCurrentZoom × backingScale)`, so zooming in
+past the headroom buys a sharper level instead of staying soft, while zooming *out* never does.
+
+This was first implemented as geometry-only, on the reading that the E1 note's "every level change is
+a full, uncancellable stream decode" argued against zoom-triggered work. Testing the app showed the
+consequence: with the canvas-derived initial bucket (§5.3) a zoomed-in image stayed visibly soft with
+nothing to sharpen it, which is not what §9.5's own condition ("fewer than 1 texel per backing pixel
+at the current zoom") asks for. The debounce plus the "only when actually undersampled" rule keep the
+cost bounded: at most one decode per bucket step, started after the gesture settles, and never past
+the 8192 ceiling.
 
 Measured with a scripted drag (`PICLIGHT_BENCH_RESIZE=1`, 75 steps at 0.12 s over 9 s, canvas
 448×335 → 1240×763 → 420×320; §16): no decode starts during the drag, exactly one starts **0.32 s
@@ -374,6 +386,17 @@ Fallback conditions include:
 Critical geometry rule:
 
 > Quartz fallback draws the render bitmap into the **logical source rectangle**, not a rectangle sized from `bitmap.width/height`.
+
+**One transform for both renderers (2026-09-18).** `ViewportState.imageToViewTransform(sourcePixelSize:viewSize:)`
+builds the image-space → view-space mapping; the Quartz path concatenates it and the Metal path maps
+its quad corners through it, so the two cannot drift. That refactor also fixed a view-only rotation
+bug present since v0.1: the viewport offset is expressed in displayed (post-rotation) space but a
+renderer subtracts it *before* applying the rotation, so the vector must be rotated back through the
+inverse rotation and mirror (`ViewportState.imageSpaceOffset`). Without that step the offset moved the
+image along its own x axis, which after a quarter turn is the view's y axis — dragging right moved the
+image vertically, and a 180° turn mirrored the visible region. `ViewRotationGeometryTests` pins the
+invariant for all four rotations with and without mirroring: the requested centre lands at the view
+centre, and a drag moves the content the same way as it does unrotated.
 
 Therefore a 8192×5461 proxy for a 48000×32000 source has the same Fit/100%/pan geometry as the Metal path.
 
@@ -408,6 +431,15 @@ A long bounded PNG decode is expected to remain roughly 18 s on the investigatio
 - the app must remain event-loop responsive;
 - it shows an explicit loading/placeholder state instead of publishing a lazy native image and then freezing during CA commit;
 - the previous valid image or neutral placeholder policy must be deterministic and tested.
+
+**Implemented 2026-09-18.** The placeholder has three reasons — nothing opened, a folder with no
+supported images, and *decoding* — and the last one is chosen whenever a decode is in flight and
+nothing is on screen yet (`EmptyStateView.Reason.loading`, "正在解码… / 超大图片需要十几秒，完成后会自动
+显示"). Before this the second reason was used during a decode, so opening a 1.9 GiB PNG claimed the
+folder contained no supported images for the whole ~16 s. When a previously shown image is still on
+the canvas the placeholder stays hidden: the old bitmap remains until the replacement is ready, which
+is the same "never blank the canvas" rule §9.5 uses for level changes. `LoadingStateTests` pins all
+three reasons.
 
 Acceptance uses main-thread ping latency, not time-to-image, as the responsiveness metric. The initial target is p95 main-thread ping stall <100 ms during background decode/zoom activity, with the old multi-second CA stall as the failure class being eliminated.
 

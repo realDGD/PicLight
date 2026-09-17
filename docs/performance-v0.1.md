@@ -96,11 +96,12 @@ above native). Behaviour that follows from that design:
   with mandatory mipmaps and `linear` min/mag/mip filtering; the Quartz path
   remains and is semantically identical (`PICLIGHT_DISABLE_METAL=1` forces it for
   A/B measurement).
-- Level upgrades triggered by a window resize are debounced 300 ms, only run when
+- Level upgrades triggered by a window resize *or a zoom-in* are debounced 300 ms, only run when
   the bitmap is actually undersampled for the settled canvas, never start while the
   pointer or a live resize is moving, and keep the current bitmap on screen until
   the replacement is ready (`ResizeUpgradePolicy`). Zooming past the 1.5× headroom
-  does not start a decode: every level change is a full, uncancellable stream decode.
+  therefore sharpens up to the 8192 proxy, at the cost of one bounded decode per
+  bucket step; beyond 8192 the bitmap stays a proxy by design.
 - Oversized drawer items render a placeholder instead of decoding; the current
   item is served from the bitmap already on screen.
 

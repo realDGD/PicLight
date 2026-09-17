@@ -49,6 +49,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// canvas has outgrown it. Reset with the image.
     private var displayedLevel: DecodeLevel = .native
     private var resizeUpgradeWorkItem: DispatchWorkItem?
+    /// True from the moment a decode for the current item starts until it publishes or
+    /// fails. The empty state uses it to say "decoding" instead of blaming the folder.
+    private var isDecodingCurrentItem = false
 
     public private(set) var settings = AppSettings.shared
 
@@ -294,6 +297,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.hover.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
             self.hover.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
+            // Zooming in is the other way a bitmap becomes undersampled (§9.5), so the
+            // same debounced check runs here: sharpening past the 1.5× headroom costs
+            // one bounded decode, which is why it waits for the gesture to settle.
+            self.scheduleLevelUpgrade()
         }
         canvas.onPointerActivity = { [weak self] in
             guard let self else { return }
@@ -306,7 +313,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.applyChromeVisibility()
         }
         canvas.onGeometryChange = { [weak self] in
-            self?.scheduleResizeUpgrade()
+            self?.scheduleLevelUpgrade()
         }
 
         toolDock.onCommand = { [weak self] command in
@@ -473,6 +480,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// arrives (§9.5: never blank the canvas).
     private func startDecode(url: URL, previous: URL?, next: URL?,
                              direction: NavigationDirection, target: DecodeTarget) {
+        isDecodingCurrentItem = true
+        // Re-evaluate the placeholder now: the decode has started, so "no image yet"
+        // means "decoding", not "nothing here".
+        refreshEmptyState()
         Task { [weak self] in
             guard let self else { return }
             _ = await self.coordinator.show(item: url, previous: previous, next: next,
@@ -482,12 +493,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
-    // MARK: - Resize-driven level upgrades (spec §9.5)
+    // MARK: - Level upgrades (spec §9.5)
 
-    /// Debounced: a resize that crosses a bucket boundary costs a full bounded
-    /// decode, so it only starts once the geometry has settled and the user has
-    /// stopped dragging, and only when the bitmap on screen is undersampled.
-    private func scheduleResizeUpgrade() {
+    /// Debounced: a resize or a zoom that crosses a bucket boundary costs a full
+    /// bounded decode, so it only starts once the gesture has settled, only when
+    /// nobody is dragging, and only when the bitmap on screen is undersampled for
+    /// the current geometry *and* zoom.
+    private func scheduleLevelUpgrade() {
         resizeUpgradeWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.upgradeLevelForCurrentGeometry() }
         resizeUpgradeWorkItem = work
@@ -500,7 +512,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // Still moving: wait for the geometry to settle instead of starting a decode
         // the next resize would invalidate.
         guard !canvas.isInteracting else {
-            scheduleResizeUpgrade()
+            scheduleLevelUpgrade()
             return
         }
         // Animation frames are decoded outside the budget, so a level upgrade would
@@ -530,6 +542,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case let .head(head):
             viewerState.apply(head: head)
             displayedLevel = head.level
+            isDecodingCurrentItem = false
             errorLabel.isHidden = true
             onDescriptorAvailable?(head.descriptor)
             // Once per displayed image, as the navigator's own documentation states.
@@ -544,6 +557,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 viewerState.apply(frame: frame)
             }
         case let .failure(message):
+            isDecodingCurrentItem = false
             viewerState.apply(error: message)
             errorLabel.stringValue = message
             errorLabel.isHidden = message.isEmpty
@@ -557,12 +571,25 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     /// Shows the welcome/empty UI only when there is genuinely nothing to show:
-    /// no decoded image and no error to explain why.
+    /// no decoded image and no error to explain why. A decode in flight is its own
+    /// state — an oversized source takes ~16 s, and "this folder has no supported
+    /// images" is a different, wrong claim during that window (spec §12). When the
+    /// previous image is still on screen there is nothing to explain: it stays until
+    /// the replacement is ready.
     private func refreshEmptyState() {
         let hasImage = viewerState.currentImage != nil
         let hasError = !(viewerState.errorMessage ?? "").isEmpty
         guard !hasImage, !hasError else {
             setEmptyState(visible: false)
+            return
+        }
+        if isDecodingCurrentItem {
+            guard canvas.renderImage == nil else {
+                setEmptyState(visible: false)
+                return
+            }
+            emptyState.apply(reason: .loading)
+            setEmptyState(visible: true)
             return
         }
         emptyState.apply(reason: session.directory == nil ? .noImageOpened : .folderHasNoImages)
