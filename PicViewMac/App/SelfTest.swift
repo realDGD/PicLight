@@ -198,6 +198,17 @@ enum SelfTest {
         check("pointer tracking belongs to the viewer root only",
               trackingOwners == ["ViewerRootView"], trackingOwners.joined(separator: ", "))
 
+        // 2b. With no pointer in a hover region, every chrome surface must be
+        //     genuinely hidden - not merely transparent.
+        drainRunLoop(0.6)
+        var notHidden: [String] = []
+        for (name, chrome) in viewer.chromeViewsForTesting
+        where ["topBar", "bottomBar", "drawer", "minimap"].contains(name) {
+            if !chrome.isHidden { notHidden.append("\(name) alpha=\(chrome.alphaValue)") }
+        }
+        check("chrome starts genuinely hidden, not just transparent",
+              notHidden.isEmpty, notHidden.joined(separator: ", "))
+
         // 3. The left edge is a narrow band and a hidden drawer is not clickable.
         let bounds = viewer.view.bounds
         check("left hot zone is at most 12 px",

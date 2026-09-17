@@ -575,19 +575,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 chrome.isHidden = true
                 return
             }
-            NSAnimationContext.runAnimationGroup({ context in
+            NSAnimationContext.runAnimationGroup { context in
                 context.duration = duration
                 chrome.animator().alphaValue = 0
-            }, completionHandler: { [weak self, weak chrome] in
-                guard let chrome else { return }
+            }
+            // Hiding must not depend on the animation callback: it does not run
+            // when the window is off screen or the animation is coalesced, which
+            // would leave a transparent-but-interactive surface behind. A timed
+            // fallback guarantees the surface leaves the hierarchy.
+            let hideDeadline = duration + 0.05
+            DispatchQueue.main.asyncAfter(deadline: .now() + hideDeadline) { [weak chrome] in
                 MainActor.assumeIsolated {
-                    // A show may have started while the fade-out ran; only hide if
-                    // the surface is still meant to be hidden.
-                    guard chrome.alphaValue < 0.01 else { return }
+                    // A show may have started in the meantime; only hide if the
+                    // surface is still meant to be hidden.
+                    guard let chrome, chrome.alphaValue < 0.01 else { return }
                     chrome.isHidden = true
-                    _ = self
                 }
-            })
+            }
         }
     }
 

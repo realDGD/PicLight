@@ -195,3 +195,56 @@ final class ViewerHitTestingTests: XCTestCase {
         XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 5, y: midY)), .leftEdgeHotZone)
     }
 }
+
+/// Regression: hiding chrome must not depend on the fade animation running.
+///
+/// The original implementation only set `isHidden` from the animation completion
+/// handler. For a window that is off screen or whose animation is coalesced, that
+/// callback never fires, and the surface stayed in the hierarchy at alpha 0 -
+/// a transparent layer that still swallowed clicks across its whole width. This
+/// is exactly what a freshly launched bundle did.
+@MainActor
+final class ChromeHideGuaranteeTests: XCTestCase {
+    func testHiddenChromeLeavesTheHierarchyEvenWhenTheWindowIsOffScreen() {
+        // Deliberately not presented: no on-screen animation will run.
+        let controller = ViewerWindowController()
+        defer { controller.close() }
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        XCTAssertFalse(controller.window?.isVisible == true, "the window must stay off screen")
+
+        viewer.applyChromeVisibilityForTesting()
+        // Wait past the fade duration plus the fallback margin.
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+
+        for (name, chrome) in viewer.chromeViewsForTesting
+        where ["topBar", "bottomBar", "drawer", "minimap"].contains(name) {
+            XCTAssertTrue(chrome.isHidden,
+                          "\(name) is still in the hierarchy at alpha \(chrome.alphaValue); "
+                            + "hiding must not rely on the animation callback")
+        }
+    }
+
+    func testChromeReturnsToTheHierarchyWhenRevealed() {
+        let controller = ViewerWindowController()
+        defer { controller.close() }
+        let viewer = controller.viewerViewController
+        controller.present()
+        _ = viewer.view
+        viewer.applyChromeVisibilityForTesting()
+        let hidden = Date().addingTimeInterval(2)
+        while Date() < hidden { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        let topBar = viewer.chromeViewsForTesting["topBar"]!
+        XCTAssertTrue(topBar.isHidden)
+
+        viewer.handlePointer(atRootPoint: CGPoint(x: viewer.view.bounds.midX,
+                                                 y: viewer.view.bounds.height - 5))
+        let revealed = Date().addingTimeInterval(2)
+        while Date() < revealed, topBar.isHidden {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertFalse(topBar.isHidden, "the top band must bring the bar back")
+        XCTAssertEqual(topBar.alphaValue, 1, accuracy: 0.01)
+    }
+}
