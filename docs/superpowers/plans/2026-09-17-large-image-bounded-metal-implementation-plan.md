@@ -53,7 +53,7 @@ the *source* rectangle.
 
 | Trap | Fix |
 | --- | --- |
-| `DecodeCache` keys on `url.path`, so a level encoded in the URL *fragment* is invisible and levels alias | put the level/page in the key **path** component (verified the hard way in the B-series harness) |
+| `DecodeCache` keys on `url.path` and remembers only `currentURL`, so level-aware identity cannot express which entry the purge must keep | introduce a `DecodeCacheKey` struct and `currentHeadKey`; **never** fake a URL/path to smuggle the level (the `@level=` path trick exists only in the B-series harness, which had to work with the unmodified cache) |
 | `NSCache` tolerates being over budget, then evicts the **on-screen** entry while keeping a later one | bound the working set by construction; add the retention probe as a unit test |
 | `Bundle.module` **traps** when the resource bundle is missing | `MetalLibraryLocator` returns `nil`; nothing on the runtime path may touch the generated accessor |
 | `kCGImageSourceShouldCache*` behaviour is non-deterministic on a huge PNG (0 ms vs 20.6 s, same options) | never use them as a materialization mechanism |
@@ -107,11 +107,16 @@ PicViewMacTests/
 
 **Interfaces:**
 ```swift
+/// The render bitmap is *only* a bitmap. Geometry is always derived from the descriptor,
+/// so there is no second copy that can drift from `ImageDescriptor.displayPixelSize`.
 struct RenderImage: Equatable {
     let bitmap: CGImage
-    let sourcePixelSize: CGSize     // from descriptor.displayPixelSize — the single authoritative geometry
+    let descriptor: ImageDescriptor
+    var sourcePixelSize: CGSize { descriptor.displayPixelSize }
 }
 ```
+The animated-frame path (`ViewerState.apply(frame:)`) must reuse the descriptor already published by
+`apply(head:)` — a frame changes pixels, never geometry. Do not add a size field to `DecodedFrame`.
 
 - [ ] Step 1: Add `RenderImage`; change `ImageCanvasView` to render a `RenderImage` and to take all geometry
       (`imagePixelSize`, the drawn rect in `draw(_:)`) from `sourcePixelSize`. No code path may fall back to
@@ -129,7 +134,8 @@ struct RenderImage: Equatable {
 - [ ] Step 6: Run `swift test`; all geometry, viewport, layout and gesture tests green.
 
 ```bash
-git commit -am "refactor: make source geometry authoritative over the render bitmap"
+git add PicViewMac/Viewer/RenderImage.swift PicViewMac/Viewer/ImageCanvasView.swift PicViewMac/Viewer/ViewerViewController.swift PicViewMacTests/LargeImageGeometryTests.swift PicViewMacTests/ImageIODecoderTests.swift
+git commit -m "refactor: make source geometry authoritative over the render bitmap"
 ```
 
 ## Task 2: Decode budget, oversized predicate, dimension probe, cache identity
@@ -148,6 +154,19 @@ enum DecodeBudget {
 }
 enum OversizedPolicy { static func isOversized(sourceLongEdge: Int) -> Bool }   // > 8192
 actor DimensionProbe { func longEdge(of url: URL) async -> Int? }               // C2: probe + cache
+
+struct DecodeCacheKey: Hashable {          // the single encoding of cache identity
+    let url: URL
+    let pageIndex: Int
+    let level: DecodeLevel
+}
+// DecodeCache API becomes key-based:
+//   func head(for key: DecodeCacheKey) -> DecodedImageHead?
+//   func store(head: DecodedImageHead, for key: DecodeCacheKey)
+//   func setCurrent(_ key: DecodeCacheKey?)          // was setCurrent(_ url: URL?)
+//   func purge(keeping key: DecodeCacheKey?)         // was purge(keeping url: URL?)
+// A private static func nsKey(_ key: DecodeCacheKey) -> NSString is the only place that turns
+// the struct into an NSString for NSCache; nothing else may build key strings.
 ```
 
 - [ ] Step 1: Implement `DecodeBudget` exactly as §5.3/E1: `required = ceil(max(canvasW, canvasH) × backingScale × 1.5)`,
@@ -157,17 +176,22 @@ actor DimensionProbe { func longEdge(of url: URL) async -> Int? }               
 - [ ] Step 2: Implement `OversizedPolicy` as the one predicate used by both preload and drawer.
 - [ ] Step 3: Implement `DimensionProbe` on top of the existing header probe (`FolderScanner.pixelSize(of:)`), with a
       bounded cache; byte size is *not* an input to the decision (it may only order work later, if ever).
-- [ ] Step 4: `DecodeCache`: include level and page in the key. **The level must live in the key's path component**
-      (`"…\(url.path)@level=\(level)"`), because `DecodeCache.headKey` uses `url.path` and a fragment would alias
-      levels. Raise the default `totalCostLimit` to 768 MiB; keep `cost = bytesPerRow × height`.
+- [ ] Step 4: `DecodeCache`: replace `headKey(_ url:)` with the `DecodeCacheKey` struct above and switch
+      `setCurrent(_:)` / `purge(keeping:)` to take a key. This is load-bearing: with a key that carries only the URL,
+      the memory-pressure purge cannot tell whether the on-screen entry is `page 0 / bucket(8192)` or
+      `page 0 / bucket(4096)` and will keep the wrong one. Update the two `DecodeCoordinator` call sites
+      (`cache.setCurrent(url)` when a show begins, `purgeCache(keeping:)`) to pass the key they actually requested.
+      Raise the default `totalCostLimit` to 768 MiB; keep `cost = bytesPerRow × height`.
 - [ ] Step 5: Tests — budget table; oversized predicate boundary (8192/8193); probe caching (one probe per URL);
       cache identity (4096≠8192, page participates, cost is real bytes); the two E3 retention probes as unit tests
       using synthetic bitmaps: 8192+2×4096 = 256 MB retained, and the 426.7 MB case documented as "NSCache may evict
-      the earlier entry" so no test assumes otherwise; memory-pressure purge keeps the current entry.
+      the earlier entry" so no test assumes otherwise; and specifically **memory-pressure purge keeps the entry for the
+      currently shown (page, level)** while a different level of the same URL is dropped.
 - [ ] Step 6: `swift test`.
 
 ```bash
-git commit -am "feat: decode budget, oversized predicate, dimension probe and level-aware cache identity"
+git add PicViewMac/Imaging/DecodeBudget.swift PicViewMac/Imaging/OversizedPolicy.swift PicViewMac/Imaging/DimensionProbe.swift PicViewMac/Imaging/DecodeCache.swift PicViewMac/Imaging/DecodeCoordinator.swift PicViewMacTests/DecodeBudgetTests.swift PicViewMacTests/CacheIdentityTests.swift
+git commit -m "feat: decode budget, oversized predicate, dimension probe and level-aware cache identity"
 ```
 
 ## Task 3: Bounded main decode + explicit materialization (A3)
@@ -183,27 +207,48 @@ enum BitmapMaterializer {
 }
 ```
 
-- [ ] Step 1: `BitmapMaterializer` performs the A3 pass on a detached task; assert in tests that it ran (a recorded
-      count is fine as a *secondary* signal — the primary proof is timing: a same-size draw after delivery must be
-      < 50 ms for an 8192 fixture, and it must not re-materialize at a different destination size).
-- [ ] Step 2: `ImageIODecoder.decodeFirstDisplayableFrame(_:target:)`:
+- [ ] Step 1: `BitmapMaterializer.materialize(_:)` is a **synchronous CPU operation**; `decodeFirstDisplayableFrame`
+      already runs inside `Task.detached(priority: .userInitiated)` (`ImageIODecoder.swift` ~L23), so the materializer
+      must **not** create a second detached task — a nested task only complicates priority, cancellation and test
+      tracing. Worst case on the ≤8192 path is ~0.5 s (measured 0.495 s for 8192×5461).
+- [ ] Step 2: Materialization must be *observable without timing*: tests assert the delivered bitmap does not re-enter
+      the decoder/materializer (a counting seam over `CGImageSourceCreateImageAtIndex` and `BitmapMaterializer`)
+      and that the bitmap is already resident. **No absolute wall-clock thresholds in XCTest** — the gate measured
+      3 ms for the same-size redraw and 58 ms for the first draw, and a loaded machine moves both. Timing lives in the
+      harness with a relative bound: `matbench --mode a3` on the 8192 fixture must stay within 1.5× of the recorded A3
+      baseline (first draw 0.058 s, peak footprint 0.337 GiB).
+- [ ] Step 3: `ImageIODecoder.decodeFirstDisplayableFrame(_:target:)`:
       - `target.maxPixelSize == nil` or `>= budget` and `sourceLongEdge <= 8192` → `CreateImageAtIndex` + materialize;
       - oversized → `CreateThumbnailAtIndex` with `FromImageAlways`, `WithTransform`, `ShouldCacheImmediately`,
         `ThumbnailMaxPixelSize = bucket`; the transform owns orientation, so `apply(orientation:)` must **not** run
         afterwards;
       - keep ICO representation selection and TIFF `pageIndex` semantics exactly as today;
       - never call `CreateThumbnailAtIndex` with `maxPixelSize >= sourceLongEdge` for an oversized source.
-- [ ] Step 3: Preserve the source colour space through both paths (Display-P3 tests stay valid).
-- [ ] Step 4: `DecodeCoordinator` passes the per-item budget; neighbour preload uses the same policy; **skip oversized
+- [ ] Step 4: Preserve the source colour space through both paths (Display-P3 tests stay valid).
+- [ ] Step 5: **Bit-depth policy — never silently flatten high-depth sources.** Today a 16-bit source with orientation
+      `.up` returns the native `CGImage` untouched (`decodeOriented` early-returns on `.up`), so it keeps full
+      precision; an unconditional 8-bit materialization would quietly downgrade it. Policy:
+      ```text
+      <=8 bits/component     -> A3 canonical 8-bit layout (premultipliedLast, source colour space preserved)
+      >8 bits/component,
+      float, or indexed      -> materialize into a context at the SAME bitsPerComponent and colour space
+                                (no canonical flattening); the renderer's exotic-layout policy (spec §7) then
+                                routes it to Quartz exactly as today
+      ```
+      Add `depth16.png` and `depth16.tiff` fixtures (small, committed under `PicViewMacTests/Fixtures`) and a test
+      asserting `bitsPerComponent` and colour space survive delivery and the image still renders. Note in the PR that
+      this refines spec §7 with an explicit no-downgrade rule.
+- [ ] Step 6: `DecodeCoordinator` passes the per-item budget; neighbour preload uses the same policy; **skip oversized
       neighbours before starting any task** (no cancellation-based mitigation: ImageIO ignores cancellation).
-- [ ] Step 5: Tests — bounded long edge ≤ bucket; `displayPixelSize` unchanged; orientation applied exactly once;
-      P3 tagged; TIFF page + ICO still correct; materialization timing proof.
-- [ ] Step 6: Verify against the gate harness (the shipped path must reproduce the gate numbers):
+- [ ] Step 7: Tests — bounded long edge ≤ bucket; `displayPixelSize` unchanged; orientation applied exactly once;
+      P3 tagged; 16-bit precision preserved; TIFF page + ICO still correct; materialization observability proof.
+- [ ] Step 8: Verify against the gate harness (the shipped path must reproduce the gate numbers):
       `benchmarks/LargeImagePolicyBench/.work/picbench matbench <fixture> --mode a3` for an 8192 PNG
       (expect ≈0.06 s first draw, ≈0.34 GiB peak footprint) and a bounded thumbnail for the oversized fixture.
 
 ```bash
-git commit -am "feat: bounded main decode with explicit background materialization"
+git add PicViewMac/Imaging/BitmapMaterializer.swift PicViewMac/Imaging/ImageIODecoder.swift PicViewMac/Imaging/DecodeCoordinator.swift PicViewMacTests/ImageIODecoderTests.swift PicViewMacTests/Fixtures
+git commit -m "feat: bounded main decode with explicit background materialization"
 ```
 
 ## Task 4: Stop redundant source-stream work (navigator, current drawer item, oversized drawer items)
@@ -224,7 +269,8 @@ git commit -am "feat: bounded main decode with explicit background materializati
       ~60 J. Record the numbers in the PR; the formal E4 gate runs in Task 8.
 
 ```bash
-git commit -am "feat: reuse the bounded bitmap for navigator and current drawer item, protect the drawer"
+git add PicViewMac/Viewer/ViewerViewController.swift PicViewMac/Imaging/ThumbnailPipeline.swift PicViewMacTests/DrawerSafetyTests.swift
+git commit -m "feat: reuse the bounded bitmap for navigator and current drawer item, protect the drawer"
 ```
 
 ## Task 5: Metal renderer with mandatory mipmaps, on-demand, with a Quartz fallback
@@ -238,29 +284,38 @@ git commit -am "feat: reuse the bounded bitmap for navigator and current drawer 
 - [ ] Step 2: `MetalLibraryLocator` mirrors SwiftPM's search order (dev override → `Bundle.main.resourceURL` →
       `Bundle(for:)`-style → `Bundle.main.bundleURL`) and returns `nil` on failure. No `fatalError`; nothing on the
       runtime path may call the generated `Bundle.module` accessor.
-- [ ] Step 3: `MetalImageRenderer`: pipeline from the locator; texture format chosen from the bitmap's
-      `alphaInfo`/`bitmapInfo`/`bitsPerPixel` (`bgra8Unorm` for premultiplied-first, `rgba8Unorm` for `.last`); exotic
-      layouts (16-bit/float/indexed) either normalized through one `CGContext` pass or routed to Quartz. Blending is
-      premultiplied source-over the canvas background colour.
+- [ ] Step 3: `MetalImageRenderer`: pipeline from the locator. Texture format comes from a **complete layout mapping
+      table over `bitsPerComponent` + `alphaInfo` + `byteOrder` + `bitsPerPixel`** — `alphaInfo` alone does not
+      determine memory order (`byteOrder32Little` + `premultipliedFirst` is BGRA in memory; the same byte order with
+      `premultipliedLast` is RGBA). 8-bit layouts map to `bgra8Unorm`/`rgba8Unorm`; anything else (16-bit, float,
+      indexed, unusual byte orders) goes to Quartz per spec §7 or through one tested `CGContext` normalization —
+      never guessed. Blending is premultiplied source-over the canvas background colour. Pair the mapping with a
+      **channel-identity pixel test** (a fixture with known, distinct R/G/B values) so a red/blue swap cannot pass as
+      "parity".
 - [ ] Step 4: Mipmaps are **mandatory**: generate after upload, `mipFilter = .linear`, no shader LOD clamp that
       bypasses the chain. Sampler min/mag linear; magnification of a proxy stays linear (D6).
-- [ ] Step 5: Geometry: quad = `displayPixelSize × zoom` in points × backingScale, NDC from `drawableSize`; rotate by
+- [ ] Step 5: Colour management is configured on the **surface**, not merely carried by the texture: the
+      `MTKView`/`CAMetalLayer` colour space is set from the render bitmap's colour space, so a Display-P3 image is
+      composited as P3 instead of being reinterpreted as sRGB downstream. If the drawable cannot be configured for the
+      input's colour space, route to Quartz (spec §10).
+- [ ] Step 6: Geometry: quad = `displayPixelSize × zoom` in points × backingScale, NDC from `drawableSize`; rotate by
       quarter turns; mirror; keep `ViewportState` as the only viewport model. Flip on upload (or map UVs) so the image
       is not upside down — verify with a 1:1 parity test at scale 1.0 (RMSE must be ≈0 against the Quartz reference, as
       the D-series sanity check showed).
-- [ ] Step 6: On-demand lifecycle in `MetalCanvasSurface`: `isPaused = true`, `enableSetNeedsDisplay = true`;
+- [ ] Step 7: On-demand lifecycle in `MetalCanvasSurface`: `isPaused = true`, `enableSetNeedsDisplay = true`;
       `setNeedsDisplay` only for new bitmap, viewport change, resize/layout, backing-scale change, drawable/colour
       change, background change.
-- [ ] Step 7: `ImageCanvasView` keeps gestures/hit testing and hosts the surface; on any Metal failure it renders the
+- [ ] Step 8: `ImageCanvasView` keeps gestures/hit testing and hosts the surface; on any Metal failure it renders the
       **bounded bitmap over the source rect** through the existing Quartz path (never a native lazy source).
-- [ ] Step 8: Tests — parity on small fixtures for identity/zoom/pan/90° rotation/mirror/alpha/sRGB/P3/BGRA-vs-RGBA/1×
+- [ ] Step 9: Tests — parity on small fixtures for identity/zoom/pan/90° rotation/mirror/alpha/sRGB/P3/BGRA-vs-RGBA/1×
       vs 2× backing scale/strong minification; a forced-failure injection proving the fallback is selected and no
       `Image IO` allocation appears.
-- [ ] Step 9: Verify with the harness: `.work/minbench` parity numbers at 1.0× (≈0 RMSE) and the D-series minification
+- [ ] Step 10: Verify with the harness: `.work/minbench` parity numbers at 1.0× (≈0 RMSE) and the D-series minification
       numbers for the shipped sampler setup; `renderbench` zoom/pan/idle for 60 fps and ~40 mW.
 
 ```bash
-git commit -am "feat: on-demand Metal renderer with mandatory mipmaps and Quartz fallback"
+git add PicViewMac/Viewer/MetalCanvasSurface.swift PicViewMac/Viewer/MetalImageRenderer.swift PicViewMac/Viewer/MetalLibraryLocator.swift PicViewMac/Shaders PicViewMac/Viewer/ImageCanvasView.swift Package.swift PicViewMacTests/MetalParityTests.swift PicViewMacTests/MetalFallbackTests.swift
+git commit -m "feat: on-demand Metal renderer with mandatory mipmaps and Quartz fallback"
 ```
 
 ## Task 6: Release packaging for the Metal resources
@@ -277,7 +332,8 @@ git commit -am "feat: on-demand Metal renderer with mandatory mipmaps and Quartz
       packaged app on the investigation image.
 
 ```bash
-git commit -am "build: ship and verify Metal shader resources in the release bundle"
+git add scripts/build-release.sh scripts/verify-release.sh PicViewMacTests/ResourcePackagingTests.swift
+git commit -m "build: ship and verify Metal shader resources in the release bundle"
 ```
 
 ## Task 7: Integrated working-set acceptance (spec §15.8)
@@ -296,7 +352,8 @@ git commit -am "build: ship and verify Metal shader resources in the release bun
       768 MiB figure is never quoted as a whole-app ceiling again.
 
 ```bash
-git commit -am "test: integrated decode-cache + Metal working-set acceptance"
+git add benchmarks/LargeImagePolicyBench docs/performance-v0.1.md
+git commit -m "test: integrated decode-cache + Metal working-set acceptance"
 ```
 
 ## Task 8: Real-image acceptance (spec §16) and E4
@@ -307,13 +364,15 @@ git commit -am "test: integrated decode-cache + Metal working-set acceptance"
       (4 traversals → **1**, 136.6 J → **≤ ~70 J**, 20.9 s stall → **p95 < 100 ms**).
 - [ ] Step 2: `vmmap` at t+5 s and t+10 s during the load: no `Image IO` region > 1 GiB; bitmap long edge ≤ 8192 and
       within one bucket step of the requested budget; no native 48000×32000 bitmap anywhere on the display path.
-- [ ] Step 3: Confirm RSS stays ~2.0–2.7 GiB (mmapped source) and that this is documented, not "fixed".
+- [ ] Step 3: Record RSS for **diagnostics only** — it moves with mmapped source pages and system cache and is not a
+      pass/fail signal. The gates remain `phys_footprint`, the `vmmap` `Image IO` assertion and swap growth (spec §16).
 - [ ] Step 4: Animation non-regression: `PICLIGHT_BENCH_SECONDS=20 run-e4.sh <rev> anim-1000.gif` — compare with the
       E5 baseline (15.9 fps, 249 mJ per frame, ping p95 98 ms).
 - [ ] Step 5: Record all raw outputs under `benchmarks/LargeImagePolicyBench/results/`.
 
 ```bash
-git commit -am "test: real-image acceptance for bounded decode and Metal rendering"
+git add benchmarks/LargeImagePolicyBench/results docs/large-image-performance-investigation.md
+git commit -m "test: real-image acceptance for bounded decode and Metal rendering"
 ```
 
 ## Task 9: Regression sweep and documentation
@@ -328,7 +387,8 @@ git commit -am "test: real-image acceptance for bounded decode and Metal renderi
 - [ ] Step 4: Confirm the two spikes remain isolated (no production dependency added).
 
 ```bash
-git commit -am "test: regression sweep and documentation for large-image handling"
+git add PicViewMac PicViewMacTests docs README.md
+git commit -m "test: regression sweep and documentation for large-image handling"
 ```
 
 ## Task 10: Quick Look spike (isolated, no production dependency)
@@ -355,7 +415,8 @@ git commit -am "test: regression sweep and documentation for large-image handlin
 - [ ] Step 3: Confirm every §23 success criterion with a named measurement; anything unmeasured is recorded as open.
 
 ```bash
-git commit -am "chore: large-image release gate"
+git add docs benchmarks
+git commit -m "chore: large-image release gate"
 ```
 
 ---
