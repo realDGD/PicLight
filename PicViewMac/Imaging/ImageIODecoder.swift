@@ -26,11 +26,12 @@ public struct ImageIODecoder: ImageDecoding {
             }
             let descriptor = try Self.descriptor(for: source, url: url)
             let index = try Self.selectIndex(source: source, descriptor: descriptor, target: target)
-            guard let image = Self.decodeOriented(source: source, index: index) else {
+            guard let decoded = Self.decodeLimited(source: source, index: index, target: target) else {
                 throw ImageDecodeError.noDisplayableImage
             }
             let metadata = MetadataReader.read(source: source, url: url, index: index)
-            return DecodedImageHead(image: image, descriptor: descriptor, metadata: metadata)
+            return DecodedImageHead(image: decoded.image, descriptor: descriptor,
+                                    metadata: metadata, level: decoded.level)
         }.value
     }
 
@@ -45,9 +46,10 @@ public struct ImageIODecoder: ImageDecoding {
             }
             let count = CGImageSourceGetCount(source)
             guard index >= 0, index < count else { throw ImageDecodeError.pageOutOfBounds }
-            guard let image = Self.decodeOriented(source: source, index: index) else {
+            guard let decoded = Self.decodeLimited(source: source, index: index, target: target) else {
                 throw ImageDecodeError.noDisplayableImage
             }
+            let image = decoded.image
             let durations = Self.frameDurations(source: source)
             let duration = index < durations.count ? durations[index] : nil
             return DecodedFrame(image: image, index: index, duration: duration)
@@ -235,6 +237,43 @@ public struct ImageIODecoder: ImageDecoding {
         guard let orientation = CGImagePropertyOrientation(rawValue: orientationRaw),
               orientation != .up else { return image }
         return apply(orientation: orientation, to: image) ?? image
+    }
+
+    /// Decodes one representation at the level the design allows, and reports which
+    /// level that was so the caller can key its cache by what was produced.
+    ///
+    /// * at or below the 8192 ceiling: native pixels, orientation applied, then
+    ///   explicitly materialized off-thread (A3). Delivery must never hand the
+    ///   renderer a lazy image — measured, that puts the whole decode inside the
+    ///   renderer's first draw (0.5 s for an 8192 PNG, 19 s for the investigation
+    ///   image) plus a multi-GiB `Image IO` allocation.
+    /// * above the ceiling: a bounded ImageIO thumbnail. `WithTransform` applies the
+    ///   EXIF orientation during that decode, so the full-size orientation copy must
+    ///   not run afterwards, and `ThumbnailMaxPixelSize` is the budget snapped up to
+    ///   one of the stable buckets.
+    ///
+    /// Unknown dimensions (an unreadable header) deliberately take the bounded path:
+    /// a needless bounded decode costs sharpness, a needless native one costs
+    /// gigabytes. Oversized sources never fall back to native here.
+    static func decodeLimited(source: CGImageSource, index: Int,
+                              target: DecodeTarget) -> (image: CGImage, level: DecodeLevel)? {
+        let longEdge = pixelMaximum(source: source, index: index)
+        if longEdge > 0, longEdge <= DecodeBudget.maximumLongEdge {
+            guard let image = decodeOriented(source: source, index: index) else { return nil }
+            return (BitmapMaterializer.materialize(image), .native)
+        }
+        let requested = target.maxPixelSize ?? DecodeBudget.maximumLongEdge
+        let bucket = DecodeBudget.bucket(atLeast: min(max(requested, 1), DecodeBudget.maximumLongEdge))
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: bucket,
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary) else {
+            return nil
+        }
+        return (thumbnail, .bucket(bucket))
     }
 
     /// Orientation is applied to pixels on the fly; the file on disk is never rewritten.

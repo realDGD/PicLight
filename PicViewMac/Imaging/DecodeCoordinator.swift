@@ -17,14 +17,17 @@ public enum DecodeEvent: Sendable {
 /// work with generation tokens so a slow decode can never overwrite a newer one.
 public actor DecodeCoordinator {
     private let decoder: ImageDecoding
+    private let probe: DimensionProbing
     private var generation = 0
     private var currentTask: Task<Void, Never>?
     private var preloadTasks: [String: Task<Void, Never>] = [:]
 
     private let cache = DecodeCache()
 
-    public init(decoder: ImageDecoding = ImageIODecoder()) {
+    public init(decoder: ImageDecoding = ImageIODecoder(),
+                probe: DimensionProbing = DimensionProbe()) {
         self.decoder = decoder
+        self.probe = probe
     }
 
     /// Number of decode tasks currently in flight (current + preloads). Used by
@@ -43,27 +46,33 @@ public actor DecodeCoordinator {
 
     /// Decodes the requested item and streams head-then-frames. Preloads the
     /// adjacent items at lower priority in the direction of travel.
+    /// `async` because the level prediction needs a header probe; callers already
+    /// `await` it. The returned task is the current-image work, not the preloads.
     public func show(
         item url: URL,
         previous: URL? = nil,
         next: URL? = nil,
         direction: NavigationDirection = .unknown,
         target: DecodeTarget = .fullResolution,
-        level: DecodeLevel = .native,
         onEvent: @escaping @Sendable (DecodeEvent) -> Void
-    ) -> Task<Void, Never> {
+    ) async -> Task<Void, Never> {
         currentTask?.cancel()
         let token = nextGeneration()
         let decoder = self.decoder
         let cache = self.cache
-        let key = DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level)
-        self.currentKey = key
-        cache.setCurrent(key)
+        let pageIndex = target.pageIndex
+        // Predict the level with a cheap header probe so the lookup key matches what
+        // the decoder will produce. A wrong prediction costs one extra decode — never
+        // a wrong bitmap, because the store key uses the level that was produced.
+        let predicted = DecodeBudget.level(sourceLongEdge: await probe.longEdge(of: url),
+                                           budget: target.maxPixelSize)
+        let lookupKey = DecodeCacheKey(url: url, pageIndex: pageIndex, level: predicted)
+        self.currentKey = lookupKey
+        cache.setCurrent(lookupKey)
 
-        if let cached = cache.head(for: key) {
+        if let cached = cache.head(for: lookupKey) {
             onEvent(.head(cached))
-            schedulePreload(previous: previous, next: next, direction: direction,
-                            target: target, level: level)
+            await schedulePreload(previous: previous, next: next, direction: direction, target: target)
             return Task {}
         }
 
@@ -71,7 +80,10 @@ public actor DecodeCoordinator {
             do {
                 let head = try await decoder.decodeFirstDisplayableFrame(url, target: target)
                 guard !Task.isCancelled, self.isCurrent(token) else { return }
-                cache.store(head: head, for: key)
+                let storeKey = DecodeCacheKey(url: url, pageIndex: pageIndex, level: head.level)
+                cache.store(head: head, for: storeKey)
+                self.currentKey = storeKey
+                cache.setCurrent(storeKey)
                 onEvent(.head(head))
 
                 // Pages of a multi-page document are not animation frames; they are
@@ -80,7 +92,7 @@ public actor DecodeCoordinator {
                 let stream = decoder.decodeRemainingFrames(url, descriptor: head.descriptor)
                 for try await frame in stream {
                     guard !Task.isCancelled, self.isCurrent(token) else { return }
-                    cache.store(frame: frame, for: key)
+                    cache.store(frame: frame, for: storeKey)
                     onEvent(.frame(frame))
                 }
             } catch {
@@ -94,8 +106,7 @@ public actor DecodeCoordinator {
             }
         }
         currentTask = task
-        schedulePreload(previous: previous, next: next, direction: direction,
-                        target: target, level: level)
+        await schedulePreload(previous: previous, next: next, direction: direction, target: target)
         return task
     }
 
@@ -114,7 +125,7 @@ public actor DecodeCoordinator {
     }
 
     private func schedulePreload(previous: URL?, next: URL?, direction: NavigationDirection,
-                                 target: DecodeTarget, level: DecodeLevel) {
+                                 target: DecodeTarget) async {
         let wanted = Set(Self.preloadOrder(previous: previous, next: next, direction: direction)
             .map(\.path))
         // Neighbours that are no longer wanted are cancelled immediately, so
@@ -124,22 +135,33 @@ public actor DecodeCoordinator {
             preloadTasks[path] = nil
         }
 
-        for url in Self.preloadOrder(previous: previous, next: next, direction: direction)
-        where cache.head(for: DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level)) == nil {
+        for url in Self.preloadOrder(previous: previous, next: next, direction: direction) {
             guard preloadTasks[url.path] == nil else { continue }
+            // Oversized (and unreadable) neighbours are skipped *before* any work
+            // starts. ImageIO ignores task cancellation — a started giant decode runs
+            // to completion and burns its whole cost (measured: 19.4 s and 62.8 J
+            // after `Task.cancel()`), so the only safe way to avoid it is not to
+            // begin it.
+            let longEdge = await probe.longEdge(of: url)
+            guard !OversizedPolicy.isOversized(sourceLongEdge: longEdge) else { continue }
+            let level = DecodeBudget.level(sourceLongEdge: longEdge, budget: target.maxPixelSize)
+            let key = DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level)
+            guard cache.head(for: key) == nil else { continue }
             preloadTasks[url.path] = Task(priority: .utility) {
-                await self.runPreload(url: url, target: target, level: level)
+                await self.runPreload(url: url, target: target)
             }
         }
     }
 
     /// Actor-isolated so the bookkeeping entry is cleared as soon as the work
     /// ends, without spawning yet another task to do it.
-    private func runPreload(url: URL, target: DecodeTarget, level: DecodeLevel) async {
+    private func runPreload(url: URL, target: DecodeTarget) async {
         defer { preloadTasks[url.path] = nil }
         guard let head = try? await decoder.decodeFirstDisplayableFrame(url, target: target) else { return }
         guard !Task.isCancelled else { return }
-        cache.store(head: head, for: DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level))
+        // Store under the level that was produced, so an exact-level lookup by the
+        // later navigation hits.
+        cache.store(head: head, for: DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: head.level))
     }
 
     public func cancelAll() {

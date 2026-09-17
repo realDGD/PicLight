@@ -182,6 +182,125 @@ final class ImageIODecoderTests: XCTestCase {
         XCTAssertEqual(descriptor.pageCount, 1)
     }
 
+    // MARK: - Large-image decode policy (spec §5.1/§5.2)
+
+    /// An oversized source that is cheap to encode: the long edge is what the policy
+    /// keys on, so 8300×100 exercises the bounded path without a large fixture.
+    private func makeOversizedSource(named name: String, orientation: CGImagePropertyOrientation? = nil) throws -> URL {
+        let scratch = try Fixtures.makeScratchDirectory("oversized")
+        let url = scratch.appendingPathComponent(name)
+        let width = 8300, height = 100
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.9, green: 0.1, blue: 0.1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width / 2, height: height))
+
+        let isJPEG = name.hasSuffix(".jpg")
+        let type = isJPEG ? "public.jpeg" : "public.png"
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, type as CFString, 1, nil))
+        var properties: [CFString: Any] = [:]
+        if let orientation { properties[kCGImagePropertyOrientation] = orientation.rawValue }
+        CGImageDestinationAddImage(destination, context.makeImage()!, properties as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return url
+    }
+
+    func testSourceAtOrBelowTheCeilingStaysNative() async throws {
+        let before = BitmapMaterializer.materializations
+        let head = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.png"), target: .fullResolution)
+
+        XCTAssertEqual(head.level, .native)
+        XCTAssertEqual(CGSize(width: head.image.width, height: head.image.height), CGSize(width: 64, height: 48))
+        XCTAssertEqual(head.descriptor.displayPixelSize, CGSize(width: 64, height: 48))
+        XCTAssertEqual(BitmapMaterializer.materializations, before + 1,
+                       "a native delivery is explicitly materialized exactly once")
+    }
+
+    func testOversizedSourceIsBoundedAndKeepsItsSourceGeometry() async throws {
+        let url = try makeOversizedSource(named: "wide.png")
+        let head = try await decoder.decodeFirstDisplayableFrame(url, target: DecodeTarget(maxPixelSize: 2048))
+
+        XCTAssertEqual(head.level, .bucket(2048), "the requested budget is honoured and snapped to a bucket")
+        XCTAssertLessThanOrEqual(max(head.image.width, head.image.height), 2048)
+        XCTAssertEqual(head.descriptor.displayPixelSize, CGSize(width: 8300, height: 100),
+                       "source geometry is the file's, not the bounded bitmap's")
+        // Aspect preserved to within one pixel of rounding: a 2048-long-edge proxy of
+        // an 8300x100 source is 24.67 px tall ideally, and ImageIO rounds that to 25.
+        // Geometry never depends on this — it comes from the descriptor — so a
+        // sub-pixel stretch is invisible; what matters is that the proxy is not
+        // wildly wrong (a 1:1 crop or a squashed bitmap would fail this).
+        let idealHeight = 100.0 * 2048.0 / 8300.0
+        XCTAssertEqual(Double(head.image.height), idealHeight, accuracy: 1.0)
+    }
+
+    func testOversizedSourceNeverDecodesNativelyWithoutABudget() async throws {
+        let url = try makeOversizedSource(named: "wide-default.png")
+        let head = try await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
+
+        XCTAssertEqual(head.level, .bucket(DecodeBudget.maximumLongEdge),
+                       "no budget means the ceiling, never a native decode")
+        XCTAssertLessThanOrEqual(max(head.image.width, head.image.height), DecodeBudget.maximumLongEdge)
+    }
+
+    func testBudgetSnapsUpToTheStableBuckets() async throws {
+        let url = try makeOversizedSource(named: "wide-snap.png")
+        for (budget, expected) in [(3000, 4096), (100, 1024), (9000, 8192)] {
+            let head = try await decoder.decodeFirstDisplayableFrame(url, target: DecodeTarget(maxPixelSize: budget))
+            XCTAssertEqual(head.level, .bucket(expected), "budget \(budget) snaps to \(expected)")
+        }
+    }
+
+    /// The bounded path applies orientation through `WithTransform`, so the code must
+    /// not run the full-size orientation copy afterwards: once would be portrait,
+    /// twice would be back to landscape.
+    func testOrientationIsAppliedExactlyOnceOnTheBoundedPath() async throws {
+        let url = try makeOversizedSource(named: "rotated.jpg", orientation: .right)
+        let head = try await decoder.decodeFirstDisplayableFrame(url, target: DecodeTarget(maxPixelSize: 1024))
+
+        XCTAssertEqual(head.level, .bucket(1024))
+        XCTAssertGreaterThan(head.image.height, head.image.width,
+                             "orientation 6 must arrive rotated once; landscape here means it was applied twice")
+        XCTAssertEqual(head.descriptor.displayPixelSize, CGSize(width: 100, height: 8300),
+                       "the descriptor keeps reporting the oriented source size")
+    }
+
+    func testSixteenBitSourcesKeepTheirDepthThroughDelivery() async throws {
+        for name in ["depth16.png", "depth16.tiff"] {
+            let head = try await decoder.decodeFirstDisplayableFrame(Fixtures.url(name), target: .fullResolution)
+            XCTAssertEqual(head.image.bitsPerComponent, 16, "\(name) must not be flattened to 8-bit")
+            XCTAssertEqual(head.image.bitsPerPixel, 64)
+            XCTAssertNotNil(head.image.colorSpace, "\(name) must keep a colour space")
+        }
+    }
+
+    /// Indexed sources arrive with `colorSpace == nil` and one byte per pixel; the
+    /// materializer expands them losslessly, and the palette values must survive.
+    func testIndexedSourceExpandsToItsPaletteColours() async throws {
+        let head = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("indexed-palette.png"),
+                                                                target: .fullResolution)
+        XCTAssertEqual(head.image.bitsPerComponent, 8)
+        XCTAssertEqual(head.image.bitsPerPixel, 32, "the palette is expanded, not left indexed")
+        XCTAssertNotNil(head.image.colorSpace)
+
+        // Every pixel must be one of the palette's four colours.
+        let width = head.image.width, height = head.image.height
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(head.image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let pixels = try XCTUnwrap(context.data).bindMemory(to: UInt8.self, capacity: width * height * 4)
+        let palette: Set<[UInt8]> = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]]
+        for index in stride(from: 0, to: width * height, by: 7) {          // sample every 7th pixel
+            let rgb = [pixels[index * 4], pixels[index * 4 + 1], pixels[index * 4 + 2]]
+            XCTAssertTrue(palette.contains(rgb), "pixel \(index) is \(rgb), which is not a palette colour")
+        }
+    }
+
     // MARK: - Errors
 
     func testCorruptFileThrowsInsteadOfCrashing() async throws {

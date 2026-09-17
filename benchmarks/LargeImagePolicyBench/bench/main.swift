@@ -1060,6 +1060,54 @@ func runPreloadBench(_ args: [String]) async {
     print("")
 }
 
+
+// MARK: - Shipped-path verification: the production decoder, not a reimplementation
+//
+// The A-series above validates the *mechanism* with harness-local code. This command
+// measures what the app actually ships: ImageIODecoder.decodeFirstDisplayableFrame
+// with a budget, then the first draw a renderer would perform.
+
+func runShipPath(_ args: [String]) async {
+    guard let path = args.first else {
+        print("usage: shippath <file> [--budget N] [--canvas 3200] [--second-canvas 4096]"); return
+    }
+    let budget = arg("--budget", args).flatMap { Int($0) }
+    let canvas = Int(arg("--canvas", args) ?? "3200") ?? 3200
+    let url = URL(fileURLWithPath: path)
+    let sampler = MemSampler(); sampler.start()
+    let s0 = Proc.snapshot()
+    let t0 = now()
+
+    let decoder = ImageIODecoder()
+    guard let head = try? await decoder.decodeFirstDisplayableFrame(url, target: DecodeTarget(maxPixelSize: budget)) else {
+        print("decode failed for \(path)"); sampler.stop(); return
+    }
+    let tDecode = now()
+
+    var m = Measurement(name: "shipped path budget=\(budget.map(String.init) ?? "nil (ceiling)") file=\((path as NSString).lastPathComponent)")
+    m.add("decode", ms(tDecode - t0))
+    m.add("delivered_level", String(describing: head.level))
+    m.add("image", imageFacts(head.image))
+    m.add("descriptor_display_size",
+          "\(Int(head.descriptor.displayPixelSize.width))x\(Int(head.descriptor.displayPixelSize.height))")
+    m.add("footprint_after_decode", fmtM(Proc.snapshot().footprint))
+
+    // The renderer's first draw: with A3 materialization it must not decode again.
+    let (width, height) = fitSize(head.image.width, head.image.height, into: canvas)
+    let t1 = now(); _ = forceDraw(head.image, width: width, height: height); let first = now() - t1
+    let t2 = now(); _ = forceDraw(head.image, width: width, height: height); let second = now() - t2
+    m.add("first_draw", "\(ms(first)) dest=\(width)x\(height)")
+    m.add("second_draw_same_size", ms(second))
+    if let other = arg("--second-canvas", args).flatMap({ Int($0) }) {
+        let (ow, oh) = fitSize(head.image.width, head.image.height, into: other)
+        let t3 = now(); _ = forceDraw(head.image, width: ow, height: oh)
+        m.add("draw_other_size", "\(ms(now() - t3)) dest=\(ow)x\(oh)")
+    }
+    addResourceBlock(&m, t0: t0, snapshot0: s0, sampler: sampler)
+    m.emit()
+    sampler.stop()
+}
+
 // MARK: - dispatch
 
 let argv = Array(CommandLine.arguments.dropFirst())
@@ -1083,6 +1131,7 @@ case "cachesem": await runCacheSem(rest)
 case "rotcost": await runRotCost(rest)
 case "texup": await runTexUp(rest)
 case "drawseq": await runDrawSeq(rest)
+case "shippath": await runShipPath(rest)
 case "subsample": await runSubsample(rest)
 case "matbench": await runMatBench(rest)
 case "cacheplan": await runCachePlan(rest)

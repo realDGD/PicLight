@@ -207,25 +207,25 @@ enum BitmapMaterializer {
 }
 ```
 
-- [ ] Step 1: `BitmapMaterializer.materialize(_:)` is a **synchronous CPU operation**; `decodeFirstDisplayableFrame`
+- [x] Step 1: `BitmapMaterializer.materialize(_:)` is a **synchronous CPU operation**; `decodeFirstDisplayableFrame`
       already runs inside `Task.detached(priority: .userInitiated)` (`ImageIODecoder.swift` ~L23), so the materializer
       must **not** create a second detached task — a nested task only complicates priority, cancellation and test
       tracing. Worst case on the ≤8192 path is ~0.5 s (measured 0.495 s for 8192×5461).
-- [ ] Step 2: Materialization must be *observable without timing*: tests assert the delivered bitmap does not re-enter
+- [x] Step 2: Materialization must be *observable without timing*: tests assert the delivered bitmap does not re-enter
       the decoder/materializer (a counting seam over `CGImageSourceCreateImageAtIndex` and `BitmapMaterializer`)
       and that the bitmap is already resident. **No absolute wall-clock thresholds in XCTest** — the gate measured
       3 ms for the same-size redraw and 58 ms for the first draw, and a loaded machine moves both. Timing lives in the
       harness with a relative bound: `matbench --mode a3` on the 8192 fixture must stay within 1.5× of the recorded A3
       baseline (first draw 0.058 s, peak footprint 0.337 GiB).
-- [ ] Step 3: `ImageIODecoder.decodeFirstDisplayableFrame(_:target:)`:
+- [x] Step 3: `ImageIODecoder.decodeFirstDisplayableFrame(_:target:)`:
       - `target.maxPixelSize == nil` or `>= budget` and `sourceLongEdge <= 8192` → `CreateImageAtIndex` + materialize;
       - oversized → `CreateThumbnailAtIndex` with `FromImageAlways`, `WithTransform`, `ShouldCacheImmediately`,
         `ThumbnailMaxPixelSize = bucket`; the transform owns orientation, so `apply(orientation:)` must **not** run
         afterwards;
       - keep ICO representation selection and TIFF `pageIndex` semantics exactly as today;
       - never call `CreateThumbnailAtIndex` with `maxPixelSize >= sourceLongEdge` for an oversized source.
-- [ ] Step 4: Preserve the source colour space through both paths (Display-P3 tests stay valid).
-- [ ] Step 5: **Bit-depth policy — never silently flatten high-depth sources.** Today a 16-bit source with orientation
+- [x] Step 4: Preserve the source colour space through both paths (Display-P3 tests stay valid).
+- [x] Step 5: **Bit-depth policy — never silently flatten high-depth sources.** Today a 16-bit source with orientation
       `.up` returns the native `CGImage` untouched (`decodeOriented` early-returns on `.up`), so it keeps full
       precision; an unconditional 8-bit materialization would quietly downgrade it. Policy:
       ```text
@@ -246,11 +246,11 @@ enum BitmapMaterializer {
       palette image's expanded pixels **exactly equal** the palette's RGB values (per-index), including a transparent
       index staying transparent; and both still render. Note in the PR that this refines spec §7 with an explicit
       no-downgrade rule.
-- [ ] Step 6: `DecodeCoordinator` passes the per-item budget; neighbour preload uses the same policy; **skip oversized
+- [x] Step 6: `DecodeCoordinator` passes the per-item budget; neighbour preload uses the same policy; **skip oversized
       neighbours before starting any task** (no cancellation-based mitigation: ImageIO ignores cancellation).
-- [ ] Step 7: Tests — bounded long edge ≤ bucket; `displayPixelSize` unchanged; orientation applied exactly once;
+- [x] Step 7: Tests — bounded long edge ≤ bucket; `displayPixelSize` unchanged; orientation applied exactly once;
       P3 tagged; 16-bit precision preserved; TIFF page + ICO still correct; materialization observability proof.
-- [ ] Step 8: Verify against the gate harness (the shipped path must reproduce the gate numbers):
+- [x] Step 8: Verify against the gate harness (the shipped path must reproduce the gate numbers):
       `benchmarks/LargeImagePolicyBench/.work/picbench matbench <fixture> --mode a3` for an 8192 PNG
       (expect ≈0.06 s first draw, ≈0.34 GiB peak footprint) and a bounded thumbnail for the oversized fixture.
 

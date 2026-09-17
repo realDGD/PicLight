@@ -7,7 +7,14 @@ import CoreGraphics
 /// Byte size is deliberately *not* an input to the decision: the C-series
 /// benchmark showed it cannot classify the supported formats in either direction
 /// (a 2.5 MB PNG measured 12000×12000; a 148 MB PNG measured 8192×5461).
-public actor DimensionProbe {
+/// What `DecodeCoordinator` needs in order to predict a cache level and to keep
+/// oversized neighbours out of the preload path. Injectable so tests can describe
+/// a folder without real files on disk.
+public protocol DimensionProbing: Sendable {
+    func longEdge(of url: URL) async -> Int?
+}
+
+public actor DimensionProbe: DimensionProbing {
     private var longEdges: [String: Int] = [:]
     private var inFlight: [String: Task<Int?, Never>] = [:]
 

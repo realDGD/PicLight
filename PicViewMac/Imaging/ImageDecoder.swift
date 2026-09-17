@@ -9,11 +9,17 @@ public struct DecodedImageHead: Sendable {
     public let image: CGImage
     public let descriptor: ImageDescriptor
     public let metadata: ImageMetadata
+    /// The level this bitmap was actually decoded at. Cache identity is what was
+    /// produced, not what was requested: an oversized source that fell back to a
+    /// bounded decode must never be stored under `.native`.
+    public let level: DecodeLevel
 
-    public init(image: CGImage, descriptor: ImageDescriptor, metadata: ImageMetadata) {
+    public init(image: CGImage, descriptor: ImageDescriptor, metadata: ImageMetadata,
+                level: DecodeLevel = .native) {
         self.image = image
         self.descriptor = descriptor
         self.metadata = metadata
+        self.level = level
     }
 }
 
@@ -29,8 +35,15 @@ public struct DecodedFrame: Sendable {
     }
 }
 
-/// Bounds a decode request. `pageIndex` selects a TIFF page; animation frames
-/// are enumerated separately.
+/// Bounds a decode request.
+///
+/// `maxPixelSize` is a real output budget: a source at or below the 8192 ceiling is
+/// still decoded natively (so ordinary photographs keep their resolution), and a
+/// larger source is bounded to the smallest bucket that covers this budget — the
+/// caller derives it from the canvas with `DecodeBudget`.
+///
+/// `pageIndex` selects a TIFF page; animation frames are enumerated separately and
+/// are deliberately not budgeted in this iteration.
 public struct DecodeTarget: Sendable {
     public var maxPixelSize: Int?
     public var pageIndex: Int

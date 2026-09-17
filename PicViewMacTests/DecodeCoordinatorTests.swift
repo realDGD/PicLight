@@ -2,6 +2,14 @@ import XCTest
 import CoreGraphics
 @testable import PicViewMac
 
+/// Size policy is not what these tests exercise, so the probe answers as if every
+/// file were an ordinary photograph. A preload now depends on this answer: unknown
+/// and oversized neighbours are skipped before any work starts.
+private struct StubProbe: DimensionProbing {
+    var value: Int? = 100
+    func longEdge(of url: URL) async -> Int? { value }
+}
+
 /// Deterministic stand-in for the real decoder so cancellation and preload
 /// ordering can be asserted exactly.
 final class FakeDecoder: ImageDecoding, @unchecked Sendable {
@@ -117,7 +125,7 @@ final class DecodeCoordinatorTests: XCTestCase {
 
     func testBothNeighboursArePreloadedWhileOnlyTheCurrentIsPublished() async throws {
         let decoder = FakeDecoder()
-        let coordinator = DecodeCoordinator(decoder: decoder)
+        let coordinator = DecodeCoordinator(decoder: decoder, probe: StubProbe())
         let collector = EventCollector()
 
         _ = await coordinator.show(item: url("b.png"), previous: url("a.png"), next: url("c.png"),
@@ -133,7 +141,7 @@ final class DecodeCoordinatorTests: XCTestCase {
 
     func testCachedImagePublishesWithoutDecodingAgain() async throws {
         let decoder = FakeDecoder()
-        let coordinator = DecodeCoordinator(decoder: decoder)
+        let coordinator = DecodeCoordinator(decoder: decoder, probe: StubProbe())
         let collector = EventCollector()
 
         _ = await coordinator.show(item: url("a.png")) { collector.record($0) }
@@ -145,6 +153,35 @@ final class DecodeCoordinatorTests: XCTestCase {
         XCTAssertEqual(decoder.startedOrder.count, startsAfterFirst,
                        "a cached image must not be decoded a second time")
         XCTAssertGreaterThanOrEqual(collector.publishedNames.count, 2)
+    }
+
+    /// Spec §13.1/R5: an oversized neighbour gets no preload at all, because ImageIO
+    /// ignores cancellation — a started giant decode runs to completion and burns its
+    /// whole cost (measured: 19.4 s and 62.8 J after `Task.cancel()`).
+    func testOversizedNeighbourIsNeverPreloaded() async throws {
+        let decoder = FakeDecoder()
+        let coordinator = DecodeCoordinator(decoder: decoder, probe: StubProbe(value: 20000))
+        let collector = EventCollector()
+
+        _ = await coordinator.show(item: url("b.png"), previous: url("a.png"), next: url("c.png"),
+                                   direction: .forward) { collector.record($0) }
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        let started = decoder.startedOrder
+        XCTAssertTrue(started.contains("b.png"), "the current image still decodes")
+        XCTAssertFalse(started.contains("a.png"), "an oversized neighbour must not be preloaded")
+        XCTAssertFalse(started.contains("c.png"), "an oversized neighbour must not be preloaded")
+    }
+
+    /// An unreadable header counts as oversized, so nothing speculative is started.
+    func testUnknownSizeNeighbourIsNotPreloadedEither() async throws {
+        let decoder = FakeDecoder()
+        let coordinator = DecodeCoordinator(decoder: decoder, probe: StubProbe(value: nil))
+        _ = await coordinator.show(item: url("b.png"), previous: url("a.png"), next: url("c.png"),
+                                   direction: .forward) { _ in }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertFalse(decoder.startedOrder.contains("a.png"))
+        XCTAssertFalse(decoder.startedOrder.contains("c.png"))
     }
 
     func testFailureIsReportedAndNavigationStaysAlive() async throws {

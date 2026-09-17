@@ -36,6 +36,19 @@ public enum DecodeBudget {
 
     public static var smallestBucket: Int { buckets[0] }
 
+    /// The level for a source whose budget is already known.
+    ///
+    /// Used by `DecodeCoordinator` to *predict* the cache key before decoding, from a
+    /// cheap header probe plus the caller's budget. It must agree with
+    /// `level(sourceLongEdge:canvasPoints:backingScale:)` — a test asserts they do —
+    /// because a lookup at a different level than the store can never hit.
+    public static func level(sourceLongEdge: Int?, budget: Int?) -> DecodeLevel {
+        guard let longEdge = sourceLongEdge, longEdge > 0 else { return .bucket(smallestBucket) }
+        guard longEdge > maximumLongEdge else { return .native }
+        let requested = budget ?? maximumLongEdge
+        return .bucket(bucket(atLeast: min(max(requested, 1), maximumLongEdge)))
+    }
+
     /// Longest edge the canvas can actually resolve, before bucket snapping.
     public static func requiredLongEdge(canvasPoints: CGSize, backingScale: CGFloat) -> Int {
         let scale = max(backingScale, 0.1)              // a bogus scale must not yield a zero budget
