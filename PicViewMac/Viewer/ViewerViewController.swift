@@ -20,8 +20,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let minimap = NavigatorView(style: .chrome)
     private let errorLabel = NSTextField(labelWithString: "")
 
-    private let coordinator = DecodeCoordinator()
-    private let thumbnails = ThumbnailPipeline()
+    private let coordinator: DecodeCoordinator
+    private let thumbnails: ThumbnailPipeline
+    private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
     private let infoWindow = ImageInfoWindowController()
 
@@ -34,6 +35,26 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var onDemandFrameTask: Task<Void, Never>?
 
     public private(set) var settings = AppSettings.shared
+
+    /// The decoder and thumbnail pipeline are injectable so tests can drive the
+    /// real viewer with a counting or deliberately slow implementation.
+    public init(decoder: ImageDecoding = ImageIODecoder(),
+                thumbnails: ThumbnailPipeline = ThumbnailPipeline()) {
+        self.coordinator = DecodeCoordinator(decoder: decoder)
+        self.thumbnails = thumbnails
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// Test-facing view of decode work in flight.
+    var coordinatorDiagnostics: CoordinatorDiagnostics {
+        get async { CoordinatorDiagnostics(activeTaskCount: await coordinator.activeTaskCount) }
+    }
+
+    struct CoordinatorDiagnostics {
+        let activeTaskCount: Int
+    }
 
     public override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 680))
@@ -206,7 +227,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Folder session
 
     public func open(url: URL) {
-        let directory = url.deletingLastPathComponent()
+        // Scanning resolves symlinks, so the directory is canonicalized once here
+        // to keep the opened file and the scanned items speaking the same path
+        // spelling (`/tmp` versus `/private/tmp`, symlinked folders).
+        let directory = url.deletingLastPathComponent().resolvingSymlinksInPath()
+        let canonicalURL = directory.appendingPathComponent(url.lastPathComponent)
         session.setDirectory(directory)
         watcher.onChange = { [weak self] in
             Task { @MainActor in await self?.rescanPreservingCurrent() }
@@ -217,8 +242,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             let scanner = FolderScanner()
             let items = (try? await scanner.scan(directory: directory)) ?? []
             let sorted = await self.sortedItems(items)
-            self.session.setItems(sorted, preferredIdentity: FileIdentity(url: url))
-            self.session.select(url: url)
+            self.session.setItems(sorted, preferredIdentity: FileIdentity(url: canonicalURL))
+            self.session.select(url: canonicalURL)
         }
     }
 
@@ -255,7 +280,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func loadCurrentImage() {
         guard let item = session.currentItem else {
             viewerState.clearForNewImage()
-            viewerState.apply(error: "")
+            viewerState.applyEmptyState()
             canvas.image = nil
             errorLabel.isHidden = true
             topBar.setFilename(nil, visible: false)
@@ -274,6 +299,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         viewerState.clearForNewImage()
         stopAnimation()
         errorLabel.isHidden = true
+        viewerState.errorMessage = nil
         topBar.setFilename(item.displayName, visible: settings.showTopFilename)
         onTitleChanged?(item.displayName)
         drawer.setCurrentIndex(index)
@@ -404,6 +430,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func requestThumbnail(at index: Int, for item: FolderItem) {
         guard inFlightThumbnails[item.url] == nil, thumbnailCache[item.url] == nil else { return }
         inFlightThumbnails[item.url] = true
+        thumbnailRequestCount += 1
         Task { [weak self] in
             guard let self else { return }
             defer { self.inFlightThumbnails[item.url] = nil }
@@ -579,18 +606,26 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
+    /// Non-modal error surface: shown inline, recorded in state, cleared by the
+    /// next successful image load.
+    private func presentTransientError(_ message: String) {
+        viewerState.errorMessage = message
+        errorLabel.stringValue = message
+        errorLabel.isHidden = false
+    }
+
     private func moveCurrentToTrash() {
         guard let item = session.currentItem else { return }
         var resulting: NSURL?
         do {
             try FileManager.default.trashItem(at: item.url, resultingItemURL: &resulting)
         } catch {
-            // Non-modal failure: keep the current item and stay usable.
-            errorLabel.stringValue = "无法移到废纸篓：\(error.localizedDescription)"
-            errorLabel.isHidden = false
+            // A failed Trash keeps the current item and leaves the viewer usable.
+            presentTransientError("无法移到废纸篓：\(error.localizedDescription)")
             return
         }
         errorLabel.isHidden = true
+        viewerState.errorMessage = nil
         _ = resulting
         if settings.deleteFollowUp == .smart {
             session.removeCurrentWithSmartSelection(identity: item.id)
@@ -638,6 +673,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         var fitScale: CGFloat
         /// True when the chrome surfaces are rendered with native Liquid Glass.
         var usesNativeSurface: Bool
+        // View references so tests can prove the hover UI lives inside the one
+        // viewer window instead of in its own window.
+        var canvasView: NSView
+        var drawerView: NSView
+        var minimapView: NSView
+        var topBarView: NSView
+        var isAnimationTimerActive: Bool
+        /// Number of animation clocks this viewer is driving; must never exceed 1.
+        var activeAnimationClocks: Int
     }
 
     var chromeSnapshot: ChromeSnapshot {
@@ -648,7 +692,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvasFrame: canvas.frame,
             zoomScale: canvas.viewport.zoomScale,
             fitScale: canvas.viewport.fitScale,
-            usesNativeSurface: topBar.usesNativeGlass || bottomBar.usesNativeGlass || drawer.usesNativeGlass
+            usesNativeSurface: topBar.usesNativeGlass || bottomBar.usesNativeGlass || drawer.usesNativeGlass,
+            canvasView: canvas,
+            drawerView: drawer,
+            minimapView: minimap,
+            topBarView: topBar,
+            isAnimationTimerActive: animationTimer != nil,
+            activeAnimationClocks: animationTimer == nil ? 0 : 1
         )
     }
 

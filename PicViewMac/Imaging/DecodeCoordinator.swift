@@ -27,6 +27,15 @@ public actor DecodeCoordinator {
         self.decoder = decoder
     }
 
+    /// Number of decode tasks currently in flight (current + preloads). Used by
+    /// tests to prove that switching images does not accumulate work.
+    public var activeTaskCount: Int {
+        var count = 0
+        if let currentTask, !currentTask.isCancelled { count += 1 }
+        count += preloadTasks.count
+        return count
+    }
+
     public func nextGeneration() -> Int {
         generation += 1
         return generation
@@ -98,21 +107,32 @@ public actor DecodeCoordinator {
 
     private func schedulePreload(previous: URL?, next: URL?, direction: NavigationDirection,
                                  target: DecodeTarget) {
+        let wanted = Set(Self.preloadOrder(previous: previous, next: next, direction: direction)
+            .map(\.path))
+        // Neighbours that are no longer wanted are cancelled immediately, so
+        // rapid switching cannot pile up obsolete preload work.
+        for (path, task) in preloadTasks where !wanted.contains(path) {
+            task.cancel()
+            preloadTasks[path] = nil
+        }
+
         for url in Self.preloadOrder(previous: previous, next: next, direction: direction)
         where cache.head(for: url) == nil {
             guard preloadTasks[url.path] == nil else { continue }
-            let decoder = self.decoder
-            let cache = self.cache
             preloadTasks[url.path] = Task(priority: .utility) {
-                defer { Task { self.clearPreload(url) } }
-                guard let head = try? await decoder.decodeFirstDisplayableFrame(url, target: target) else { return }
-                guard !Task.isCancelled else { return }
-                cache.store(head: head, for: url)
+                await self.runPreload(url: url, target: target)
             }
         }
     }
 
-    private func clearPreload(_ url: URL) { preloadTasks[url.path] = nil }
+    /// Actor-isolated so the bookkeeping entry is cleared as soon as the work
+    /// ends, without spawning yet another task to do it.
+    private func runPreload(url: URL, target: DecodeTarget) async {
+        defer { preloadTasks[url.path] = nil }
+        guard let head = try? await decoder.decodeFirstDisplayableFrame(url, target: target) else { return }
+        guard !Task.isCancelled else { return }
+        cache.store(head: head, for: url)
+    }
 
     public func cancelAll() {
         currentTask?.cancel()

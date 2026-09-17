@@ -7,6 +7,12 @@ public struct FileIdentity: Hashable, Sendable, Comparable {
     public let inode: UInt64?
     public let volumeIdentifier: UInt64?
 
+    /// The final path component, used as a folder-scoped fallback match when
+    /// path spellings differ between the opened file and a rescan.
+    public var lastPathComponent: String {
+        (path as NSString).lastPathComponent
+    }
+
     public init(url: URL, inode: UInt64? = nil, volumeIdentifier: UInt64? = nil) {
         self.path = url.standardizedFileURL.path
         self.inode = inode

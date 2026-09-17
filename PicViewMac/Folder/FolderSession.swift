@@ -38,6 +38,13 @@ public final class FolderSession {
             currentIndex = index
         } else if let identity, let index = newItems.firstIndex(where: { $0.id.refersToSameFile(as: identity) }) {
             currentIndex = index
+        } else if let identity, let index = newItems.firstIndex(where: {
+            // The same folder cannot hold two files with one name, so a filename
+            // match survives path spelling differences such as `/var` versus
+            // `/private/var` after a rescan.
+            $0.displayName == identity.lastPathComponent
+        }) {
+            currentIndex = index
         } else if newItems.isEmpty {
             currentIndex = nil
         } else if let currentIndex {
@@ -58,10 +65,21 @@ public final class FolderSession {
         return true
     }
 
+    /// Selects a file by URL. Path spellings differ in practice (`/tmp` versus
+    /// `/private/tmp`, symlinked folders), so an exact match is tried first and a
+    /// filename match within this folder second.
     @discardableResult
     public func select(url: URL) -> Bool {
-        guard let index = items.firstIndex(where: { $0.url == url }) else { return false }
-        return select(index: index)
+        if let index = items.firstIndex(where: { $0.url == url }) {
+            return select(index: index)
+        }
+        if let index = items.firstIndex(where: { $0.url.path == url.standardizedFileURL.path }) {
+            return select(index: index)
+        }
+        if let index = items.firstIndex(where: { $0.displayName == url.lastPathComponent }) {
+            return select(index: index)
+        }
+        return false
     }
 
     @discardableResult

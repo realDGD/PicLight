@@ -53,6 +53,19 @@ public final class ViewerState {
         onImageChanged?()
     }
 
+    /// A folder with no supported images is a normal state, not an error.
+    public func applyEmptyState() {
+        currentImage = nil
+        descriptor = nil
+        metadata = nil
+        errorMessage = nil
+        playback = .staticImage
+        frameIndex = 0
+        pageIndex = 0
+        onImageChanged?()
+        onPlaybackChanged?()
+    }
+
     public func apply(error: String) {
         errorMessage = error
         currentImage = nil

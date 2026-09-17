@@ -12,7 +12,9 @@ public final class AppEnvironment {
     private var windowControllers: [ViewerWindowController] = []
 
     public init() {
-        fileOpener.behaviorProvider = { AppSettings.shared.openBehavior }
+        fileOpener.behaviorProvider = { [weak self] in
+            self?.openBehaviorOverride ?? AppSettings.shared.openBehavior
+        }
         fileOpener.openHandler = { [weak self] url, behavior in
             self?.open(url: url, behavior: behavior)
         }
@@ -37,7 +39,7 @@ public final class AppEnvironment {
     }
 
     public func open(url: URL, behavior: OpenBehavior? = nil) {
-        let resolved = behavior ?? settings.openBehavior
+        let resolved = behavior ?? openBehaviorOverride ?? settings.openBehavior
         switch resolved {
         case .newWindow:
             let controller = newViewerWindow()
@@ -54,5 +56,26 @@ public final class AppEnvironment {
 
     public var hasVisibleViewer: Bool {
         windowControllers.contains { $0.window?.isVisible == true }
+    }
+
+    // MARK: - Test-facing surface
+
+    /// Lets tests pin the configured default instead of mutating real user defaults.
+    var openBehaviorOverride: OpenBehavior?
+
+    var viewerCount: Int { windowControllers.count }
+
+    var viewerWindowControllers: [ViewerWindowController] { windowControllers }
+
+    var currentFileNames: [String] {
+        windowControllers.compactMap { $0.viewerViewController.session.currentItem?.displayName }
+    }
+
+    var firstErrorMessage: String? {
+        windowControllers.first?.viewerViewController.viewerState.errorMessage
+    }
+
+    func performInFirstViewer(_ command: ViewerCommand) {
+        windowControllers.first?.viewerViewController.perform(command)
     }
 }

@@ -16,6 +16,10 @@ public final class ViewerWindow: NSWindow {
     public static let policy = Policy.default
 
     public init(contentRect: NSRect) {
+        // Enforced here as well as at launch so the invariant holds no matter how
+        // a viewer window comes into existence; the setting is app-wide and
+        // idempotent.
+        NSWindow.allowsAutomaticWindowTabbing = false
         super.init(
             contentRect: contentRect,
             styleMask: Self.policy.styleMask,

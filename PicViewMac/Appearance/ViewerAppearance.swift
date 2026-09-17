@@ -131,7 +131,8 @@ public class MaterialHostView: NSView {
     /// With Reduce Transparency on, the translucent material is replaced by a
     /// solid surface instead of being forced back on the user.
     private func updateForAccessibility() {
-        let reduce = AccessibilityAppearance.reduceTransparency
+        let reduce = !AccessibilityAppearance.surfaceIsTranslucent(
+            reduceTransparency: AccessibilityAppearance.reduceTransparency)
         effectView?.isHidden = reduce
         glassView?.isHidden = reduce
         layer?.backgroundColor = reduce
@@ -155,11 +156,26 @@ public enum AccessibilityAppearance {
         NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
     }
 
-    public static var chromeAnimationDuration: TimeInterval {
+    /// Transitions collapse to instant when Reduce Motion is on. The decisions are
+    /// pure so both branches can be verified without toggling system settings.
+    public static func chromeAnimationDuration(reduceMotion: Bool) -> TimeInterval {
         reduceMotion ? 0 : 0.15
     }
 
-    public static var chromeFadeDuration: TimeInterval {
+    public static func chromeFadeDuration(reduceMotion: Bool) -> TimeInterval {
         reduceMotion ? 0 : 0.3
+    }
+
+    /// Whether a chrome surface may use a translucent material.
+    public static func surfaceIsTranslucent(reduceTransparency: Bool) -> Bool {
+        !reduceTransparency
+    }
+
+    public static var chromeAnimationDuration: TimeInterval {
+        chromeAnimationDuration(reduceMotion: reduceMotion)
+    }
+
+    public static var chromeFadeDuration: TimeInterval {
+        chromeFadeDuration(reduceMotion: reduceMotion)
     }
 }

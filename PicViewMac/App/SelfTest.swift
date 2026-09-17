@@ -138,6 +138,7 @@ enum SelfTest {
         verifyChrome(viewer, reporter)
         verifyAnimation(viewer, reporter)
         verifyTrash(reporter)
+        verifyBundleDeclaration(reporter)
         verifyErrorState(reporter)
         verifyWindowSizing(reporter)
         verifyAppearance(viewer, reporter)
@@ -299,6 +300,30 @@ enum SelfTest {
               viewer.session.currentItem?.displayName ?? "none")
         check("trash keeps the window open", viewer.view.window?.isVisible == true)
         controller.close()
+    }
+
+    /// The shipped bundle must declare exactly the formats the code accepts, so
+    /// Finder and `Open With` cannot drift away from `SupportedImageTypes`.
+    private static func verifyBundleDeclaration(_ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        guard let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleDocumentTypes")
+            as? [[String: Any]] else {
+            reporter.note("no CFBundleDocumentTypes in this bundle (running from a bare binary)")
+            return
+        }
+        let declared = Set(types.flatMap { ($0["LSItemContentTypes"] as? [String]) ?? [] })
+        let expected = Set(SupportedImageTypes.requiredContentTypes.map(\.identifier))
+        let missing = expected.subtracting(declared).sorted()
+        check("bundle declares every supported image type to Finder",
+              missing.isEmpty, missing.isEmpty ? "declared: \(declared.count)" : "missing: \(missing)")
+        check("bundle declares no unsupported image types",
+              declared.subtracting(expected).isEmpty,
+              "extra: \(declared.subtracting(expected).sorted())")
+        let roles = types.compactMap { $0["CFBundleTypeRole"] as? String }
+        check("declared types use the Viewer role", roles.allSatisfy { $0 == "Viewer" },
+              roles.joined(separator: ", "))
     }
 
     /// A corrupt image must not strand navigation, and the viewer must say so.
