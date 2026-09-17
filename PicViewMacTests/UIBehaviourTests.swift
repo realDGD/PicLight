@@ -10,6 +10,7 @@ final class AppStartupTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        TestAppKit.ensureApplication()
         environments = []
     }
 
@@ -36,6 +37,7 @@ final class AppStartupTests: XCTestCase {
         XCTAssertEqual(environments.count, 1)
 
         let controller = environment.presentNewViewerWindow()
+        TestAppKit.moveOffScreen(controller.window)
 
         XCTAssertEqual(environment.viewerCount, 1)
         XCTAssertTrue(controller.window?.isVisible == true,
@@ -96,6 +98,7 @@ final class AppStartupTests: XCTestCase {
 
         let environment = makeEnvironment()
         let controller = environment.presentNewViewerWindow()
+        TestAppKit.moveOffScreen(controller.window)
         let viewer = controller.viewerViewController
         _ = viewer.view
         XCTAssertEqual(viewer.emptyStateReasonForTesting, .noImageOpened,
@@ -120,6 +123,7 @@ final class AppStartupTests: XCTestCase {
 
         let environment = makeEnvironment()
         let controller = environment.presentNewViewerWindow()
+        TestAppKit.moveOffScreen(controller.window)
         let viewer = controller.viewerViewController
         _ = viewer.view
         viewer.open(url: directory.appendingPathComponent("notes.pdf"))
@@ -152,6 +156,11 @@ final class AppStartupTests: XCTestCase {
 /// and never disturbs the canvas.
 @MainActor
 final class DrawerPinTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     func testPinnedDrawerStaysOpenAfterPointerLeaves() {
         var model = HoverVisibilityModel()
         model.pointerEnteredDrawer(at: 0)
@@ -199,10 +208,11 @@ final class DrawerPinTests: XCTestCase {
     /// Pinning used to be chrome-only; it now reserves real layout space, so the
     /// canvas narrows and everything anchored to it follows.
     func testPinningReservesSpaceAndUnpinningRestoresIt() throws {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
-        controller.present()
+        TestAppKit.presentOffScreen(controller)
         _ = viewer.view
         viewer.open(url: Fixtures.url("static.png"))
         let deadline = Date().addingTimeInterval(10)
@@ -233,7 +243,13 @@ final class DrawerPinTests: XCTestCase {
 /// Navigator layering and preview economy.
 @MainActor
 final class NavigatorLayeringTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     func testGlassSitsBehindPreviewAndViewportOverlay() {
+        TestAppKit.ensureApplication()
         let navigator = NavigatorView()
         navigator.frame = NSRect(x: 0, y: 0, width: 168, height: 120)
 
@@ -278,10 +294,11 @@ final class NavigatorLayeringTests: XCTestCase {
     }
 
     func testViewportMovementDoesNotRegenerateThePreview() throws {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
-        controller.present()
+        TestAppKit.presentOffScreen(controller)
         _ = viewer.view
         viewer.open(url: Fixtures.url("static.png"))
         let deadline = Date().addingTimeInterval(10)
@@ -309,6 +326,7 @@ final class NavigatorLayeringTests: XCTestCase {
     }
 
     func testViewportOverlayIsAsingleCrispOutline() throws {
+        TestAppKit.ensureApplication()
         let navigator = NavigatorView()
         navigator.frame = NSRect(x: 0, y: 0, width: 168, height: 120)
         navigator.setPreviewImage(Fixtures.thumbnail())  // main-actor helper
@@ -329,6 +347,11 @@ final class NavigatorLayeringTests: XCTestCase {
 /// Delete follow-up: the two preferences must stop being aliases.
 @MainActor
 final class DeleteFollowUpTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func items(_ names: [String]) -> [FolderItem] {
         names.map { FolderItem(url: URL(fileURLWithPath: "/tmp/\($0)")) }
     }

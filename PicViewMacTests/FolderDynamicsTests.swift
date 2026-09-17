@@ -6,6 +6,11 @@ import AppKit
 /// current file, plus file-descriptor lifecycle regressions.
 @MainActor
 final class FolderDynamicsTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func makeFolder() throws -> URL {
         try Fixtures.makeScratchDirectory("dynamics")
     }

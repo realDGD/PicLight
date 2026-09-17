@@ -12,6 +12,7 @@ final class OpenPathTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        TestAppKit.ensureApplication()
         controllers = []
     }
 
@@ -190,6 +191,11 @@ final class OpenPathTests: XCTestCase {
 /// Trash behavior and the promise that viewing never rewrites a source file.
 @MainActor
 final class TrashAndImmutabilityTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func makeFolder(names: [String]) throws -> URL {
         let directory = try Fixtures.makeScratchDirectory("trash")
         for name in names {

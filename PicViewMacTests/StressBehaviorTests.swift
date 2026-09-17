@@ -144,6 +144,11 @@ final class StressBehaviorTests: XCTestCase {
 /// Objective-C exception inside an async context and corrupted the heap.
 @MainActor
 final class ThumbnailDrawerTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     func testDrawerRebuildHandlesAThousandItemsWithoutMaterializingThemAll() {
         let drawer = ThumbnailDrawerView(style: .drawer)
         drawer.frame = NSRect(x: 0, y: 0, width: 200, height: 600)

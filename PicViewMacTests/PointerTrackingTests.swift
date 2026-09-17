@@ -6,6 +6,11 @@ import AppKit
 /// mouse events.
 @MainActor
 final class PointerZoneTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private var geometry: ViewerZoneGeometry {
         ViewerZoneGeometry(topBarHeight: 0,
                            hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
@@ -73,9 +78,15 @@ final class PointerZoneTests: XCTestCase {
 /// surface, and hover tracking must not depend on which subview is on top.
 @MainActor
 final class ViewerHitTestingTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func makeViewer() throws -> (controller: ViewerWindowController, viewer: ViewerViewController) {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
-        controller.present()
+        TestAppKit.presentOffScreen(controller)
         let viewer = controller.viewerViewController
         _ = viewer.view
         controller.window?.contentView?.layoutSubtreeIfNeeded()
@@ -214,8 +225,14 @@ final class ViewerHitTestingTests: XCTestCase {
 /// is exactly what a freshly launched bundle did.
 @MainActor
 final class ChromeHideGuaranteeTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     func testHiddenChromeLeavesTheHierarchyEvenWhenTheWindowIsOffScreen() {
         // Deliberately not presented: no on-screen animation will run.
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
@@ -236,10 +253,11 @@ final class ChromeHideGuaranteeTests: XCTestCase {
     }
 
     func testDrawerReturnsToTheHierarchyWhenRevealed() {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
-        controller.present()
+        TestAppKit.presentOffScreen(controller)
         _ = viewer.view
         viewer.applyChromeVisibilityForTesting()
         let hidden = Date().addingTimeInterval(2)

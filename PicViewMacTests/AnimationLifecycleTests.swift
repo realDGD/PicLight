@@ -6,6 +6,11 @@ import AppKit
 /// and the guarantee that only the current image runs a clock.
 @MainActor
 final class AnimationLifecycleTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     private func makeFolder() throws -> URL {
         let directory = try Fixtures.makeScratchDirectory("animation")
         try FileManager.default.copyItem(at: Fixtures.url("animated-infinite.gif"),

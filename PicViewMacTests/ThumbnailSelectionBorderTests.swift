@@ -5,6 +5,11 @@ import AppKit
 /// The current-item frame in the thumbnail drawer.
 @MainActor
 final class ThumbnailSelectionBorderTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     func testSelectionBorderIsTheTopmostLayerAroundTheThumbnail() {
         let item = FolderItem(url: URL(fileURLWithPath: "/tmp/a.png"))
         let cell = ThumbnailCellView(frame: NSRect(x: 0, y: 0, width: 200, height: 168))

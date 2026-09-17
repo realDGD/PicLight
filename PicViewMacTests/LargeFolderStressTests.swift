@@ -67,6 +67,11 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
 
 @MainActor
 final class LargeFolderStressTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     /// Deterministic 10,000-file folder used by several checks below.
     private func makeLargeFolder(count: Int = 10_000) throws -> URL {
         let directory = try Fixtures.makeScratchDirectory("large-\(count)")

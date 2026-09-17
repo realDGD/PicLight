@@ -1,5 +1,40 @@
 import XCTest
+import AppKit
 @testable import PicViewMac
+
+/// Test-order independence helper.
+///
+/// `NSApp` is an implicitly unwrapped optional, so touching it before any AppKit
+/// object exists crashes with a nil unwrap - which is exactly what happens when a
+/// single AppKit-touching test is run on its own via `--filter`, and what made an
+/// otherwise green suite fail intermittently under `xcodebuild`.
+enum TestAppKit {
+    @MainActor
+    static func ensureApplication() {
+        _ = NSApplication.shared
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
+    /// Keeps test windows off the visible display.
+    ///
+    /// The suite drives real AppKit windows, and a run creates dozens of them; left
+    /// on screen they flash in front of whoever is using the machine. Moving a
+    /// presented window out of the way keeps every behaviour that matters (view
+    /// lifecycle, layout, tracking, hit-testing) while never compositing it in
+    /// sight. Acceptance runs of the packaged app are separate and stay visible.
+    @MainActor
+    static func moveOffScreen(_ window: NSWindow?) {
+        window?.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+    }
+
+    /// Presents a window for layout work without showing it to the user.
+    @MainActor
+    static func presentOffScreen(_ controller: ViewerWindowController) {
+        controller.present()
+        moveOffScreen(controller.window)
+    }
+}
 
 /// Shared access to the generated fixture folder.
 enum Fixtures {
@@ -15,10 +50,15 @@ enum Fixtures {
     }
 
     /// Scratch directory so folder tests never touch the fixture folder itself.
-    static func makeScratchDirectory(_ name: String = UUID().uuidString) throws -> URL {
+    /// A unique scratch directory per call.
+    ///
+    /// The label is only a readable prefix: a fixed name collides with leftovers
+    /// from an earlier run (a crashed suite leaves its directory behind), which then
+    /// fails tests with "an item with the same name already exists".
+    static func makeScratchDirectory(_ label: String = "scratch") throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("picviewmac-tests", isDirectory: true)
-            .appendingPathComponent(name, isDirectory: true)
+            .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }

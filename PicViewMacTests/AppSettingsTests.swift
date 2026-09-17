@@ -10,6 +10,7 @@ final class AppSettingsTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        TestAppKit.ensureApplication()
         suiteName = "picviewmac.tests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         settings = AppSettings(defaults: defaults)
@@ -94,6 +95,7 @@ final class ShortcutStoreTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        TestAppKit.ensureApplication()
         suiteName = "picviewmac.shortcuts.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         store = ShortcutStore(defaults: defaults)

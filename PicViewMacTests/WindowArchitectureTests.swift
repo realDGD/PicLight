@@ -14,6 +14,7 @@ final class WindowArchitectureTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        TestAppKit.ensureApplication()
         controllers = []
     }
 
@@ -28,7 +29,7 @@ final class WindowArchitectureTests: XCTestCase {
     private func makeViewer() -> ViewerWindowController {
         let controller = ViewerWindowController()
         controllers.append(controller)
-        controller.showWindow(nil)
+        TestAppKit.presentOffScreen(controller)
         return controller
     }
 
@@ -276,6 +277,11 @@ final class WindowArchitectureTests: XCTestCase {
 /// runner's equivalent check, which can only sample the live window afterwards.
 @MainActor
 final class DrawerOverlayInvarianceTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
     /// Drains the main run loop so timers and main-actor jobs can run, which is
     /// how the chrome state machine is driven in a synchronous test.
     private func settle(_ seconds: TimeInterval = 0.25) {
@@ -297,6 +303,7 @@ final class DrawerOverlayInvarianceTests: XCTestCase {
                                              to: directory.appendingPathComponent(name))
         }
 
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
@@ -334,6 +341,7 @@ final class DrawerOverlayInvarianceTests: XCTestCase {
     }
 
     func testMinimapVisibilityNeverChangesCanvasGeometry() throws {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController

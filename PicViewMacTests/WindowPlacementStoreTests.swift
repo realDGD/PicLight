@@ -69,6 +69,7 @@ final class WindowPlacementStoreTests: XCTestCase {
 
     @MainActor
     func testViewerWindowControllerRemembersContentSizeNotFullScreenFrame() {
+        TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
         defer { controller.close() }
         let window = try? XCTUnwrap(controller.window)
