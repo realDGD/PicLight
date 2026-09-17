@@ -56,6 +56,23 @@ public final class FolderSession {
         onCurrentChanged?()
     }
 
+    /// Recomputes the list, holding the *slot* rather than the file. This is what
+    /// "stay in place" means once a folder changes underneath the viewer: the user
+    /// keeps their position in the list, even if a re-sort puts a different file
+    /// there.
+    public func setItems(_ newItems: [FolderItem], preferredIndex: Int?) {
+        items = newItems
+        if let preferredIndex, !newItems.isEmpty {
+            currentIndex = min(max(preferredIndex, 0), newItems.count - 1)
+        } else if newItems.isEmpty {
+            currentIndex = nil
+        } else {
+            currentIndex = min(currentIndex ?? 0, newItems.count - 1)
+        }
+        onItemsChanged?()
+        onCurrentChanged?()
+    }
+
     @discardableResult
     public func select(index: Int) -> Bool {
         guard items.indices.contains(index) else { return false }
@@ -126,6 +143,23 @@ public final class FolderSession {
     /// Smart selection used after a delete or an externally removed file:
     /// prefer the item that took the removed slot, else the previous one.
     public func removeCurrentWithSmartSelection(identity: FileIdentity? = nil) {
+        let target = identity ?? currentItem?.id
+        guard let target, let index = items.firstIndex(where: { $0.id == target }) else { return }
+        items.remove(at: index)
+        if items.isEmpty {
+            currentIndex = nil
+        } else {
+            currentIndex = min(index, items.count - 1)
+        }
+        onItemsChanged?()
+        onCurrentChanged?()
+    }
+
+    /// Deletes without moving the user: after removing the item at index N, the
+    /// new item at index N is selected, or the new last item when N is past the
+    /// end. This is the "stay in place" preference, and it is deliberately
+    /// different from the smart policy, which prefers the next image by identity.
+    public func removeCurrentKeepingPosition(identity: FileIdentity? = nil) {
         let target = identity ?? currentItem?.id
         guard let target, let index = items.firstIndex(where: { $0.id == target }) else { return }
         items.remove(at: index)

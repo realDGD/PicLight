@@ -318,7 +318,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let scanner = FolderScanner()
         guard let items = try? await scanner.scan(directory: directory) else { return }
         let sorted = await sortedItems(items)
-        session.setItems(sorted, preferredIdentity: session.currentItem?.id)
+        // The delete-follow-up preference decides what survives a folder change:
+        // "smart" follows the file the user was moved to, "stay in place" holds
+        // the slot. Both are observable when a rescan re-sorts the list.
+        switch settings.deleteFollowUp {
+        case .smart:
+            session.setItems(sorted, preferredIdentity: session.currentItem?.id)
+        case .stayInPlace:
+            session.setItems(sorted, preferredIndex: session.currentIndex)
+        }
     }
 
     public func reloadWithCurrentSort() {
@@ -755,10 +763,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         errorLabel.isHidden = true
         viewerState.errorMessage = nil
         _ = resulting
-        if settings.deleteFollowUp == .smart {
+        switch settings.deleteFollowUp {
+        case .smart:
+            // Prefer the next image, then the previous one, then empty.
             session.removeCurrentWithSmartSelection(identity: item.id)
-        } else {
-            session.removeCurrentWithSmartSelection(identity: item.id)
+        case .stayInPlace:
+            // Keep the position in the list rather than following a neighbour.
+            session.removeCurrentKeepingPosition(identity: item.id)
         }
     }
 
