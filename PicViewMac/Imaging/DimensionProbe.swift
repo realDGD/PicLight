@@ -45,10 +45,10 @@ public actor DimensionProbe: DimensionProbing {
     /// Number of remembered dimensions; for tests and diagnostics.
     public func cachedCount() -> Int { longEdges.count }
 
-    /// Header-only read — no pixel decode. Reuses the scanner's probe so folder
-    /// scanning and drawer decisions cannot disagree about a file's size.
+    /// Header-only read — no pixel decode. Uses the shared imaging-layer probe so
+    /// folder scanning and drawer decisions cannot disagree about a file's size.
     nonisolated static func readLongEdge(of url: URL) -> Int? {
-        guard let pixelSize = FolderScanner.pixelSize(of: url) else { return nil }
+        guard let pixelSize = ImageHeaderProbe.pixelSize(of: url) else { return nil }
         let longEdge = Int(max(pixelSize.width, pixelSize.height).rounded())
         return longEdge > 0 ? longEdge : nil
     }

@@ -857,14 +857,18 @@ func runCachePlan(_ args: [String]) async {
 
 enum PreloadPolicy: String { case b0, b1, b2, b3, b4 }
 
+/// B-series simulator over the production cache.
+///
+/// When the B-series gate ran, `DecodeCache` keyed on the URL alone, so the harness
+/// had to smuggle the level into the path (`…@level=4096`). The cache is level-aware
+/// now (`DecodeCacheKey`), so the simulator uses the real key type — the production
+/// type is the only place that knows how identity is spelled.
 struct LevelCache {
     let cache: DecodeCache
-    // B3 enlarges the budget; the production default is 384 MiB.
     init(totalCostLimitMiB: Int) { cache = DecodeCache(totalCostLimit: totalCostLimitMiB * 1024 * 1024) }
 
-    static func key(_ url: URL, _ level: Int) -> URL {
-        // DecodeCache keys on url.path, so the level has to live in the path.
-        URL(fileURLWithPath: url.path + "@level=\(level)")
+    static func key(_ url: URL, _ level: Int) -> DecodeCacheKey {
+        DecodeCacheKey(url: url, level: .bucket(level))
     }
     func head(_ url: URL, _ level: Int) -> DecodedImageHead? { cache.head(for: Self.key(url, level)) }
     func store(_ head: DecodedImageHead, _ url: URL, _ level: Int) { cache.store(head: head, for: Self.key(url, level)) }

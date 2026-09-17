@@ -66,13 +66,9 @@ public struct FolderScanner: Sendable {
         }.value
     }
 
+    /// Header-only probe; the implementation lives in the imaging layer so the
+    /// drawer's oversized decision and dimension sorting can never disagree.
     static func pixelSize(of url: URL) -> CGSize? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
-                as? [CFString: Any] else { return nil }
-        let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
-        let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
-        guard width > 0, height > 0 else { return nil }
-        return CGSize(width: width, height: height)
+        ImageHeaderProbe.pixelSize(of: url)
     }
 }

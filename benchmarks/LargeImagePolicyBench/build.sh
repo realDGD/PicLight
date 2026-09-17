@@ -18,12 +18,19 @@ if [ "$IN_GIT" = "0" ]; then
     echo "note: not a git checkout; using the working-tree sources instead of '$REF'" >&2
 fi
 
+# The imaging layer is vendored as a set: the decoder, the budget/policy helpers it
+# uses, and the metadata reader. Keep this list in step with the target's files.
 for f in Imaging/ImageDecoder.swift \
          Imaging/ImageIODecoder.swift \
          Imaging/ImageDescriptor.swift \
          Imaging/ImageMetadata.swift \
          Imaging/DecodeCache.swift \
          Imaging/DecodeCoordinator.swift \
+         Imaging/DecodeBudget.swift \
+         Imaging/OversizedPolicy.swift \
+         Imaging/DimensionProbe.swift \
+         Imaging/BitmapMaterializer.swift \
+         Imaging/ImageHeaderProbe.swift \
          Imaging/ThumbnailPipeline.swift \
          Metadata/MetadataReader.swift; do
     if [ "$IN_GIT" = "1" ]; then
