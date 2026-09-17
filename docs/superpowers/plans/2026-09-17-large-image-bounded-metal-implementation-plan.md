@@ -430,15 +430,39 @@ not. Report: `benchmarks/PngDecoderSpike/results/report.md`.
 
 ## Task 12: Release gate
 
-- [ ] Step 1: `swift test` green; `scripts/build-release.sh` + `scripts/verify-release.sh` green including the packaged
-      Metal check and the missing-resource fallback.
-- [ ] Step 2: Re-run Task 7 (integrated working set) and Task 8 (E4) on the release build.
-- [ ] Step 3: Confirm every §23 success criterion with a named measurement; anything unmeasured is recorded as open.
+- [x] Step 1: `swift test` green (392 tests, 0 failures); `scripts/build-release.sh` + `scripts/verify-release.sh`
+      green — 21 passed, 0 failed, 1 SKIPPED (the compiled `default.metallib`, which needs the Metal toolchain
+      this machine cannot install; the packaged app still builds a working pipeline from the shipped shader
+      source, and the missing-resource fallback is verified to select Quartz without trapping).
+- [x] Step 2: Task 7 (integrated working set) and Task 8 (E4) re-run at the release commit:
+      `results/gates-15.8-integrated-release.txt`, `gates-E4-release-giant.txt`,
+      `gates-E4-release-giant-soak.txt`, `gates-E4-release-animation-run2/3/4.txt`.
+- [x] Step 3: Every §23 criterion below is answered by a named measurement, except the two marked OPEN.
 
-```bash
-git add docs benchmarks
-git commit -m "chore: large-image release gate"
-```
+### §23 criteria at the release commit
+
+| Criterion | Measurement |
+| --- | --- |
+| Oversized sources cannot force a native-size canvas bitmap for Fit | E4 `traversals: main bounded decode = 1`; no 48000×32000 bitmap on the display path; `DrawerSafetyTests.testOversizedSourceShowsABoundedBitmapAndIsNeverReRead` |
+| Oversized decoded long edge never exceeds 8192 | `DecodeBudget.maximumLongEdge`; E4 `maxPx:2048` for a 637×212 pt canvas; `DecodeBudgetTests` boundary table |
+| ≤8192 sources keep native resolution without a lazy render-time decode | `ImageIODecoderTests` (native + materialized); A3 materialization gate (`results/gates-A.txt`); `LargeImageGeometryTests` |
+| Source geometry exact, existing zoom semantics preserved | `LargeImageGeometryTests` (12), `ViewportStateTests` (16), `testProxyAndNativeBitmapProduceIdenticalGeometry` |
+| Navigator/current sidebar avoid re-decoding the source | E4 traversal breakdown (drawer contributes 0 on the giant); `DrawerSafetyTests.testCurrentItemThumbnailComesFromTheMainBitmapNotTheFile` |
+| Oversized neighbour preload and drawer storms prevented | `DecodeCoordinatorTests.testOversizedNeighbourIsNeverPreloaded`, `testUnknownSizeNeighbourIsNotPreloadedEither`; `DrawerSafetyTests.testOversizedItemsAreLeftAsPlaceholders` |
+| Preload/cache and probe policies backed by evidence | `results/gates-B.txt` (B3/768 MiB), `gates-C.txt` (C2), `gates-report.md` |
+| Integrated working set passes §15.8; 768 MiB is a cache limit | `gates-15.8-integrated-release.txt`: 682.7 MiB cached, 3/3 retained, 227.5 MiB texture, 1.475 GiB peak footprint, 0 MiB swap growth |
+| Exactly one full-stream traversal and decode-class open energy | E4 20 s run: 1 traversal, 83.4 J against the 75.3 J single-decode measurement |
+| No main-thread stall >100 ms (p95) | E4 ping p50 0 / p95 0 / max 23 ms; animation run p95 88 ms, max 98 ms (baseline max 20.9 s) |
+| Large-image interaction uses on-demand Metal | `MetalParityTests` (9); E4 draws with `metal=yes`; `MetalCanvasSurface` is paused with `enableSetNeedsDisplay` |
+| Strong minification meets the D-series gate | `results/gates-D.txt`, `gates-D6.txt` (linear magnification) |
+| Static images do not run a continuous GPU loop | E4 `canvas_draws = 2` over 20 s (one real draw plus the harness's forced redraw) |
+| Metal failures fall back to source-geometry Quartz | `MetalFallbackTests` (5), including the packaged missing-resource run in `verify-release.sh` |
+| Packaged `.app`/DMG can load Metal resources | `verify-release.sh`: "packaged app creates a Metal pipeline: metal=ok pipeline=created mipmaps=yes"; **OPEN:** the compiled-library check is SKIPPED here (no `xcrun metal`) |
+| Responsiveness and live memory on the real 1.9 GiB PNG | E4 (ping, footprint 0.198 GiB, RSS 2.111 GiB), vmmap with no `Image IO` region >1 GiB; packaged acceptance run passes on the giant (`results/gates-release-packaged.txt`) |
+| Existing behavioural tests remain green | 392 tests, 0 failures; suite-by-suite sweep in Task 9 |
+| Reviewer-added discriminating tests resolved before planning | §20.1 and the gate results in §17.5 |
+| Spikes stay isolated unless evidence justifies adoption | Task 10 and Task 11 both negative, no production references (`grep QLThumbnail|spng|libpng` empty), no package dependency |
+| §9.5 resize policy honoured | `ResizeUpgradeTests` (12) + `ResizeWiringTests` (5) against a real window: load uses the canvas bucket, a settled larger canvas is served by a covering level, nothing decodes in the layout pass or while dragging, shrinking and ordinary sources decode nothing. **OPEN:** no scripted live-resize timing run; the stall numbers above are from decode and animation windows, not a drag. |
 
 ---
 

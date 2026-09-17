@@ -1,10 +1,10 @@
-### release gate re-run (20 s window) Fri Sep 18 01:41:46 WITA 2026 | rev 46d4bd0
-peakRSS_getrusage = 2.769 GiB
-footprint_at_finish   = 0.489 GiB
-peakFootprint_sampled = 0.780 GiB (250 ms sampling)
-total_wall        = 20.002 s
+### release gate re-run with the canvas-derived budget Fri Sep 18 01:55:18 WITA 2026 | rev 0fc6e92
+peakRSS_getrusage = 2.111 GiB
+footprint_at_finish   = 0.110 GiB
+peakFootprint_sampled = 0.198 GiB (250 ms sampling)
+total_wall        = 20.001 s
 canvas_draws      = 2
 frames_applied    = 0
-full_stream_traversals = 1 traversals: main bounded decode(maxPx:8192)=1
-open_energy_mJ    = 84798
+full_stream_traversals = 1 traversals: main bounded decode(maxPx:2048)=1
+open_energy_mJ    = 83375
 

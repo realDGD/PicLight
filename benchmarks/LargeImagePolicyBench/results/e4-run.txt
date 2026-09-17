@@ -1,744 +1,752 @@
 
 === PicLight baseline (1.9 GB PNG) ===
-T+  -0.000  T0 user open requested (FileOpenCoordinator.open) fp=   12.4MiB res=   56.0MiB peakRSS=    56.0MiB
-T+   0.165  canvas draw #1 COMPLETE took=0.000s image=nil bounds=637x212 dirty=637x212 fp=   27.5MiB res=   86.0MiB peakRSS=    86.1MiB
-T+   0.165  [MAIN] canvas draw ENTER image=nil zoom=1.0000 bounds=637x212 metal=no
-T+   0.170  [MAIN] CALLER loadCurrentImage
-T+   0.171  [bg] CALLER coordinator.show
-T+   0.173  T1 CGImageSourceCreateWithURL ... fp=   29.3MiB res=   91.2MiB peakRSS=    92.5MiB
-T+   0.173  [bg] CALLER preload
-T+   0.173  T1 CGImageSourceCreateWithURL ... fp=   29.3MiB res=   91.4MiB peakRSS=    92.5MiB
-T+   0.173  T2 descriptor done fp=   29.4MiB res=   93.0MiB peakRSS=    93.0MiB
-T+   0.173  [bg] decodeLimited: native path (long edge 32)
-T+   0.173  [bg] TRAVERSAL #1 kind=main native decode(materialized)
-T+   0.174  T2 descriptor done fp=   29.5MiB res=   93.6MiB peakRSS=    93.6MiB
-T+   0.174  [bg] decodeLimited: native path (long edge 1000)
-T+   0.179  [bg] TRAVERSAL #2 kind=main native decode(materialized)
-T+   0.180  T5 ViewerState.apply(head:) — image published to UI fp=   33.4MiB res=  100.1MiB peakRSS=   105.2MiB
-T+   0.192  canvas draw #2 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=   34.5MiB res=  101.3MiB peakRSS=   105.2MiB
-T+   0.192  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.321  canvas draw #3 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=   85.3MiB res=  115.5MiB peakRSS=   119.2MiB
-T+   0.193  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336)
-T+   0.321  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.321  [pulse] mainThreadLatency=    69ms fp=43MiB res=112MiB peakRSS=113MiB
-T+   0.332  canvas draw #4 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  141.6MiB res=  112.1MiB peakRSS=   119.2MiB
-T+   0.332  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.354  canvas draw #5 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.0MiB res=  125.0MiB peakRSS=   128.8MiB
-T+   0.354  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.389  canvas draw #6 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  159.9MiB res=  132.7MiB peakRSS=   140.6MiB
-T+   0.389  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.456  canvas draw #7 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  159.9MiB res=  136.6MiB peakRSS=   144.4MiB
-T+   0.456  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.497  canvas draw #8 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  159.9MiB res=  140.4MiB peakRSS=   148.3MiB
-T+   0.497  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.535  forcing extra redraw #1 fp=  159.9MiB res=  144.2MiB peakRSS=   152.1MiB
-T+   0.535  [pulse] mainThreadLatency=    31ms fp=164MiB res=145MiB peakRSS=148MiB
-T+   0.548  canvas draw #9 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  159.9MiB res=  144.2MiB peakRSS=   152.1MiB
-T+   0.548  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.590  canvas draw #10 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  159.9MiB res=  148.1MiB peakRSS=   152.1MiB
-T+   0.590  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.639  canvas draw #11 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.0MiB res=  151.9MiB peakRSS=   159.8MiB
-T+   0.639  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.692  canvas draw #12 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.0MiB res=  155.8MiB peakRSS=   163.7MiB
-T+   0.692  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.748  canvas draw #13 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.0MiB res=  159.6MiB peakRSS=   167.5MiB
-T+   0.748  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.812  [pulse] mainThreadLatency=    56ms fp=165MiB res=165MiB peakRSS=168MiB
-T+   0.814  canvas draw #14 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.0MiB res=  163.5MiB peakRSS=   171.4MiB
-T+   0.814  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.883  canvas draw #15 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.0MiB res=  167.3MiB peakRSS=   171.4MiB
-T+   0.883  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   0.960  canvas draw #16 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.1MiB res=  171.2MiB peakRSS=   179.1MiB
-T+   0.960  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.045  [pulse] mainThreadLatency=    37ms fp=165MiB res=176MiB peakRSS=179MiB
-T+   1.046  canvas draw #17 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.1MiB res=  175.0MiB peakRSS=   182.9MiB
-T+   1.046  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.139  canvas draw #18 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.1MiB res=  178.9MiB peakRSS=   182.9MiB
-T+   1.139  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.241  canvas draw #19 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.1MiB res=  182.7MiB peakRSS=   190.6MiB
-T+   1.241  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.354  [pulse] mainThreadLatency=    94ms fp=165MiB res=188MiB peakRSS=191MiB
-T+   1.355  canvas draw #20 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.1MiB res=  186.5MiB peakRSS=   190.6MiB
-T+   1.355  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.482  canvas draw #21 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.2MiB res=  190.4MiB peakRSS=   198.3MiB
-T+   1.482  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.512  [pulse] mainThreadLatency=     0ms fp=160MiB res=194MiB peakRSS=202MiB
-T+   1.523  canvas draw #22 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.2MiB res=  194.2MiB peakRSS=   202.1MiB
-T+   1.523  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.556  canvas draw #23 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  160.2MiB res=  198.1MiB peakRSS=   206.0MiB
-T+   1.556  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.589  canvas draw #24 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  201.9MiB peakRSS=   209.8MiB
-T+   1.589  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.656  canvas draw #25 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  205.8MiB peakRSS=   213.7MiB
-T+   1.656  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.691  canvas draw #26 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  209.6MiB peakRSS=   217.5MiB
-T+   1.691  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.727  canvas draw #27 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  213.5MiB peakRSS=   221.4MiB
-T+   1.726  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.765  [pulse] mainThreadLatency=     1ms fp=162MiB res=221MiB peakRSS=225MiB
-T+   1.766  canvas draw #28 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  217.3MiB peakRSS=   225.2MiB
-T+   1.766  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.810  canvas draw #29 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  221.2MiB peakRSS=   229.0MiB
-T+   1.810  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.859  canvas draw #30 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  225.0MiB peakRSS=   229.0MiB
-T+   1.859  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.911  canvas draw #31 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  228.8MiB peakRSS=   236.7MiB
-T+   1.911  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   1.971  canvas draw #32 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.5MiB res=  232.6MiB peakRSS=   240.5MiB
-T+   1.971  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.035  [pulse] mainThreadLatency=    19ms fp=163MiB res=234MiB peakRSS=241MiB
-T+   2.036  canvas draw #33 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  232.6MiB peakRSS=   240.5MiB
-T+   2.036  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.109  canvas draw #34 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.5MiB res=  236.5MiB peakRSS=   240.5MiB
-T+   2.109  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.190  canvas draw #35 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.5MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.190  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.279  [pulse] mainThreadLatency=    10ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   2.280  canvas draw #36 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.5MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.280  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.377  canvas draw #37 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.5MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.377  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.483  canvas draw #38 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.483  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.600  [pulse] mainThreadLatency=    79ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   2.601  canvas draw #39 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.601  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.656  canvas draw #40 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.656  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.688  canvas draw #41 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.688  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.723  canvas draw #42 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.723  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.754  canvas draw #43 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.4MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.754  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.779  [pulse] mainThreadLatency=     6ms fp=162MiB res=240MiB peakRSS=248MiB
-T+   2.789  canvas draw #44 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.789  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.856  canvas draw #45 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  152.9MiB res=  235.8MiB peakRSS=   247.8MiB
-T+   2.856  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.891  canvas draw #46 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.891  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.926  canvas draw #47 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.926  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   2.967  canvas draw #48 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   2.967  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.011  canvas draw #49 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.011  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.057  [pulse] mainThreadLatency=    33ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   3.058  canvas draw #50 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.3MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.058  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.110  canvas draw #51 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.2MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.110  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.170  canvas draw #52 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.2MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.170  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.234  canvas draw #53 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.2MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.234  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.308  [pulse] mainThreadLatency=    32ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   3.310  canvas draw #54 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.2MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.309  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.390  canvas draw #55 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.2MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.390  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.479  canvas draw #56 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.2MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.479  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.574  [pulse] mainThreadLatency=    46ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   3.575  canvas draw #57 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.1MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.575  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.680  canvas draw #58 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.1MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.680  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.796  [pulse] mainThreadLatency=    16ms fp=163MiB res=242MiB peakRSS=248MiB
-T+   3.798  canvas draw #59 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.1MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.798  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.856  canvas draw #60 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  152.7MiB res=  235.8MiB peakRSS=   247.8MiB
-T+   3.856  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.888  canvas draw #61 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.1MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.888  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.923  canvas draw #62 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.1MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.923  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.956  canvas draw #63 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.956  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   3.989  canvas draw #64 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   3.989  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.032  [pulse] mainThreadLatency=     0ms fp=158MiB res=240MiB peakRSS=248MiB
-T+   4.056  canvas draw #65 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.056  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.091  canvas draw #66 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.091  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.126  canvas draw #67 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.126  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.166  canvas draw #68 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.166  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.210  canvas draw #69 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.210  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.258  canvas draw #70 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.258  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.309  [pulse] mainThreadLatency=    25ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   4.310  canvas draw #71 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.310  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.370  canvas draw #72 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.370  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.435  canvas draw #73 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.435  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.508  canvas draw #74 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.507  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.586  [pulse] mainThreadLatency=    51ms fp=162MiB res=240MiB peakRSS=248MiB
-T+   4.588  canvas draw #75 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.588  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.676  canvas draw #76 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.773  canvas draw #77 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.773  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.877  [pulse] mainThreadLatency=    89ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   4.878  canvas draw #78 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  158.0MiB res=  239.9MiB peakRSS=   247.8MiB
-T+   4.878  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   4.995  canvas draw #79 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
+T+  -0.000  T0 user open requested (FileOpenCoordinator.open) fp=   12.4MiB res=   55.8MiB peakRSS=    55.8MiB
+T+   0.169  canvas draw #1 COMPLETE took=0.000s image=nil bounds=637x212 dirty=637x212 fp=   27.4MiB res=   85.8MiB peakRSS=    85.8MiB
+T+   0.169  [MAIN] canvas draw ENTER image=nil zoom=1.0000 bounds=637x212 metal=no
+T+   0.177  [MAIN] CALLER loadCurrentImage
+T+   0.182  [bg] CALLER coordinator.show
+T+   0.191  T1 CGImageSourceCreateWithURL ... fp=   29.6MiB res=   91.6MiB peakRSS=    92.8MiB
+T+   0.185  [bg] CALLER preload
+T+   0.191  T1 CGImageSourceCreateWithURL ... fp=   29.6MiB res=   91.6MiB peakRSS=    92.8MiB
+T+   0.191  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.191  [bg] TRAVERSAL #1 kind=drawer file thumbnail(maxPx:300)
+T+   0.191  [bg] ThumbnailPipeline.thumbnail(maxPixelSize: 300) START
+T+   0.191  [bg] TRAVERSAL #2 kind=drawer file thumbnail(maxPx:300)
+T+   0.191  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.192  T2 descriptor done fp=   30.1MiB res=   95.1MiB peakRSS=    95.1MiB
+T+   0.192  [bg] decodeLimited: native path (long edge 32)
+T+   0.192  [bg] TRAVERSAL #3 kind=main native decode(materialized)
+T+   0.192  T2 descriptor done fp=   30.5MiB res=   95.8MiB peakRSS=    95.8MiB
+T+   0.192  [bg] decodeLimited: native path (long edge 1000)
+T+   0.198  [bg] TRAVERSAL #4 kind=main native decode(materialized)
+T+   0.198  [bg] ThumbnailPipeline.thumbnail(300) END
+T+   0.198  T5 ViewerState.apply(head:) — image published to UI fp=   38.0MiB res=  105.0MiB peakRSS=   115.4MiB
+T+   0.209  [bg] ThumbnailPipeline.preview(from: 1000x1000, maxPixelSize: 336)
+T+   0.216  canvas draw #2 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=   39.0MiB res=  106.5MiB peakRSS=   115.4MiB
+T+   0.216  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.346  [pulse] mainThreadLatency=    94ms fp=46MiB res=114MiB peakRSS=115MiB
+T+   0.362  canvas draw #3 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  143.8MiB res=  114.4MiB peakRSS=   117.9MiB
+T+   0.362  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.383  canvas draw #4 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.8MiB res=  122.1MiB peakRSS=   130.0MiB
+T+   0.383  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.409  canvas draw #5 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.1MiB res=  133.9MiB peakRSS=   137.7MiB
+T+   0.409  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.476  canvas draw #6 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.1MiB res=  137.7MiB peakRSS=   145.6MiB
+T+   0.476  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.509  [pulse] mainThreadLatency=     5ms fp=165MiB res=142MiB peakRSS=146MiB
+T+   0.510  canvas draw #7 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.1MiB res=  141.6MiB peakRSS=   149.5MiB
+T+   0.510  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.545  forcing extra redraw #1 fp=  161.1MiB res=  145.4MiB peakRSS=   153.3MiB
+T+   0.561  canvas draw #8 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.1MiB res=  145.4MiB peakRSS=   153.3MiB
+T+   0.561  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.602  canvas draw #9 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.1MiB res=  149.3MiB peakRSS=   153.3MiB
+T+   0.602  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.647  canvas draw #10 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.2MiB res=  153.1MiB peakRSS=   161.0MiB
+T+   0.647  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.697  canvas draw #11 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.2MiB res=  157.0MiB peakRSS=   164.8MiB
+T+   0.697  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.755  [pulse] mainThreadLatency=     1ms fp=168MiB res=167MiB peakRSS=167MiB
+T+   0.756  canvas draw #12 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.2MiB res=  160.8MiB peakRSS=   168.7MiB
+T+   0.756  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.819  canvas draw #13 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.2MiB res=  164.6MiB peakRSS=   172.5MiB
+T+   0.819  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.891  canvas draw #14 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.2MiB res=  168.5MiB peakRSS=   172.5MiB
+T+   0.891  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   0.971  canvas draw #15 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.3MiB res=  172.3MiB peakRSS=   180.2MiB
+T+   0.971  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.059  [pulse] mainThreadLatency=    53ms fp=165MiB res=177MiB peakRSS=180MiB
+T+   1.060  canvas draw #16 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.3MiB res=  176.2MiB peakRSS=   184.1MiB
+T+   1.060  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.157  canvas draw #17 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.3MiB res=  180.0MiB peakRSS=   184.1MiB
+T+   1.157  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.263  [pulse] mainThreadLatency=     4ms fp=166MiB res=186MiB peakRSS=186MiB
+T+   1.264  canvas draw #18 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.3MiB res=  183.9MiB peakRSS=   191.8MiB
+T+   1.264  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.381  canvas draw #19 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.3MiB res=  187.7MiB peakRSS=   191.8MiB
+T+   1.381  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.510  [pulse] mainThreadLatency=     0ms fp=161MiB res=193MiB peakRSS=199MiB
+T+   1.511  canvas draw #20 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.4MiB res=  191.6MiB peakRSS=   199.5MiB
+T+   1.511  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.541  canvas draw #21 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.4MiB res=  195.4MiB peakRSS=   203.3MiB
+T+   1.541  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.574  canvas draw #22 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.4MiB res=  199.2MiB peakRSS=   207.1MiB
+T+   1.574  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.609  canvas draw #23 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.0MiB res=  199.0MiB peakRSS=   211.0MiB
+T+   1.609  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.676  canvas draw #24 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.4MiB res=  206.9MiB peakRSS=   211.0MiB
+T+   1.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.710  canvas draw #25 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.4MiB res=  210.8MiB peakRSS=   218.7MiB
+T+   1.710  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.746  canvas draw #26 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.5MiB res=  214.6MiB peakRSS=   222.5MiB
+T+   1.746  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.784  [pulse] mainThreadLatency=    22ms fp=165MiB res=219MiB peakRSS=223MiB
+T+   1.785  canvas draw #27 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.5MiB res=  218.5MiB peakRSS=   226.4MiB
+T+   1.785  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.830  canvas draw #28 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.5MiB res=  222.3MiB peakRSS=   230.2MiB
+T+   1.830  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.878  canvas draw #29 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.5MiB res=  226.1MiB peakRSS=   230.2MiB
+T+   1.878  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.930  canvas draw #30 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.6MiB res=  230.0MiB peakRSS=   237.8MiB
+T+   1.930  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   1.991  canvas draw #31 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.6MiB res=  233.5MiB peakRSS=   241.3MiB
+T+   1.991  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.055  [pulse] mainThreadLatency=    40ms fp=166MiB res=235MiB peakRSS=241MiB
+T+   2.056  canvas draw #32 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.6MiB res=  233.5MiB peakRSS=   241.3MiB
+T+   2.056  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.128  canvas draw #33 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.6MiB res=  236.9MiB peakRSS=   241.3MiB
+T+   2.128  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.210  canvas draw #34 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  161.6MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.210  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.298  [pulse] mainThreadLatency=    32ms fp=163MiB res=242MiB peakRSS=249MiB
+T+   2.299  canvas draw #35 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.299  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.396  canvas draw #36 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.7MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.396  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.502  canvas draw #37 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.7MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.502  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.619  [pulse] mainThreadLatency=   100ms fp=162MiB res=241MiB peakRSS=249MiB
+T+   2.620  canvas draw #38 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.7MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.620  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.676  canvas draw #39 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.7MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.708  canvas draw #40 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.7MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.708  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.741  canvas draw #41 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.7MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.741  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.770  [pulse] mainThreadLatency=     0ms fp=158MiB res=241MiB peakRSS=249MiB
+T+   2.776  canvas draw #42 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.6MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.776  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.809  canvas draw #43 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.6MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.809  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.876  canvas draw #44 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  152.2MiB res=  236.6MiB peakRSS=   248.6MiB
+T+   2.876  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.910  canvas draw #45 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.6MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.910  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.945  canvas draw #46 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.6MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.945  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   2.985  canvas draw #47 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.6MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   2.985  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.027  [pulse] mainThreadLatency=     5ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   3.028  canvas draw #48 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.028  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.076  canvas draw #49 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.129  canvas draw #50 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.129  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.190  canvas draw #51 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.190  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.256  canvas draw #52 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.256  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.328  [pulse] mainThreadLatency=    54ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   3.329  canvas draw #53 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.329  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.410  canvas draw #54 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.5MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.410  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.499  canvas draw #55 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.4MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.499  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.594  [pulse] mainThreadLatency=    68ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   3.596  canvas draw #56 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.4MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.596  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.700  canvas draw #57 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.4MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.700  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.816  [pulse] mainThreadLatency=    37ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   3.817  canvas draw #58 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.4MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.817  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.874  canvas draw #59 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  152.0MiB res=  236.6MiB peakRSS=   248.6MiB
+T+   3.874  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.909  canvas draw #60 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.4MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.909  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.942  canvas draw #61 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.942  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   3.975  canvas draw #62 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   3.975  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.008  canvas draw #63 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.008  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.035  [pulse] mainThreadLatency=     5ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   4.076  canvas draw #64 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.111  canvas draw #65 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.111  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.146  canvas draw #66 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.146  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.186  canvas draw #67 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.186  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.229  canvas draw #68 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.229  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.276  canvas draw #69 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.276  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.328  [pulse] mainThreadLatency=    45ms fp=162MiB res=241MiB peakRSS=249MiB
+T+   4.329  canvas draw #70 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.329  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.388  canvas draw #71 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.388  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.452  canvas draw #72 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.452  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.525  canvas draw #73 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.525  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.600  [pulse] mainThreadLatency=    65ms fp=162MiB res=241MiB peakRSS=249MiB
+T+   4.601  canvas draw #74 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.601  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.685  canvas draw #75 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.685  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.778  canvas draw #76 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.778  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.883  [pulse] mainThreadLatency=    96ms fp=161MiB res=241MiB peakRSS=249MiB
+T+   4.884  canvas draw #77 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+   4.884  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   4.995  canvas draw #78 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
 T+   4.995  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.040  [pulse] mainThreadLatency=     0ms fp=158MiB res=240MiB peakRSS=248MiB
-T+   5.056  canvas draw #80 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.056  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.089  canvas draw #81 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.089  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.123  canvas draw #82 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.123  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.154  canvas draw #83 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.154  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.189  canvas draw #84 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.189  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.254  canvas draw #85 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.254  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.289  canvas draw #86 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.289  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.323  [pulse] mainThreadLatency=    31ms fp=159MiB res=237MiB peakRSS=248MiB
-T+   5.324  canvas draw #87 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.324  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.364  canvas draw #88 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.364  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.407  canvas draw #89 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.407  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.455  canvas draw #90 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.455  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.507  canvas draw #91 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.507  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.562  [pulse] mainThreadLatency=    18ms fp=162MiB res=240MiB peakRSS=248MiB
-T+   5.563  canvas draw #92 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.563  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.628  canvas draw #93 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.628  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.700  canvas draw #94 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.700  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.776  canvas draw #95 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.776  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.860  [pulse] mainThreadLatency=    64ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   5.861  canvas draw #96 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.861  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   5.954  canvas draw #97 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   5.954  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.057  [pulse] mainThreadLatency=     9ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   6.058  canvas draw #98 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.058  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.170  canvas draw #99 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.170  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.295  canvas draw #100 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.295  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.309  [pulse] mainThreadLatency=    10ms fp=162MiB res=240MiB peakRSS=248MiB
-T+   6.323  canvas draw #101 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.323  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.356  canvas draw #102 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  152.5MiB res=  235.7MiB peakRSS=   247.8MiB
-T+   6.356  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.389  canvas draw #103 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.389  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.456  canvas draw #104 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.456  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.489  canvas draw #105 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.489  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.525  canvas draw #106 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.525  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.563  [pulse] mainThreadLatency=    11ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   6.564  canvas draw #107 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.564  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.609  canvas draw #108 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.609  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.657  canvas draw #109 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.657  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.710  canvas draw #110 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.710  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.770  canvas draw #111 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.770  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.833  [pulse] mainThreadLatency=    29ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   6.834  canvas draw #112 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.834  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.906  canvas draw #113 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.906  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   6.982  canvas draw #114 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   6.982  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.066  [pulse] mainThreadLatency=    10ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   7.067  canvas draw #115 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.067  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.159  canvas draw #116 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.159  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.264  canvas draw #117 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.264  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.375  [pulse] mainThreadLatency=    67ms fp=162MiB res=240MiB peakRSS=248MiB
-T+   7.376  canvas draw #118 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.376  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.500  canvas draw #119 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.8MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.500  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.523  canvas draw #120 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.523  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.556  canvas draw #121 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.556  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.579  [pulse] mainThreadLatency=    19ms fp=161MiB res=239MiB peakRSS=248MiB
-T+   7.589  canvas draw #122 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.589  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.655  canvas draw #123 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.655  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.689  canvas draw #124 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.689  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.724  canvas draw #125 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.724  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.763  canvas draw #126 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.763  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.808  canvas draw #127 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.808  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.854  [pulse] mainThreadLatency=    42ms fp=162MiB res=240MiB peakRSS=248MiB
-T+   7.855  canvas draw #128 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.855  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.908  canvas draw #129 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.908  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   7.967  canvas draw #130 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   7.967  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.032  canvas draw #131 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.032  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.104  [pulse] mainThreadLatency=    40ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   8.106  canvas draw #132 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.106  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.182  canvas draw #133 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.182  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.266  canvas draw #134 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.266  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.358  [pulse] mainThreadLatency=    42ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   8.359  canvas draw #135 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.359  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.464  canvas draw #136 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.464  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.576  [pulse] mainThreadLatency=     8ms fp=163MiB res=242MiB peakRSS=248MiB
-T+   8.577  canvas draw #137 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.577  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.703  canvas draw #138 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.703  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.723  canvas draw #139 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.723  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.754  canvas draw #140 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.754  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.789  canvas draw #141 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.789  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.820  [pulse] mainThreadLatency=     0ms fp=158MiB res=240MiB peakRSS=248MiB
-T+   8.856  canvas draw #142 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.856  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.890  canvas draw #143 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.890  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.926  canvas draw #144 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.926  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   8.965  canvas draw #145 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   8.965  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.009  canvas draw #146 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.009  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.057  canvas draw #147 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.057  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.108  [pulse] mainThreadLatency=    36ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   9.109  canvas draw #148 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.109  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.169  canvas draw #149 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.169  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.234  canvas draw #150 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.234  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.306  canvas draw #151 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.306  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.381  [pulse] mainThreadLatency=    57ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   9.382  canvas draw #152 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.382  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.467  canvas draw #153 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.467  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.561  canvas draw #154 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.561  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.664  [pulse] mainThreadLatency=    88ms fp=163MiB res=241MiB peakRSS=248MiB
-T+   9.666  canvas draw #155 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.666  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.779  canvas draw #156 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.779  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.902  [pulse] mainThreadLatency=    74ms fp=162MiB res=241MiB peakRSS=248MiB
-T+   9.903  canvas draw #157 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.903  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.923  canvas draw #158 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.923  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.956  canvas draw #159 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.956  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+   9.989  canvas draw #160 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+   9.989  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.056  canvas draw #161 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.056  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.089  [pulse] mainThreadLatency=     9ms fp=162MiB res=241MiB peakRSS=248MiB
-T+  10.090  canvas draw #162 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.090  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.126  canvas draw #163 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.126  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.165  canvas draw #164 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.165  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.209  canvas draw #165 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.209  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.257  canvas draw #166 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.257  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.309  canvas draw #167 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.309  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.368  [pulse] mainThreadLatency=    36ms fp=163MiB res=241MiB peakRSS=248MiB
-T+  10.369  canvas draw #168 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.9MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.369  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.433  canvas draw #169 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.433  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.509  canvas draw #170 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.509  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.593  [pulse] mainThreadLatency=     8ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  10.594  canvas draw #171 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.594  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.683  canvas draw #172 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
+T+   5.120  [pulse] mainThreadLatency=    81ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   5.121  canvas draw #79 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.121  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.141  canvas draw #80 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.141  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.176  canvas draw #81 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.176  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.209  canvas draw #82 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.209  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.276  canvas draw #83 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.276  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.309  [pulse] mainThreadLatency=    18ms fp=161MiB res=241MiB peakRSS=249MiB
+T+   5.310  canvas draw #84 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.310  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.345  canvas draw #85 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.345  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.385  canvas draw #86 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.385  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.428  canvas draw #87 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.428  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.476  canvas draw #88 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.476  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.528  canvas draw #89 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.528  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.587  [pulse] mainThreadLatency=    44ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   5.588  canvas draw #90 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.588  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.652  canvas draw #91 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.652  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.724  canvas draw #92 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.724  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.799  [pulse] mainThreadLatency=     4ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   5.800  canvas draw #93 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.800  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.884  canvas draw #94 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.8MiB res=  236.5MiB peakRSS=   248.6MiB
+T+   5.884  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   5.976  canvas draw #95 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   5.976  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.079  [pulse] mainThreadLatency=    32ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   6.080  canvas draw #96 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.080  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.193  canvas draw #97 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.193  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.316  [pulse] mainThreadLatency=    17ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   6.317  canvas draw #98 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.317  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.341  canvas draw #99 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.341  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.376  canvas draw #100 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.376  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.409  canvas draw #101 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.409  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.476  canvas draw #102 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.476  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.510  canvas draw #103 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.510  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.546  canvas draw #104 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.546  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.584  [pulse] mainThreadLatency=    33ms fp=161MiB res=241MiB peakRSS=249MiB
+T+   6.585  canvas draw #105 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.585  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.628  canvas draw #106 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.628  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.676  canvas draw #107 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.728  canvas draw #108 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.728  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.787  canvas draw #109 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.787  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.850  [pulse] mainThreadLatency=    47ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   6.851  canvas draw #110 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.851  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.924  canvas draw #111 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.924  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   6.999  canvas draw #112 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   6.999  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.081  [pulse] mainThreadLatency=    26ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   7.082  canvas draw #113 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.082  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.175  canvas draw #114 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.175  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.279  canvas draw #115 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.279  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.390  [pulse] mainThreadLatency=    83ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   7.391  canvas draw #116 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.391  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.516  canvas draw #117 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.516  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.541  canvas draw #118 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.541  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.560  [pulse] mainThreadLatency=     1ms fp=166MiB res=248MiB peakRSS=249MiB
+T+   7.574  canvas draw #119 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.574  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.608  canvas draw #120 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.608  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.676  canvas draw #121 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.8MiB res=  236.5MiB peakRSS=   248.6MiB
+T+   7.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.710  canvas draw #122 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.710  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.745  canvas draw #123 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.745  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.785  canvas draw #124 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.785  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.828  [pulse] mainThreadLatency=    17ms fp=162MiB res=241MiB peakRSS=249MiB
+T+   7.829  canvas draw #125 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.829  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.877  canvas draw #126 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.877  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.929  canvas draw #127 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.929  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   7.988  canvas draw #128 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   7.988  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.052  canvas draw #129 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.052  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.123  [pulse] mainThreadLatency=    60ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   8.124  canvas draw #130 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.124  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.200  canvas draw #131 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.200  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.285  canvas draw #132 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.285  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.376  [pulse] mainThreadLatency=    61ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   8.377  canvas draw #133 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.377  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.481  canvas draw #134 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.481  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.593  [pulse] mainThreadLatency=    26ms fp=161MiB res=242MiB peakRSS=249MiB
+T+   8.594  canvas draw #135 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.594  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.719  canvas draw #136 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.719  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.742  canvas draw #137 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.742  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.776  canvas draw #138 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.776  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.809  canvas draw #139 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.809  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.836  [pulse] mainThreadLatency=    17ms fp=162MiB res=241MiB peakRSS=249MiB
+T+   8.876  canvas draw #140 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.876  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.910  canvas draw #141 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.910  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.945  canvas draw #142 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.945  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   8.985  canvas draw #143 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   8.984  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.028  canvas draw #144 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.028  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.075  [pulse] mainThreadLatency=     4ms fp=162MiB res=242MiB peakRSS=249MiB
+T+   9.076  canvas draw #145 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.127  canvas draw #146 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.127  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.187  canvas draw #147 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.187  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.251  canvas draw #148 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.251  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.323  [pulse] mainThreadLatency=     0ms fp=161MiB res=244MiB peakRSS=249MiB
+T+   9.324  canvas draw #149 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.324  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.400  canvas draw #150 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.400  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.484  canvas draw #151 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.484  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.575  [pulse] mainThreadLatency=     0ms fp=161MiB res=244MiB peakRSS=249MiB
+T+   9.576  canvas draw #152 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.576  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.680  canvas draw #153 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.680  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.793  canvas draw #154 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.793  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.917  [pulse] mainThreadLatency=    91ms fp=161MiB res=241MiB peakRSS=249MiB
+T+   9.918  canvas draw #155 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.918  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.941  canvas draw #156 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+   9.941  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+   9.976  canvas draw #157 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.8MiB res=  236.5MiB peakRSS=   248.6MiB
+T+   9.976  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.008  canvas draw #158 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.008  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.076  canvas draw #159 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.109  [pulse] mainThreadLatency=    31ms fp=158MiB res=237MiB peakRSS=249MiB
+T+  10.110  canvas draw #160 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.110  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.145  canvas draw #161 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.145  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.185  canvas draw #162 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.185  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.228  canvas draw #163 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.228  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.276  canvas draw #164 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.2MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.276  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.327  canvas draw #165 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.327  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.386  [pulse] mainThreadLatency=    58ms fp=158MiB res=237MiB peakRSS=249MiB
+T+  10.387  canvas draw #166 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.387  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.451  canvas draw #167 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.451  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.523  canvas draw #168 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.523  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.598  [pulse] mainThreadLatency=    17ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  10.599  canvas draw #169 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.599  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.683  canvas draw #170 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
 T+  10.683  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.781  canvas draw #173 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.781  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  10.885  [pulse] mainThreadLatency=    49ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  10.886  canvas draw #174 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  10.886  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.004  canvas draw #175 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.004  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.054  canvas draw #176 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.054  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.088  [pulse] mainThreadLatency=     0ms fp=157MiB res=240MiB peakRSS=248MiB
-T+  11.090  canvas draw #177 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.090  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.123  canvas draw #178 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.123  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.156  canvas draw #179 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.156  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.189  canvas draw #180 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.189  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.254  canvas draw #181 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.254  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.288  canvas draw #182 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.288  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.324  canvas draw #183 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.324  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.362  [pulse] mainThreadLatency=    21ms fp=161MiB res=240MiB peakRSS=248MiB
-T+  11.363  canvas draw #184 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.363  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.407  canvas draw #185 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.407  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.455  canvas draw #186 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.455  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.507  canvas draw #187 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.507  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.563  canvas draw #188 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.563  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.626  [pulse] mainThreadLatency=    34ms fp=161MiB res=240MiB peakRSS=248MiB
-T+  11.627  canvas draw #189 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.627  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.700  canvas draw #190 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.700  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.776  canvas draw #191 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.776  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.859  [pulse] mainThreadLatency=    15ms fp=160MiB res=241MiB peakRSS=248MiB
-T+  11.860  canvas draw #192 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.860  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  11.953  canvas draw #193 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  11.953  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.058  canvas draw #194 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  12.058  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.169  [pulse] mainThreadLatency=    73ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  12.170  canvas draw #195 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  12.170  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.295  canvas draw #196 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.5MiB res=  239.8MiB peakRSS=   247.8MiB
-T+  12.295  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.323  canvas draw #197 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.322  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.349  [pulse] mainThreadLatency=     0ms fp=157MiB res=240MiB peakRSS=248MiB
-T+  12.356  canvas draw #198 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.356  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.389  canvas draw #199 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.2MiB res=  235.8MiB peakRSS=   247.8MiB
-T+  12.389  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.456  canvas draw #200 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.456  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.491  canvas draw #201 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.491  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.526  canvas draw #202 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.526  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.566  canvas draw #203 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.566  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.609  [pulse] mainThreadLatency=     9ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  12.610  canvas draw #204 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.610  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.658  canvas draw #205 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.658  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.709  canvas draw #206 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.709  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.769  canvas draw #207 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.769  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.834  canvas draw #208 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.834  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.905  [pulse] mainThreadLatency=    53ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  12.906  canvas draw #209 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.906  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  12.983  canvas draw #210 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  12.983  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.067  canvas draw #211 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.067  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.163  [pulse] mainThreadLatency=    59ms fp=161MiB res=240MiB peakRSS=248MiB
-T+  13.164  canvas draw #212 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.164  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.268  canvas draw #213 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.268  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.383  [pulse] mainThreadLatency=    27ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  13.384  canvas draw #214 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.384  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.510  canvas draw #215 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.510  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.556  canvas draw #216 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.556  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.589  canvas draw #217 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.589  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.617  [pulse] mainThreadLatency=     8ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  13.656  canvas draw #218 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.2MiB res=  235.8MiB peakRSS=   247.8MiB
-T+  13.656  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.690  canvas draw #219 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.690  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.726  canvas draw #220 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.726  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.765  canvas draw #221 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.765  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.809  canvas draw #222 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.809  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.857  canvas draw #223 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.857  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.908  [pulse] mainThreadLatency=    47ms fp=158MiB res=237MiB peakRSS=248MiB
-T+  13.909  canvas draw #224 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.909  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  13.969  canvas draw #225 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  13.969  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.034  canvas draw #226 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.034  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.106  canvas draw #227 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.106  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.181  [pulse] mainThreadLatency=    68ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  14.182  canvas draw #228 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.182  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.266  canvas draw #229 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.266  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.358  canvas draw #230 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.358  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.462  [pulse] mainThreadLatency=    98ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  14.463  canvas draw #231 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.463  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.575  canvas draw #232 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.575  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.698  [pulse] mainThreadLatency=    82ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  14.699  canvas draw #233 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.699  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.723  canvas draw #234 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.723  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.754  canvas draw #235 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.754  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.789  canvas draw #236 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.789  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.856  canvas draw #237 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.856  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.890  [pulse] mainThreadLatency=    21ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  14.891  canvas draw #238 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.891  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.926  canvas draw #239 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.926  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  14.966  canvas draw #240 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  14.966  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.009  canvas draw #241 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.009  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.057  canvas draw #242 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.057  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.109  canvas draw #243 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.109  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.168  [pulse] mainThreadLatency=    47ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  15.169  canvas draw #244 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.169  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.233  canvas draw #245 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.233  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.306  canvas draw #246 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.306  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.382  [pulse] mainThreadLatency=     9ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  15.383  canvas draw #247 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.383  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.468  canvas draw #248 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.468  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.564  canvas draw #249 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.564  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.667  [pulse] mainThreadLatency=    42ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  15.668  canvas draw #250 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.668  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.784  canvas draw #251 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.784  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.908  [pulse] mainThreadLatency=    31ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  15.909  canvas draw #252 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.2MiB res=  235.8MiB peakRSS=   247.8MiB
+T+  10.776  canvas draw #171 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.6MiB peakRSS=   248.6MiB
+T+  10.776  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.880  [pulse] mainThreadLatency=    48ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  10.881  canvas draw #172 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  10.881  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  10.994  canvas draw #173 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  10.994  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.117  [pulse] mainThreadLatency=    33ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  11.118  canvas draw #174 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.118  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.141  canvas draw #175 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.141  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.176  canvas draw #176 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.9MiB res=  236.6MiB peakRSS=   248.6MiB
+T+  11.176  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.208  canvas draw #177 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.208  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.276  canvas draw #178 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.276  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.310  canvas draw #179 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.310  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.345  [pulse] mainThreadLatency=     9ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  11.346  canvas draw #180 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.346  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.385  canvas draw #181 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.385  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.429  canvas draw #182 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.429  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.476  canvas draw #183 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.476  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.528  canvas draw #184 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.528  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.588  [pulse] mainThreadLatency=     0ms fp=161MiB res=244MiB peakRSS=249MiB
+T+  11.589  canvas draw #185 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.589  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.653  canvas draw #186 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.653  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.726  canvas draw #187 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.726  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.801  canvas draw #188 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.801  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.883  [pulse] mainThreadLatency=    44ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  11.885  canvas draw #189 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.885  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  11.976  canvas draw #190 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  11.976  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.081  canvas draw #191 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.081  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.193  [pulse] mainThreadLatency=   101ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  12.194  canvas draw #192 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.194  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.319  canvas draw #193 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.319  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.341  canvas draw #194 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.341  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.360  [pulse] mainThreadLatency=    16ms fp=158MiB res=238MiB peakRSS=249MiB
+T+  12.376  canvas draw #195 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.376  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.409  canvas draw #196 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.409  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.475  canvas draw #197 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.475  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.509  canvas draw #198 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.509  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.545  canvas draw #199 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.545  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.584  canvas draw #200 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.584  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.627  [pulse] mainThreadLatency=    31ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  12.628  canvas draw #201 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.628  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.675  canvas draw #202 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.675  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.727  canvas draw #203 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.727  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.787  canvas draw #204 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.786  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.850  [pulse] mainThreadLatency=     2ms fp=163MiB res=243MiB peakRSS=249MiB
+T+  12.851  canvas draw #205 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.851  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  12.923  canvas draw #206 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  12.923  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.000  canvas draw #207 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.000  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.083  canvas draw #208 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.083  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.174  [pulse] mainThreadLatency=    74ms fp=161MiB res=241MiB peakRSS=249MiB
+T+  13.175  canvas draw #209 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.9MiB res=  236.6MiB peakRSS=   248.6MiB
+T+  13.175  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.280  canvas draw #210 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.280  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.391  [pulse] mainThreadLatency=    39ms fp=161MiB res=242MiB peakRSS=249MiB
+T+  13.392  canvas draw #211 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.392  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.517  canvas draw #212 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.517  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.541  canvas draw #213 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.541  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.576  canvas draw #214 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.576  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.604  [pulse] mainThreadLatency=     0ms fp=157MiB res=241MiB peakRSS=249MiB
+T+  13.609  canvas draw #215 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.609  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.676  canvas draw #216 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.710  canvas draw #217 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.710  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.746  canvas draw #218 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.746  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.786  canvas draw #219 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.786  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.829  canvas draw #220 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.829  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.876  [pulse] mainThreadLatency=    20ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  13.877  canvas draw #221 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.877  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.929  canvas draw #222 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.929  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  13.989  canvas draw #223 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  13.989  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.053  canvas draw #224 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.053  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.124  [pulse] mainThreadLatency=    16ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  14.125  canvas draw #225 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.125  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.201  canvas draw #226 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.201  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.285  canvas draw #227 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.285  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.376  [pulse] mainThreadLatency=    16ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  14.377  canvas draw #228 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.377  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.481  canvas draw #229 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.481  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.593  canvas draw #230 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.593  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.717  [pulse] mainThreadLatency=   105ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  14.718  canvas draw #231 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.718  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.741  canvas draw #232 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.741  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.776  canvas draw #233 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.776  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.809  canvas draw #234 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.809  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.864  [pulse] mainThreadLatency=     0ms fp=157MiB res=241MiB peakRSS=249MiB
+T+  14.876  canvas draw #235 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.876  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.910  canvas draw #236 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.910  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.945  canvas draw #237 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.945  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  14.984  canvas draw #238 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  14.984  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.028  canvas draw #239 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.028  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.076  canvas draw #240 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.129  [pulse] mainThreadLatency=    13ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  15.130  canvas draw #241 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.130  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.190  canvas draw #242 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.190  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.255  canvas draw #243 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.255  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.327  canvas draw #244 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.327  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.406  [pulse] mainThreadLatency=    38ms fp=161MiB res=241MiB peakRSS=249MiB
+T+  15.407  canvas draw #245 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.407  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.496  canvas draw #246 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.496  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.593  canvas draw #247 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.593  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.696  [pulse] mainThreadLatency=    76ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  15.697  canvas draw #248 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.697  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.813  canvas draw #249 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.813  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.872  [pulse] mainThreadLatency=     0ms fp=157MiB res=241MiB peakRSS=249MiB
+T+  15.874  canvas draw #250 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.874  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.909  canvas draw #251 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
 T+  15.909  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.956  canvas draw #253 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.956  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  15.989  canvas draw #254 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  15.989  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.055  canvas draw #255 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.055  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.089  canvas draw #256 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.089  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.125  canvas draw #257 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.125  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.163  [pulse] mainThreadLatency=    34ms fp=160MiB res=240MiB peakRSS=248MiB
-T+  16.164  canvas draw #258 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.164  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.207  canvas draw #259 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.207  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.255  canvas draw #260 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.255  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.307  canvas draw #261 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.307  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.367  canvas draw #262 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.367  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.430  [pulse] mainThreadLatency=    50ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  16.431  canvas draw #263 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.431  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.504  canvas draw #264 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.504  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.579  canvas draw #265 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.579  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.662  [pulse] mainThreadLatency=    29ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  16.663  canvas draw #266 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.663  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.756  canvas draw #267 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.756  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.862  canvas draw #268 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.862  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  16.973  [pulse] mainThreadLatency=    88ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  16.974  canvas draw #269 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  16.974  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.099  canvas draw #270 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.099  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.123  canvas draw #271 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.123  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.141  [pulse] mainThreadLatency=     4ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  17.156  canvas draw #272 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.156  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.189  canvas draw #273 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.189  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.254  canvas draw #274 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.254  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.289  canvas draw #275 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.289  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.324  canvas draw #276 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.324  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.364  canvas draw #277 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.364  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.407  [pulse] mainThreadLatency=    18ms fp=161MiB res=240MiB peakRSS=248MiB
-T+  17.408  canvas draw #278 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.408  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.456  canvas draw #279 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.456  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.509  canvas draw #280 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.509  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.569  canvas draw #281 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.569  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.634  canvas draw #282 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.634  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.706  [pulse] mainThreadLatency=    65ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  17.707  canvas draw #283 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.707  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.785  canvas draw #284 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.785  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.869  canvas draw #285 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.869  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  17.964  [pulse] mainThreadLatency=    71ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  17.965  canvas draw #286 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  17.965  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.070  canvas draw #287 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.070  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.185  [pulse] mainThreadLatency=    40ms fp=161MiB res=242MiB peakRSS=248MiB
-T+  18.186  canvas draw #288 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.186  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.312  canvas draw #289 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.312  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.356  canvas draw #290 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.356  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.389  canvas draw #291 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.389  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.416  [pulse] mainThreadLatency=    19ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  18.456  canvas draw #292 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.2MiB res=  235.8MiB peakRSS=   247.8MiB
-T+  18.456  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.491  canvas draw #293 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.491  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.527  canvas draw #294 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.527  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.567  canvas draw #295 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.567  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.611  canvas draw #296 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.611  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.658  [pulse] mainThreadLatency=     9ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  18.659  canvas draw #297 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.659  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.711  canvas draw #298 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.711  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.771  canvas draw #299 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.771  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.835  canvas draw #300 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.835  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.907  [pulse] mainThreadLatency=     6ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  18.908  canvas draw #301 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.908  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  18.989  canvas draw #302 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  18.989  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.078  canvas draw #303 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.078  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.174  [pulse] mainThreadLatency=    21ms fp=161MiB res=241MiB peakRSS=248MiB
-T+  19.175  canvas draw #304 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  235.8MiB peakRSS=   247.8MiB
-T+  19.175  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.279  canvas draw #305 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
+T+  15.941  canvas draw #252 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.941  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  15.976  canvas draw #253 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  15.976  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.008  canvas draw #254 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.008  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.076  canvas draw #255 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.110  canvas draw #256 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.110  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.145  [pulse] mainThreadLatency=    21ms fp=162MiB res=241MiB peakRSS=249MiB
+T+  16.146  canvas draw #257 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.146  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.186  canvas draw #258 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.186  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.229  canvas draw #259 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.229  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.277  canvas draw #260 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.277  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.330  canvas draw #261 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.330  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.388  [pulse] mainThreadLatency=    12ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  16.390  canvas draw #262 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.390  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.454  canvas draw #263 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.454  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.527  canvas draw #264 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.527  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.607  canvas draw #265 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.607  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.694  [pulse] mainThreadLatency=    66ms fp=161MiB res=241MiB peakRSS=249MiB
+T+  16.696  canvas draw #266 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.696  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.792  canvas draw #267 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.792  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  16.895  [pulse] mainThreadLatency=    14ms fp=161MiB res=242MiB peakRSS=249MiB
+T+  16.896  canvas draw #268 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  16.896  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.011  canvas draw #269 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.011  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.076  canvas draw #270 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.076  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.109  canvas draw #271 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.109  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.132  [pulse] mainThreadLatency=     0ms fp=157MiB res=241MiB peakRSS=249MiB
+T+  17.141  canvas draw #272 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.141  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.176  canvas draw #273 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.176  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.209  canvas draw #274 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.209  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.276  canvas draw #275 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.276  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.311  canvas draw #276 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.311  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.346  canvas draw #277 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.346  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.385  [pulse] mainThreadLatency=     0ms fp=161MiB res=245MiB peakRSS=249MiB
+T+  17.386  canvas draw #278 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.386  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.430  canvas draw #279 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.430  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.477  canvas draw #280 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.477  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.529  canvas draw #281 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.529  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.588  canvas draw #282 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.588  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.650  [pulse] mainThreadLatency=    14ms fp=161MiB res=242MiB peakRSS=249MiB
+T+  17.651  canvas draw #283 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.651  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.723  canvas draw #284 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.723  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.799  canvas draw #285 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.799  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.884  canvas draw #286 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.884  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  17.974  [pulse] mainThreadLatency=    86ms fp=161MiB res=241MiB peakRSS=249MiB
+T+  17.975  canvas draw #287 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  17.975  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.080  canvas draw #288 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.080  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.190  [pulse] mainThreadLatency=    50ms fp=161MiB res=242MiB peakRSS=249MiB
+T+  18.191  canvas draw #289 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.191  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.316  canvas draw #290 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.316  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.341  canvas draw #291 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.341  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.376  canvas draw #292 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.376  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.398  [pulse] mainThreadLatency=     6ms fp=161MiB res=241MiB peakRSS=249MiB
+T+  18.409  canvas draw #293 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.409  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.476  canvas draw #294 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.9MiB res=  236.6MiB peakRSS=   248.6MiB
+T+  18.476  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.510  canvas draw #295 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.510  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.546  canvas draw #296 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.546  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.586  canvas draw #297 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.586  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.629  canvas draw #298 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.629  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.675  [pulse] mainThreadLatency=    31ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  18.676  canvas draw #299 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.729  canvas draw #300 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.729  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.788  canvas draw #301 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.788  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.852  canvas draw #302 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.852  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.922  [pulse] mainThreadLatency=    26ms fp=162MiB res=242MiB peakRSS=249MiB
+T+  18.923  canvas draw #303 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.923  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  18.999  canvas draw #304 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  18.999  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.083  canvas draw #305 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.083  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.175  [pulse] mainThreadLatency=    26ms fp=161MiB res=242MiB peakRSS=249MiB
+T+  19.176  canvas draw #306 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.176  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.279  canvas draw #307 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
 T+  19.279  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.396  canvas draw #306 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.396  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.405  [pulse] mainThreadLatency=     0ms fp=157MiB res=240MiB peakRSS=248MiB
-T+  19.456  canvas draw #307 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  151.2MiB res=  235.8MiB peakRSS=   247.8MiB
-T+  19.456  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.489  canvas draw #308 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.489  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.522  canvas draw #309 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.522  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.556  canvas draw #310 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.556  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.589  canvas draw #311 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.589  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.656  canvas draw #312 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.656  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.690  [pulse] mainThreadLatency=    32ms fp=157MiB res=236MiB peakRSS=248MiB
-T+  19.691  canvas draw #313 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.691  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.726  canvas draw #314 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.726  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.766  canvas draw #315 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.766  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.810  canvas draw #316 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.810  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.858  canvas draw #317 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.858  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.909  [pulse] mainThreadLatency=     0ms fp=157MiB res=240MiB peakRSS=248MiB
-T+  19.910  canvas draw #318 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.910  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
-T+  19.969  canvas draw #319 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  156.6MiB res=  239.9MiB peakRSS=   247.8MiB
-T+  19.969  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.392  canvas draw #308 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.391  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.514  [pulse] mainThreadLatency=   114ms fp=162MiB res=241MiB peakRSS=249MiB
+T+  19.515  canvas draw #309 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.515  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.542  canvas draw #310 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.542  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.576  canvas draw #311 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.576  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.609  canvas draw #312 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.609  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.653  [pulse] mainThreadLatency=     0ms fp=157MiB res=241MiB peakRSS=249MiB
+T+  19.676  canvas draw #313 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.676  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.710  canvas draw #314 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.710  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.745  canvas draw #315 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.745  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.785  canvas draw #316 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.785  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.829  canvas draw #317 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.829  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.876  canvas draw #318 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.876  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.926  [pulse] mainThreadLatency=    21ms fp=161MiB res=241MiB peakRSS=249MiB
+T+  19.927  canvas draw #319 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.927  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
+T+  19.987  canvas draw #320 COMPLETE took=0.000s image=yes bounds=637x212 dirty=637x212 fp=  157.3MiB res=  240.7MiB peakRSS=   248.6MiB
+T+  19.987  [MAIN] canvas draw ENTER image=yes zoom=0.2120 bounds=637x212 metal=yes
 
-peakRSS_getrusage = 0.242 GiB
-footprint_at_finish   = 0.153 GiB
-peakFootprint_sampled = 0.161 GiB (250 ms sampling)
-total_wall        = 20.033 s
-canvas_draws      = 319
-frames_applied    = 345
-full_stream_traversals = 2 traversals: main native decode(materialized)=2
-open_energy_mJ    = 89099
+peakRSS_getrusage = 0.243 GiB
+footprint_at_finish   = 0.154 GiB
+peakFootprint_sampled = 0.164 GiB (250 ms sampling)
+total_wall        = 20.050 s
+canvas_draws      = 320
+frames_applied    = 347
+full_stream_traversals = 4 traversals: drawer file thumbnail(maxPx:300)=2 main native decode(materialized)=2
+open_energy_mJ    = 89956
 

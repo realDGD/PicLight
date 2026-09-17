@@ -342,6 +342,16 @@ Call `setNeedsDisplay` for new bitmap, viewport changes, resize/layout, backing-
 - keep showing the current bitmap until the replacement is ready; never blank the canvas;
 - shrinking the window never re-decodes: the smaller requirement is already satisfied by the existing bucket.
 
+**Implemented 2026-09-18.** `ResizeUpgradePolicy.level(current:sourcePixelSize:canvasPoints:backingScale:zoomScale:quarterTurns:isInteracting:)`
+is a pure decision returning the level to decode for, or `nil` to keep the bitmap on screen; the
+viewer debounces it (0.3 s) off a new canvas geometry hook, re-scheduling while the pointer or a
+live resize is still moving. The same formula drives the *load* path, so the level a window opens
+with is the level its own canvas implies (§5.3) rather than the 8192 ceiling — the release-gate
+measurement of the investigation image fell from a 134 MB bitmap to a 10.7 MB one for a 637×212 pt
+canvas, peak footprint 0.780 → 0.198 GiB, with the decode cost unchanged because it is inflate-bound.
+Level changes remain geometry-triggered: zooming past the 1.5× headroom does not start a decode,
+which is the E1 trade-off stated above (every level change is a full, uncancellable stream decode).
+
 ## 10. Quartz fallback
 
 Quartz remains a first-class fallback, not a debug-only path.
@@ -661,28 +671,51 @@ peakFootprint_sampled  = 0.777 GiB                     (no >1 GiB Image IO regio
 
 Raw output: `benchmarks/LargeImagePolicyBench/results/gates-E4-head-checkpoint.txt`.
 
-**Final acceptance run (Tasks 1–7 landed, Metal active in the window), `run-e4.sh HEAD`:**
+**Final acceptance runs (`run-e4.sh HEAD`, Metal active in the window).** Four runs of the giant
+image are recorded. The first three predate the release gate's canvas-budget fix and all decoded at
+the 8192 ceiling; the last is the current behaviour:
 
 ```text
-full_stream_traversals = 1   (main bounded decode(maxPx:8192))
-open_energy_mJ         = 81.7 J            (baseline 136.6; the decode alone measures 75.3 J)
-main_thread_stall_max  = 10 ms             (baseline 20.9 s)
-peakRSS_getrusage      = 2.769 GiB         (baseline 6.885)
-peakFootprint_sampled  = 0.777 GiB
-vmmap during the load  = no Image IO region > 1 GiB (largest: 0.36 GiB; baseline had a 5.7 GiB one)
+                                  20 s window                     200 s soak
+traversals                1 (main bounded decode)          1 (main bounded decode)
+open energy               79.9 / 83.4 J                    84.6 / 83.9 J     (baseline 136.6; the decode alone measures 75.3 J)
+peak footprint (sampled)  0.612 / 0.198 GiB                0.777 / 0.780 GiB
+peak RSS                  2.769 / 2.111 GiB                2.775 / 2.769 GiB (baseline 6.885; ~1.9 GiB is the mmapped source)
+main-thread ping          p50 0 ms, p95 0 ms, max 23 ms    —                 (baseline max 20.9 s)
+canvas draws              2 (one draw plus one forced)     —                 (no continuous loop)
 ```
 
-Raw output: `results/gates-E4-final-giant.txt`.
+The right-hand figure of each pair is the run after the canvas-derived budget (§5.3) landed: the
+bounded decode is `maxPx:2048` rather than `maxPx:8192`, and the footprint follows the bitmap.
+Raw output: `results/gates-E4-final-giant.txt`, `results/gates-E4-head-checkpoint.txt`,
+`results/gates-E4-release-giant-soak.txt`, `results/gates-E4-release-giant.txt`.
 
-**Animation non-regression (same 1 MPixel 30-frame GIF as the E5 baseline).** Three fixes were
-needed and are recorded in the commit that made them: frames no longer pay the still-image
-materialization, `requestFrame` skips a tick instead of discarding an in-flight decode, and the
-navigator preview follows the image rather than every animation frame. Before the fixes: 495
-full-image decodes per 20 s and 136 drawn frames. After: **4 traversals and 317–328 drawn frames**
-against the baseline's 313 (15.9–16.4 fps vs 15.6), with energy 84.3–89.7 J against 78.1 J. That is
-a **~7 % residual** in energy per drawn frame (267 mJ vs 249 mJ) which is *not* explained by the
-mechanism fixed here and is recorded rather than smoothed over; frame rate and traversal count are
-at or above baseline.
+`vmmap` during the load shows no `Image IO` region above 1 GiB (largest: 0.36 GiB; the baseline had a
+5.7 GiB one).
+
+**Animation non-regression (same 1 MPixel 30-frame GIF as the E5 baseline).** The baseline
+(`results/gates-E5-animation.txt`, rev 123d943) is 316 draws in 20.07 s (15.75 fps) over 5 whole-stream
+passes, 78.1 J, i.e. **249 mJ per drawn frame**. Tasks 1–4 first made this *worse* — the animation path
+paid still-image costs, measured at 495 whole-stream passes and 136 drawn frames per 20 s — and the
+three fixes in `e7e1511` removed that: frames no longer materialize, `requestFrame` skips a tick instead
+of discarding an in-flight decode, and the navigator preview follows the image rather than every frame.
+
+Four runs are recorded after the fixes (`results/gates-E4-final-animation.txt`,
+`results/gates-E4-release-animation-run2/3/4.txt`):
+
+```text
+draws per 20 s        318, 319, 320, 328      baseline 316          frame rate restored
+whole-stream passes   2–4                     baseline 5            never per-frame work
+open energy           84.3, 89.1, 90.0, 93.2 J   baseline 78.1 J
+per drawn frame       257–293 mJ              baseline 249 mJ       +3 % to +18 %
+main-thread ping      p95 88 ms, max 98 ms    baseline p95 98 ms
+```
+
+Frame rate is at or above the baseline and the passes collapsed. The **energy residual is real and is
+recorded rather than smoothed over**: energy per drawn frame sits 3–18 % above the baseline across the
+runs, and no mechanism in this design explains the spread. It is left open deliberately; the criterion
+this iteration was asked to hold (playback does not regress) holds on cadence, and the energy question
+needs a profile that distinguishes GIF LZW work from the compositor.
 
 ## 17. Policy benchmark harness
 

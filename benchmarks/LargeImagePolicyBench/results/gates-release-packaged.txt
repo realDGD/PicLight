@@ -1,57 +1,9 @@
-### packaged app, metal probe Fri Sep 18 01:43:31 WITA 2026
+### packaged app, metal probe Fri Sep 18 01:58:27 WITA 2026
 MetalLibraryLocator: no compiled default.metallib in the resource bundle; compiling the shipped ImageShaders.metal at first use (install the Metal toolchain with `xcodebuild -downloadComponent MetalToolchain` to package a compiled library)
 metal=ok pipeline=created mipmaps=yes device=Apple M4
 probe exit=0
 
-### packaged app, acceptance runner on the investigation image Fri Sep 18 01:43:31 WITA 2026
-PASS drawer lists the whole folder: 1 rows
-PASS tool dock is fixed chrome, not hover-revealed
-PASS bottom info bar is fixed chrome, not hover-revealed
-PASS left-edge hover opens the drawer
-PASS drawer rows equal the folder contents
-PASS opening the drawer never changes canvas geometry: before frame (621.0, 627.0) zoom 0.0129375; after frame (621.0, 627.0) zoom 0.0129375
-PASS minimap is hidden at Fit
-PASS minimap appears past Fit: zoom 0.025875 vs fit 0.0129375
-PASS viewer chrome uses a system surface: material present
-PASS immersive hides overlay chrome
-PASS immersive does not touch the window or its titlebar: frame Optional((621.0, 655.0))
-PASS leaving immersive restores the fixed chrome
-PASS pinning opens the drawer
-PASS a pinned drawer reserves space instead of overlaying: canvas 621.0 -> 441.0, drawer 180.0
-PASS a pinned drawer survives the pointer leaving
-PASS unpinning restores hover auto-close
-PASS unpinning gives the full width back to the canvas: canvas 621.0 vs 621.0
-PASS titlebar carries the drawer control: accessories: 1
-PASS drawer has no pin control of its own: the drawer is content only
-PASS tool dock carries the viewer commands: 9 commands
-PASS previous/next sit in the middle of the dock: pair centre 4.5 of 9
-PASS tool dock is a viewer subview, not a window
-PASS every visible dock button has an icon: 0 of 10 buttons have no image
-PASS tool dock uses the native glass surface where available: glass=true, material=false
-PASS dock icons carry an adaptive tint: 0 untinted of 10
-PASS dock buttons are laid out with a real size: 28x34 26x33 26x31 26x31 26x29 26x29 26x31 26x34 26x32 26x30
-PASS panels sit inside the canvas area: minimap (439.0, 34.0, 168.0, 112.0) canvas (0.0, 0.0, 621.0, 627.0)
-PASS tool dock is centred on the canvas: dock 310.5 canvas 310.5
-PASS pinned drawer shrinks the canvas by exactly its width: 621.0 -> 441.0
-PASS panels follow the canvas when pinned: dock 400.5 vs canvas 400.5
-PASS fit is measured against the canvas: fit 0.0091875 vs canvas fit 0.0091875 for (48000.0, 32000.0) in (441.0, 627.0)
-PASS unpinning restores the canvas width: 621.0 vs 621.0
-PASS image info opens as an in-viewer card
-PASS image info creates no window: 3 -> 3
-PASS image info card is anchored to the canvas lower-left: card (14.0, 42.0, 320.0, 198.0) canvas (0.0, 0.0, 621.0, 627.0)
-PASS image info card closes again: alpha 0.0
-PASS navigator glass is behind the preview: glass at 0, preview at 1
-PASS navigator viewport overlay sits above the preview: preview at 1, overlay at 2
-PASS navigator viewport outline is built for the current viewport: path present: true
-PASS navigator preview is a bounded downsample: (336.0, 224.0)
-PASS navigator viewport outline has a single crisp stroke: lineWidth 1.5, shape layers 1
-PASS pan and zoom do not rebuild the navigator preview: 1 -> 1
-FAIL animated fixture present
-PASS trash scenario loads the first image: a.png
-PASS Delete uses the system Trash instead of unlinking
-PASS trash selects the next image: b.png
-PASS trash keeps the window open
-PASS bundle declares every supported image type to Finder: declared: 7
+### packaged acceptance run with the investigation image in a folder containing an animation and a second image Fri Sep 18 01:58:27 WITA 2026
 PASS bundle declares no unsupported image types: extra: []
 PASS declared types use the Viewer role: Viewer
 PASS a corrupt image reports an error instead of crashing: 无法解码 a-corrupt.png：该文件不包含可显示的图像
@@ -63,5 +15,4 @@ PASS remembered sizing does not resize the window to the image: remembered Optio
 PASS Follow System never forces NSApp.appearance: nil
 PASS dark appearance applies natively: Optional(__C.NSAppearanceName(_rawValue: NSAppearanceNameDarkAqua))
 PASS light appearance applies natively: Optional(__C.NSAppearanceName(_rawValue: NSAppearanceNameAqua))
-=== FAILURES: next image navigates, animated fixture present ===
-selftest exit=0
+=== ALL PASSED ===

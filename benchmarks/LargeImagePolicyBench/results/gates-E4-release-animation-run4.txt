@@ -1,0 +1,10 @@
+### release gate animation re-run Fri Sep 18 01:55:57 WITA 2026 | rev 0fc6e92
+peakRSS_getrusage = 0.243 GiB
+footprint_at_finish   = 0.154 GiB
+peakFootprint_sampled = 0.164 GiB (250 ms sampling)
+total_wall        = 20.050 s
+canvas_draws      = 320
+frames_applied    = 347
+full_stream_traversals = 4 traversals: drawer file thumbnail(maxPx:300)=2 main native decode(materialized)=2
+open_energy_mJ    = 89956
+

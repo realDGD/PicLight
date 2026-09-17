@@ -46,7 +46,7 @@ so no other sort mode pays for header reads.
 
 | Metric | Value |
 | --- | --- |
-| Unit test suite | 375 tests, ≈ 96 s |
+| Unit test suite | 392 tests, ≈ 104 s |
 | Full in-app acceptance runner | 46 checks, ≈ 14 s |
 | Release bundle size | ≈ 1.7 MB binary, 708 KB DMG |
 
@@ -80,7 +80,7 @@ xcrun xctrace record --template 'Time Profiler' --launch -- \
 ## Large images (bounded decode and on-demand Metal)
 
 Sources whose long edge is at most 8192 decode at native resolution; anything
-larger is decoded straight into a bounded level (1024 / 2048 / 4096 / 8192, chose
+larger is decoded straight into a bounded level (1024 / 2048 / 4096 / 8192, chosen
 by `ceil(max(canvasWidth, canvasHeight) × backingScale × 1.5)`, snapped up, never
 above native). Behaviour that follows from that design:
 
@@ -96,18 +96,27 @@ above native). Behaviour that follows from that design:
   with mandatory mipmaps and `linear` min/mag/mip filtering; the Quartz path
   remains and is semantically identical (`PICLIGHT_DISABLE_METAL=1` forces it for
   A/B measurement).
-- Level upgrades triggered by a window resize wait for the 300 ms debounce, only
-  run when the level is actually undersampled, and never start during a drag.
+- Level upgrades triggered by a window resize are debounced 300 ms, only run when
+  the bitmap is actually undersampled for the settled canvas, never start while the
+  pointer or a live resize is moving, and keep the current bitmap on screen until
+  the replacement is ready (`ResizeUpgradePolicy`). Zooming past the 1.5× headroom
+  does not start a decode: every level change is a full, uncancellable stream decode.
 - Oversized drawer items render a placeholder instead of decoding; the current
   item is served from the bitmap already on screen.
 
-| Scenario (48000×32000 PNG, 1.929 GiB) | Before | After |
+| Scenario (48000×32000 PNG, 1.929 GiB, 637×212 pt canvas) | Before | After |
 | --- | --- | --- |
 | Full-file decode passes per load | 4 | 1 |
-| Main-thread stall | 20.9 s | 10 ms |
-| Load energy | 136.6 J | 81.7 J |
-| Peak RSS | 6.885 GiB | 2.769 GiB |
+| Main-thread stall | 20.9 s | 23 ms |
+| Load energy | 136.6 J | 83.4 J |
+| Peak RSS | 6.885 GiB | 2.111 GiB |
+| Peak footprint (sampled) | 5.86 GiB bitmap | 0.198 GiB |
 | Largest `Image IO` region in vmmap | 5.7 GiB | 0.36 GiB |
+
+The bitmap for that canvas is the 2048 level (10.7 MB), because the level is the
+one the canvas's own geometry implies; a window that opens larger asks for the
+level it needs, and settling a window larger afterwards buys the coarser level
+after the debounce.
 
 **Known limitation (v0.1).** 100 % zoom on a source above 8192 is intentionally
 undersampled to the current level: detail beyond the 8192 proxy needs a

@@ -1,4 +1,4 @@
-### §15.8 integrated re-run at release commit Fri Sep 18 01:43:15 WITA 2026
+### §15.8 integrated re-run after the budget fix Fri Sep 18 01:56:08 WITA 2026
 ### integrated DecodeCache + mipmapped-Metal working set (budget 768.0 MiB)
 ### §15.8 integrated · near-threshold (solid-8192x8192.png, noise-8192x8192.png, noise-8192x5461.png)
 images = 3
@@ -8,11 +8,11 @@ cache_stored_bytes = 682.7 MiB
 cache_retained_entries = 3/3
 current_entry_retained = yes
 current_texture_bytes = 227.5 MiB (base+mips), mipmaps=true
-navigation_latency_p50 = 0.128 s
-peakFootprint = 1.474 GiB
+navigation_latency_p50 = 0.114 s
+peakFootprint = 1.475 GiB
 peakRSS = 2.613 GiB
 swap_growth = 0.0 MiB
-system_memory = phys=16.000 GiB free=479.0 MiB active=5114.6 MiB inactive=5104.6 MiB wired=2713.0 MiB compressed=2368.1 MiB swapUsed=3748.0 MiB/5120.0 MiB
+system_memory = phys=16.000 GiB free=266.8 MiB active=4915.6 MiB inactive=4899.8 MiB wired=2711.6 MiB compressed=2985.4 MiB swapUsed=3748.0 MiB/5120.0 MiB
 
 ### §15.8 integrated · medium (solid-6000x6000.png, noise-6000x4000.png, solid-5500x5500.png)
 images = 3
@@ -22,9 +22,9 @@ cache_stored_bytes = 344.4 MiB
 cache_retained_entries = 3/3
 current_entry_retained = yes
 current_texture_bytes = 153.9 MiB (base+mips), mipmaps=true
-navigation_latency_p50 = 0.070 s
+navigation_latency_p50 = 0.050 s
 peakFootprint = 1.283 GiB
-peakRSS = 2.613 GiB
+peakRSS = 2.823 GiB
 swap_growth = 0.0 MiB
-system_memory = phys=16.000 GiB free=473.2 MiB active=5262.0 MiB inactive=5254.6 MiB wired=2420.3 MiB compressed=2368.1 MiB swapUsed=3748.0 MiB/5120.0 MiB
+system_memory = phys=16.000 GiB free=238.1 MiB active=5068.5 MiB inactive=5066.4 MiB wired=2419.0 MiB compressed=2985.4 MiB swapUsed=3748.0 MiB/5120.0 MiB
 
