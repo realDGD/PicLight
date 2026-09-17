@@ -9,17 +9,18 @@ public final class ThumbnailDrawerView: MaterialHostView {
     public static let hotZoneWidth: CGFloat = 12
 
     public var onSelect: ((Int) -> Void)?
-    public var onPointerEntered: (() -> Void)?
-    public var onPointerExited: (() -> Void)?
+    /// Toggles the pinned state; the drawer never decides this itself.
+    public var onTogglePin: (() -> Void)?
     /// Asks the owner to produce a thumbnail for a row that just became visible.
     public var onThumbnailNeeded: ((Int, FolderItem) -> Void)?
     public var thumbnailProvider: ((FolderItem) -> CGImage?)?
 
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
+    private let pinButton = NSButton()
+    private let headerStrip = NSView()
     private var items: [FolderItem] = []
     private var currentIndex: Int?
-    private var trackingArea: NSTrackingArea?
     private var isApplyingSelectionProgrammatically = false
 
     public var filenameMode: ThumbnailFilenameMode = .hover {
@@ -54,29 +55,39 @@ public final class ThumbnailDrawerView: MaterialHostView {
         tableView.delegate = self
 
         scrollView.documentView = tableView
+
+        headerStrip.translatesAutoresizingMaskIntoConstraints = false
+        pinButton.image = NSImage(systemSymbolName: "pin", accessibilityDescription: "固定左栏")
+        pinButton.imagePosition = .imageOnly
+        pinButton.isBordered = false
+        pinButton.bezelStyle = .texturedRounded
+        pinButton.toolTip = "固定左栏"
+        pinButton.target = self
+        pinButton.action = #selector(togglePin)
+        pinButton.translatesAutoresizingMaskIntoConstraints = false
+        headerStrip.addSubview(pinButton)
+
         addSubview(scrollView)
+        addSubview(headerStrip)
         NSLayoutConstraint.activate([
+            headerStrip.leadingAnchor.constraint(equalTo: leadingAnchor),
+            headerStrip.trailingAnchor.constraint(equalTo: trailingAnchor),
+            headerStrip.topAnchor.constraint(equalTo: topAnchor),
+            headerStrip.heightAnchor.constraint(equalToConstant: 30),
+
+            pinButton.trailingAnchor.constraint(equalTo: headerStrip.trailingAnchor, constant: -8),
+            pinButton.centerYAnchor.constraint(equalTo: headerStrip.centerYAnchor),
+            pinButton.widthAnchor.constraint(equalToConstant: 22),
+            pinButton.heightAnchor.constraint(equalToConstant: 20),
+
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.topAnchor.constraint(equalTo: headerStrip.bottomAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-    public override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(rect: bounds,
-                                  options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                                  owner: self, userInfo: nil)
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    public override func mouseEntered(with event: NSEvent) { onPointerEntered?() }
-    public override func mouseExited(with event: NSEvent) { onPointerExited?() }
 
     // MARK: - Content
 
@@ -106,6 +117,18 @@ public final class ThumbnailDrawerView: MaterialHostView {
     }
 
     public var visibleRowCount: Int { items.count }
+
+    /// Reflects the pinned state; the drawer only reports that it was tapped.
+    public func setPinned(_ pinned: Bool) {
+        pinButton.image = NSImage(systemSymbolName: pinned ? "pin.fill" : "pin",
+                                 accessibilityDescription: pinned ? "取消固定左栏" : "固定左栏")
+        pinButton.toolTip = pinned ? "取消固定左栏" : "固定左栏"
+        pinButton.contentTintColor = pinned ? .controlAccentColor : nil
+    }
+
+    @objc private func togglePin() {
+        onTogglePin?()
+    }
 
     private func applySelection() {
         guard let currentIndex, items.indices.contains(currentIndex) else {

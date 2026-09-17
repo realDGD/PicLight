@@ -28,6 +28,9 @@ public struct HoverVisibilityModel: Sendable {
     public var isZoomedIn = false
     /// A modal-ish surface such as the image info panel keeps chrome awake.
     public var isInteracting = false
+    /// A pinned drawer stays open until the user unpins it; leaving the region
+    /// no longer closes it.
+    public private(set) var drawerPinned = false
 
     private var topEnteredAt: TimeInterval?
     private var topExitedAt: TimeInterval?
@@ -55,6 +58,22 @@ public struct HoverVisibilityModel: Sendable {
         topExitedAt = time
     }
 
+    /// Pins or unpins the drawer. The caller re-evaluates visibility afterwards.
+    public mutating func setDrawerPinned(_ pinned: Bool, at time: TimeInterval) {
+        drawerPinned = pinned
+        if pinned {
+            drawerVisible = true
+            drawerRequestedAt = time
+            drawerExitedAt = nil
+        } else {
+            // Fall back to the hover rules: if the pointer is elsewhere, the
+            // drawer closes after the usual delay.
+            drawerRequestedAt = nil
+            drawerExitedAt = time
+        }
+        lastPointerActivity = time
+    }
+
     public mutating func pointerEnteredLeftEdge(at time: TimeInterval) {
         drawerRequestedAt = time
         drawerExitedAt = nil
@@ -78,7 +97,11 @@ public struct HoverVisibilityModel: Sendable {
 
     public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
         immersive = value
-        guard value else { return }
+        if !value {
+            // Leaving immersive mode restores a pinned drawer.
+            if drawerPinned { drawerVisible = true }
+            return
+        }
         topVisible = false
         bottomVisible = false
         drawerVisible = false
@@ -123,9 +146,14 @@ public struct HoverVisibilityModel: Sendable {
             if time - requestedAt >= timing.drawerOpenDelay { drawerVisible = true }
             lastPointerActivity = time
         }
-        if let exitedAt = drawerExitedAt, drawerRequestedAt == nil,
+        if drawerPinned, !immersive { drawerVisible = true }
+        if let exitedAt = drawerExitedAt, drawerRequestedAt == nil, !drawerPinned,
            time - exitedAt >= timing.drawerCloseDelay {
             drawerVisible = false
+            drawerExitedAt = nil
+        }
+        if drawerPinned, drawerRequestedAt == nil {
+            // A pinned drawer keeps its close timer from firing.
             drawerExitedAt = nil
         }
 

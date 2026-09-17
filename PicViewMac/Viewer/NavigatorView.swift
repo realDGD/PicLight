@@ -2,25 +2,120 @@ import AppKit
 
 /// Bottom-right navigator. Geometry comes from the shared `ViewportState`, so it
 /// only appears when `zoom > Fit`.
-public final class NavigatorView: MaterialHostView {
+///
+/// Layering is explicit and matters: the glass is a background, the preview image
+/// sits above it, and the viewport outline sits above the preview. A material
+/// applied as a plain subview would composite *over* this view's own drawing,
+/// which blurred both the preview and the viewport frame and made the frame
+/// refract into several ghost outlines.
+public final class NavigatorView: NSView {
     public static let defaultSize = NSSize(width: 168, height: 120)
+
+    /// Preview resolution: the logical size at 2x, so the preview is never a
+    /// re-sample of a full-resolution source and never blurry on Retina.
+    public nonisolated static var previewPixelSize: Int {
+        Int(max(defaultSize.width, defaultSize.height) * 2)
+    }
 
     public var onCenterRequested: ((CGPoint) -> Void)?
 
-    public var image: CGImage? { didSet { needsDisplay = true } }
-    public var visibleNormalizedRect: CGRect = .zero { didSet { needsDisplay = true } }
+    private let background = MaterialHostView(style: .chrome)
+    private let previewLayerView = NSView()
+    private let previewImageView = NSImageView()
+    private let viewportLayer = CAShapeLayer()
 
+    private var previewImage: CGImage?
     private var isDraggingViewport = false
 
-    public override init(style: Style = .chrome) {
-        super.init(style: style)
+    /// Counts how often a new preview bitmap is installed, so tests can prove that
+    /// panning and zooming only move the viewport rectangle.
+    public private(set) var previewGenerationCount = 0
+
+    public var visibleNormalizedRect: CGRect = .zero {
+        didSet { updateViewportOverlay() }
+    }
+
+    public override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+
+        // 1. Glass background, at the back.
+        background.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(background)
+
+        // 2. Preview image, above the glass.
+        previewLayerView.translatesAutoresizingMaskIntoConstraints = false
+        previewLayerView.wantsLayer = true
+        previewLayerView.layer?.cornerRadius = 6
+        previewLayerView.layer?.masksToBounds = true
+        previewImageView.translatesAutoresizingMaskIntoConstraints = false
+        previewImageView.imageScaling = .scaleProportionallyUpOrDown
+        previewLayerView.addSubview(previewImageView)
+        addSubview(previewLayerView)
+
+        // 3. Viewport outline, above the preview, drawn by a shape layer so the
+        //    stroke is crisp instead of a resampled bitmap.
+        viewportLayer.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.12).cgColor
+        viewportLayer.strokeColor = NSColor.controlAccentColor.cgColor
+        viewportLayer.lineWidth = 1.5
+        viewportLayer.isGeometryFlipped = false
+        self.layer?.addSublayer(viewportLayer)
+
+        NSLayoutConstraint.activate([
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+            background.topAnchor.constraint(equalTo: topAnchor),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            previewLayerView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            previewLayerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            previewLayerView.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            previewLayerView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+
+            previewImageView.leadingAnchor.constraint(equalTo: previewLayerView.leadingAnchor),
+            previewImageView.trailingAnchor.constraint(equalTo: previewLayerView.trailingAnchor),
+            previewImageView.topAnchor.constraint(equalTo: previewLayerView.topAnchor),
+            previewImageView.bottomAnchor.constraint(equalTo: previewLayerView.bottomAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    // MARK: - Content
+
+    /// Installs a new preview bitmap. Called once per displayed image, not on
+    /// every pan or zoom.
+    public func setPreviewImage(_ image: CGImage?) {
+        previewImage = image
+        previewGenerationCount += 1
+        previewImageView.image = image.map {
+            NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height))
+        }
+        updateViewportOverlay()
+    }
+
+    public var hasPreviewImage: Bool { previewImage != nil }
+
+    /// Pixel size of the current preview, for tests that assert the preview is a
+    /// bounded downsample rather than the original image.
+    public var previewPixelSize: CGSize {
+        guard let previewImage else { return .zero }
+        return CGSize(width: previewImage.width, height: previewImage.height)
+    }
+
+    public var viewportStrokeWidth: CGFloat { viewportLayer.lineWidth }
+
+    /// Exposed so structure tests can assert the z-order that keeps the frame
+    /// crisp: background first, then preview, then the viewport overlay.
+    var backgroundSurface: NSView { background }
+    var previewSurface: NSView { previewLayerView }
+    var viewportOverlayLayer: CAShapeLayer { viewportLayer }
+
+    // MARK: - Geometry
+
     /// Maps the main viewport onto the minimap rectangle, preserving aspect ratio.
-    public static func imageRect(in bounds: NSRect, imagePixels: CGSize) -> NSRect {
+    public nonisolated static func imageRect(in bounds: NSRect, imagePixels: CGSize) -> NSRect {
         guard imagePixels.width > 0, imagePixels.height > 0 else { return .zero }
         let scale = min(bounds.width / imagePixels.width, bounds.height / imagePixels.height)
         let size = NSSize(width: imagePixels.width * scale, height: imagePixels.height * scale)
@@ -28,7 +123,7 @@ public final class NavigatorView: MaterialHostView {
                       width: size.width, height: size.height)
     }
 
-    public static func viewportRect(in imageRect: NSRect, normalized: CGRect) -> NSRect {
+    public nonisolated static func viewportRect(in imageRect: NSRect, normalized: CGRect) -> NSRect {
         NSRect(
             x: imageRect.minX + normalized.minX * imageRect.width,
             y: imageRect.minY + (1 - normalized.maxY) * imageRect.height,
@@ -37,29 +132,48 @@ public final class NavigatorView: MaterialHostView {
         )
     }
 
-    public override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        guard let context = NSGraphicsContext.current?.cgContext, let image else { return }
-        let target = Self.imageRect(in: bounds.insetBy(dx: 4, dy: 4),
-                                    imagePixels: CGSize(width: image.width, height: image.height))
-        context.saveGState()
-        context.interpolationQuality = .medium
-        context.draw(image, in: target)
-        context.restoreGState()
-
-        let viewport = Self.viewportRect(in: target, normalized: visibleNormalizedRect)
-        context.setStrokeColor(NSColor.controlAccentColor.cgColor)
-        context.setLineWidth(1.5)
-        context.stroke(viewport)
-        context.setFillColor(NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor)
-        context.fill(viewport)
-    }
+    private var previewBounds: NSRect { bounds.insetBy(dx: 4, dy: 4) }
 
     private var currentImageRect: NSRect {
-        guard let image else { return .zero }
-        return Self.imageRect(in: bounds.insetBy(dx: 4, dy: 4),
-                              imagePixels: CGSize(width: image.width, height: image.height))
+        guard let previewImage else { return .zero }
+        return Self.imageRect(in: previewBounds,
+                              imagePixels: CGSize(width: previewImage.width, height: previewImage.height))
     }
+
+    /// Aligns the stroke to the backing pixel grid so a 1.5 pt line stays sharp.
+    private func aligned(_ rect: NSRect) -> NSRect {
+        let scale = window?.backingScaleFactor ?? 2
+        let offset = 0.5 / scale
+        return rect.insetBy(dx: offset, dy: offset)
+    }
+
+    private func updateViewportOverlay() {
+        guard !bounds.isEmpty, bounds.width > 1, bounds.height > 1 else {
+            viewportLayer.path = nil
+            return
+        }
+        let imageRect = currentImageRect
+        guard imageRect.width > 0 else {
+            viewportLayer.path = nil
+            return
+        }
+        let rect = Self.viewportRect(in: imageRect, normalized: visibleNormalizedRect)
+        viewportLayer.path = CGPath(rect: aligned(rect), transform: nil)
+    }
+
+    public override func layout() {
+        super.layout()
+        // The shape layer is not constraint driven; keep it in step with the view.
+        viewportLayer.frame = bounds
+        updateViewportOverlay()
+    }
+
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateViewportOverlay()
+    }
+
+    // MARK: - Interaction
 
     private func normalizedPoint(for event: NSEvent) -> CGPoint? {
         let target = currentImageRect
@@ -84,5 +198,11 @@ public final class NavigatorView: MaterialHostView {
 
     public override func mouseUp(with event: NSEvent) {
         isDraggingViewport = false
+    }
+
+    /// The navigator is a control, so it takes clicks but never hover: pointer
+    /// tracking belongs to the viewer root view.
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        isHidden ? nil : super.hitTest(point)
     }
 }

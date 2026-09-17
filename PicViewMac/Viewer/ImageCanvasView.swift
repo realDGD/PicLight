@@ -31,7 +31,6 @@ public final class ImageCanvasView: NSView {
 
     private var router = GestureRouter()
     private var isDragging = false
-    private var trackingArea: NSTrackingArea?
 
     public override var isFlipped: Bool { false }
     public override var acceptsFirstResponder: Bool { true }
@@ -45,18 +44,6 @@ public final class ImageCanvasView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-    public override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-            owner: self, userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
 
     // MARK: - Geometry helpers
 
@@ -249,14 +236,6 @@ public final class ImageCanvasView: NSView {
 
     public override func mouseUp(with event: NSEvent) {
         isDragging = false
-    }
-
-    public override func mouseMoved(with event: NSEvent) {
-        onPointerActivity?()
-    }
-
-    public override func mouseExited(with event: NSEvent) {
-        router.endGesture()
     }
 
     public override func layout() {

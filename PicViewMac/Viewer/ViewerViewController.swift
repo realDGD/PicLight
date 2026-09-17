@@ -13,11 +13,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// window-sizing policy (for example sizing the window to the image).
     public var onDescriptorAvailable: ((ImageDescriptor) -> Void)?
 
+    private let rootView = ViewerRootView()
+    private let emptyState = EmptyStateView()
     private let canvas = ImageCanvasView()
     private let topBar = TopHoverBarView()
     private let bottomBar = BottomInfoBarView(style: .chrome)
     private let drawer = ThumbnailDrawerView(style: .drawer)
-    private let minimap = NavigatorView(style: .chrome)
+    private let minimap = NavigatorView()
     private let errorLabel = NSTextField(labelWithString: "")
 
     private let coordinator: DecodeCoordinator
@@ -56,9 +58,34 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let activeTaskCount: Int
     }
 
+    /// Chrome views by name, for hit-testing and layering tests.
+    var chromeViewsForTesting: [String: NSView] {
+        ["topBar": topBar, "bottomBar": bottomBar, "drawer": drawer,
+         "minimap": minimap, "canvas": canvas, "emptyState": emptyState]
+    }
+
+    /// Re-applies the current hover state without inventing pointer movement.
+    func applyChromeVisibilityForTesting() {
+        applyChromeVisibility()
+    }
+
+    /// The empty-state wording currently in use, or `nil` when it is hidden.
+    var emptyStateReasonForTesting: EmptyStateView.Reason? {
+        emptyState.isHidden ? nil : emptyState.reason
+    }
+
+    /// Drives the pin button the way the drawer's button does.
+    func toggleDrawerPinForTesting() {
+        let now = Date().timeIntervalSinceReferenceDate
+        hover.setDrawerPinned(!hover.drawerPinned, at: now)
+        hover.update(at: now)
+        applyChromeVisibility()
+    }
+
     public override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 680))
-        root.wantsLayer = true
+        rootView.frame = NSRect(x: 0, y: 0, width: 960, height: 680)
+        rootView.wantsLayer = true
+        let root = rootView
         view = root
 
         canvas.translatesAutoresizingMaskIntoConstraints = false
@@ -73,6 +100,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         errorLabel.isHidden = true
 
         root.addSubview(canvas)
+        root.addSubview(emptyState)
         root.addSubview(errorLabel)
         root.addSubview(topBar)
         root.addSubview(bottomBar)
@@ -87,6 +115,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             canvas.topAnchor.constraint(equalTo: root.topAnchor),
             canvas.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+
+            emptyState.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            emptyState.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            emptyState.topAnchor.constraint(equalTo: root.topAnchor),
+            emptyState.bottomAnchor.constraint(equalTo: root.bottomAnchor),
 
             errorLabel.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             errorLabel.centerYAnchor.constraint(equalTo: root.centerYAnchor),
@@ -133,6 +166,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     public override func viewDidAppear() {
         super.viewDidAppear()
+        refreshEmptyState()
+        applyChromeVisibility()
         startChromeTimer()
         if let window = view.window {
             window.acceptsMouseMovedEvents = true
@@ -144,6 +179,27 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Wiring
 
     private func configureCallbacks() {
+        // Pointer tracking lives on the root view alone, so hover works no matter
+        // which subview is on top and hidden chrome cannot swallow it.
+        rootView.onPointerMoved = { [weak self] point in
+            self?.handlePointer(atRootPoint: point)
+        }
+        rootView.onPointerExited = { [weak self] in
+            guard let self else { return }
+            let now = Date().timeIntervalSinceReferenceDate
+            self.hover.pointerExitedTop(at: now)
+            self.hover.pointerExitedDrawer(at: now)
+            self.hover.update(at: now)
+            self.applyChromeVisibility()
+        }
+
+        emptyState.onOpenRequested = {
+            NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: nil, from: nil)
+        }
+        emptyState.onFilesDropped = { urls in
+            AppEnvironment.shared.fileOpener.open(urls: urls)
+        }
+
         canvas.onNavigate = { [weak self] delta in
             guard let self else { return }
             self.pendingDirection = delta > 0 ? .forward : .backward
@@ -180,13 +236,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.pendingDirection = index > (self.session.currentIndex ?? 0) ? .forward : .backward
             self.session.select(index: index)
         }
-        drawer.onPointerEntered = { [weak self] in
+        drawer.onTogglePin = { [weak self] in
             guard let self else { return }
-            self.hover.pointerEnteredDrawer(at: Date().timeIntervalSinceReferenceDate)
-        }
-        drawer.onPointerExited = { [weak self] in
-            guard let self else { return }
-            self.hover.pointerExitedDrawer(at: Date().timeIntervalSinceReferenceDate)
+            let now = Date().timeIntervalSinceReferenceDate
+            self.hover.setDrawerPinned(!self.hover.drawerPinned, at: now)
+            self.hover.update(at: now)
+            self.applyChromeVisibility()
         }
         minimap.onCenterRequested = { [weak self] center in
             guard let self else { return }
@@ -334,13 +389,31 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             viewerState.apply(error: message)
             errorLabel.stringValue = message
             errorLabel.isHidden = message.isEmpty
+            refreshEmptyState()
         }
     }
 
     private func renderEmptyState() {
         canvas.image = nil
-        errorLabel.stringValue = session.items.isEmpty ? "此文件夹中没有支持的图像" : ""
-        errorLabel.isHidden = session.items.isEmpty == false
+        refreshEmptyState()
+    }
+
+    /// Shows the welcome/empty UI only when there is genuinely nothing to show:
+    /// no decoded image and no error to explain why.
+    private func refreshEmptyState() {
+        let hasImage = viewerState.currentImage != nil
+        let hasError = !(viewerState.errorMessage ?? "").isEmpty
+        guard !hasImage, !hasError else {
+            setEmptyState(visible: false)
+            return
+        }
+        emptyState.apply(reason: session.directory == nil ? .noImageOpened : .folderHasNoImages)
+        setEmptyState(visible: true)
+    }
+
+    private func setEmptyState(visible: Bool) {
+        emptyState.isHidden = !visible
+        emptyState.alphaValue = visible ? 1 : 0
     }
 
     private func refreshCanvas() {
@@ -350,6 +423,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.setZoomToFit()
         }
         viewerState.viewport = canvas.viewport
+        refreshEmptyState()
+        regenerateNavigatorPreview()
         refreshMinimap()
         refreshBottomBar()
     }
@@ -463,63 +538,116 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func applyChromeVisibility() {
         let snapshot = hover.snapshot
+        setChrome(topBar, visible: snapshot.top)
+        setChrome(bottomBar, visible: snapshot.bottom)
+        setChrome(drawer, visible: snapshot.drawer)
+        setChrome(minimap, visible: snapshot.minimap)
+        drawer.setPinned(hover.drawerPinned)
+        fadeStandardButtons(visible: snapshot.top)
+    }
+
+    /// Fade in, or fade out and then leave the hit-testing hierarchy. Leaving
+    /// `isHidden = false` with `alphaValue = 0` is what made a hidden drawer keep
+    /// swallowing pointer events across its whole width.
+    private func setChrome(_ chrome: NSView, visible: Bool) {
         let duration = AccessibilityAppearance.chromeFadeDuration
+        if visible {
+            chrome.isHidden = false
+            guard duration > 0, chrome.alphaValue < 1 else {
+                chrome.alphaValue = 1
+                return
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                chrome.animator().alphaValue = 1
+            }
+        } else {
+            guard duration > 0, chrome.alphaValue > 0 else {
+                chrome.alphaValue = 0
+                chrome.isHidden = true
+                return
+            }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = duration
+                chrome.animator().alphaValue = 0
+            }, completionHandler: { [weak self, weak chrome] in
+                guard let chrome else { return }
+                MainActor.assumeIsolated {
+                    // A show may have started while the fade-out ran; only hide if
+                    // the surface is still meant to be hidden.
+                    guard chrome.alphaValue < 0.01 else { return }
+                    chrome.isHidden = true
+                    _ = self
+                }
+            })
+        }
+    }
+
+    /// The traffic lights are the window's own standard buttons, so they can only
+    /// be faded; hover detection never depends on them.
+    private func fadeStandardButtons(visible: Bool) {
+        guard let window = view.window else { return }
+        let duration = AccessibilityAppearance.chromeFadeDuration
+        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        guard duration > 0 else {
+            buttons.forEach { $0.alphaValue = visible ? 1 : 0 }
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration
-            topBar.animator().alphaValue = snapshot.top ? 1 : 0
-            bottomBar.animator().alphaValue = snapshot.bottom ? 1 : 0
-            drawer.animator().alphaValue = snapshot.drawer ? 1 : 0
-            minimap.animator().alphaValue = snapshot.minimap ? 1 : 0
-            if let window = view.window {
-                for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                    window.standardWindowButton(button)?.animator().alphaValue = snapshot.top ? 1 : 0
-                }
-            }
-        }
-        topBar.isHidden = false
-        bottomBar.isHidden = false
-        drawer.isHidden = !snapshot.drawer && duration == 0
-        minimap.isHidden = !snapshot.minimap && duration == 0
-        if !AccessibilityAppearance.reduceMotion {
-            drawer.isHidden = false
-            minimap.isHidden = false
+            buttons.forEach { $0.animator().alphaValue = visible ? 1 : 0 }
         }
     }
 
     // MARK: - Pointer zones
 
-    public override func mouseMoved(with event: NSEvent) {
-        handlePointer(at: event.locationInWindow)
+    /// Geometry of the hover regions, derived from the live layout so tests and
+    /// the app agree on what "the left edge" means.
+    var zoneGeometry: ViewerZoneGeometry {
+        ViewerZoneGeometry(topBarHeight: TopHoverBarView.height,
+                           hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
+                           drawerWidth: drawerWidthConstraint?.constant ?? ThumbnailDrawerView.minimumWidth)
     }
 
-    public override func mouseExited(with event: NSEvent) {
-        let now = Date().timeIntervalSinceReferenceDate
-        hover.pointerExitedTop(at: now)
-        hover.pointerExitedDrawer(at: now)
+    func zone(forRootPoint point: CGPoint) -> ViewerPointerZone {
+        zoneGeometry.zone(for: point, in: rootView.bounds,
+                          drawerVisible: hover.drawerVisible,
+                          minimapRect: minimap.isHidden ? nil : minimap.frame)
     }
 
-    private func handlePointer(at windowPoint: NSPoint) {
+    /// Entry point for pointer movement, whether it came from real AppKit
+    /// tracking or from a test driving the same production path.
+    func handlePointer(atRootPoint point: CGPoint) {
         let now = Date().timeIntervalSinceReferenceDate
-        let point = view.convert(windowPoint, from: nil)
         hover.pointerMoved(at: now)
 
-        if point.y >= view.bounds.height - TopHoverBarView.height {
+        switch zone(forRootPoint: point) {
+        case .topChrome:
             hover.pointerEnteredTop(at: now)
-        } else {
-            hover.pointerExitedTop(at: now)
-        }
-
-        // ~12 px invisible left-edge hot zone.
-        if point.x <= ThumbnailDrawerView.hotZoneWidth {
+        case .leftEdgeHotZone:
             hover.pointerEnteredLeftEdge(at: now)
-        } else if hover.drawerVisible,
-                  point.x <= (drawerWidthConstraint?.constant ?? 0) {
+            hover.pointerExitedTop(at: now)
+        case .drawerSurface:
+            // Keeping the pointer inside the drawer keeps it open.
             hover.pointerEnteredDrawer(at: now)
-        } else {
+            hover.pointerExitedTop(at: now)
+        case .minimapSurface:
+            hover.zoomActivity(at: now)
+            hover.pointerExitedTop(at: now)
+        case .canvas:
+            hover.pointerExitedTop(at: now)
             hover.pointerExitedDrawer(at: now)
         }
+
         hover.update(at: now)
         applyChromeVisibility()
+    }
+
+    /// Real mouse events arrive at the root view; this stays for the acceptance
+    /// runner and for tests that need to drive the same code path.
+    func simulatePointer(atWindowPoint point: NSPoint) {
+        handlePointer(atRootPoint: rootView.convert(point, from: nil))
     }
 
     // MARK: - Commands
@@ -648,15 +776,30 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                          pageDescription: viewerState.pageDescription)
     }
 
+    /// Viewport-only update: panning and zooming move the rectangle and must never
+    /// regenerate the preview bitmap.
     private func refreshMinimap() {
-        guard let image = viewerState.currentImage else {
-            minimap.image = nil
-            return
-        }
-        minimap.image = image
+        guard viewerState.currentImage != nil else { return }
         minimap.visibleNormalizedRect = canvas.viewport.visibleNormalizedRect(
             imagePixels: canvas.imagePixelSize, viewPoints: canvas.bounds.size
         )
+    }
+
+    /// Image-change update: builds the navigator preview once per displayed image,
+    /// as a bounded downsample rather than a re-sample of the full source.
+    private func regenerateNavigatorPreview() {
+        guard let image = viewerState.currentImage else {
+            minimap.setPreviewImage(nil)
+            return
+        }
+        let maxPixel = NavigatorView.previewPixelSize
+        Task { [weak self] in
+            guard let self else { return }
+            let preview = await self.thumbnails.preview(from: image, maxPixelSize: maxPixel)
+            guard !Task.isCancelled else { return }
+            self.minimap.setPreviewImage(preview)
+            self.refreshMinimap()
+        }
     }
 
     // MARK: - Diagnostics
@@ -700,11 +843,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             isAnimationTimerActive: animationTimer != nil,
             activeAnimationClocks: animationTimer == nil ? 0 : 1
         )
-    }
-
-    /// Drives the same pointer-zone logic the real mouse events use.
-    func simulatePointer(atWindowPoint point: NSPoint) {
-        handlePointer(at: point)
     }
 
     func simulateImmersive(_ value: Bool) {
