@@ -380,7 +380,15 @@ final class DockButton: NSButton {
         didSet { applyIconTint() }
     }
 
-    init(symbol: String, tooltip: String) {
+    /// The rendered size and the symbol's point size. Defaults are the dock's; the floating
+    /// navigation controls are the same button at a larger size, so the two surfaces share the
+    /// hover and press behaviour instead of implementing it twice.
+    private let side: CGFloat
+    private let symbolPointSize: CGFloat?
+
+    init(symbol: String, tooltip: String, side: CGFloat = 26, symbolPointSize: CGFloat? = nil) {
+        self.side = side
+        self.symbolPointSize = symbolPointSize
         super.init(frame: .zero)
         configure(tooltip: tooltip)
         setSymbol(symbol)
@@ -400,8 +408,8 @@ final class DockButton: NSButton {
         wantsLayer = true
         layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 26),
-            heightAnchor.constraint(equalToConstant: 26),
+            widthAnchor.constraint(equalToConstant: side),
+            heightAnchor.constraint(equalToConstant: side),
         ])
     }
 
@@ -425,7 +433,11 @@ final class DockButton: NSButton {
             transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             layer.add(transition, forKey: Self.symbolCrossfadeKey)
         }
-        let symbolImage = NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip)
+        var symbolImage = NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip)
+        if let symbolPointSize {
+            symbolImage = symbolImage?.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: symbolPointSize, weight: .medium))
+        }
         symbolImage?.isTemplate = true
         image = symbolImage
         applyIconTint()

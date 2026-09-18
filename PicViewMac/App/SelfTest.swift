@@ -513,6 +513,12 @@ enum SelfTest {
               "pair at \(pairIndexes)")
         check("the pin is the last control in the dock",
               dock.arrangedViewsForTesting.last === dock.pinControl)
+        let navigation = chrome["floatingNavigation"] as? FloatingNavigationView
+        check("the floating navigation starts hidden and offline",
+              navigation?.isHidden == true)
+        check("the floating navigation is anchored to the canvas, not the window",
+              navigation?.frame.minX == viewer.chromeSnapshot.canvasFrame.minX
+                && navigation?.frame.midY == viewer.chromeSnapshot.canvasFrame.midY)
         check("the dock reports a real zoom percentage",
               dock.zoomReadoutText.hasSuffix("%") && !dock.zoomReadoutText.isEmpty,
               dock.zoomReadoutText)

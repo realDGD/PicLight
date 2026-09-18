@@ -19,6 +19,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let toolDock = ViewerToolDockView()
     private let infoCard = ImageInfoCardView()
     private let bottomBar = BottomInfoBarView(style: .hud)
+    /// The auto-hiding previous/next controls. An overlay on the canvas.
+    private let floatingNavigation = FloatingNavigationView()
     private let drawer = ThumbnailDrawerView(style: .drawer)
     private let minimap = NavigatorView()
     private let errorLabel = NSTextField(labelWithString: "")
@@ -97,13 +99,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Chrome views by name, for hit-testing and layering tests.
     var chromeViewsForTesting: [String: NSView] {
         ["bottomBar": bottomBar, "drawer": drawer, "minimap": minimap,
+         "floatingNavigation": floatingNavigation,
          "canvas": canvas, "emptyState": emptyState,
          "toolDock": toolDock, "infoCard": infoCard]
     }
 
     /// Chrome that participates in hover/idle visibility (the titlebar does not:
     /// it is AppKit's and always visible).
-    static let hoverChromeNames: Set<String> = ["bottomBar", "drawer", "minimap", "toolDock"]
+    static let hoverChromeNames: Set<String> = ["bottomBar", "drawer", "minimap", "toolDock",
+                                                "floatingNavigation"]
     /// Usable canvas width the window's minimum size must leave.
     static let minimumCanvasWidth: CGFloat = 320
     /// Breathing room between the tool dock and the canvas edges.
@@ -195,6 +199,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         drawer.translatesAutoresizingMaskIntoConstraints = false
         minimap.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        floatingNavigation.translatesAutoresizingMaskIntoConstraints = false
 
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
@@ -208,6 +213,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         root.addSubview(minimap)
         root.addSubview(toolDock)
         root.addSubview(infoCard)
+        // Added last so it sits above the canvas; it is an overlay and the canvas is never
+        // constrained to it, so it cannot move the image geometry.
+        root.addSubview(floatingNavigation)
 
         let minimapWidth = minimap.widthAnchor.constraint(
             equalToConstant: NavigatorView.defaultSize.width)
@@ -261,6 +269,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             infoCard.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
             infoCard.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
             infoCard.widthAnchor.constraint(lessThanOrEqualToConstant: ImageInfoCardView.maximumWidth),
+
+            // The navigation overlay is *anchored to* the canvas on every side, and nothing anchors
+            // the canvas to it. That is what keeps the controls at the vertical centre of the image
+            // area rather than of the window, makes the left control follow the canvas's left edge
+            // when a pinned drawer has taken its width, and guarantees that showing or hiding them
+            // cannot move, fit, zoom or re-centre the picture.
+            floatingNavigation.leadingAnchor.constraint(equalTo: canvas.leadingAnchor),
+            floatingNavigation.trailingAnchor.constraint(equalTo: canvas.trailingAnchor),
+            floatingNavigation.centerYAnchor.constraint(equalTo: canvas.centerYAnchor),
+            floatingNavigation.heightAnchor.constraint(
+                equalToConstant: FloatingNavigationView.buttonSize),
         ])
         // The card grows with its content up to a fraction of the canvas.
         infoCardHeightConstraint = infoCard.heightAnchor.constraint(equalToConstant: 0)
@@ -299,6 +318,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Wiring
 
     private func configureCallbacks() {
+        floatingNavigation.onPrevious = { [weak self] in self?.perform(.previousImage) }
+        floatingNavigation.onNext = { [weak self] in self?.perform(.nextImage) }
+
         // Pointer tracking lives on the root view alone, so hover works no matter
         // which subview is on top and hidden chrome cannot swallow it.
         rootView.onPointerMoved = { [weak self] point in
@@ -308,6 +330,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
             self.chrome.toolDock.setPointer(inZone: false, at: now)
+            self.chrome.navigation.setPointer(previousSide: false, nextSide: false, at: now)
+            self.chrome.navigation.pointerOnPrevious = false
+            self.chrome.navigation.pointerOnNext = false
             self.chrome.update(at: now)
             self.applyChromeVisibility()
         }
@@ -1500,15 +1525,40 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         applyChromeVisibility()
     }
 
-    /// The dock and the HUD both need to know whether there is an image; every entry point that
-    /// reads a chrome decision tells them first. Each model keeps its own copy of that fact and
-    /// its own rule about what to do with it.
+    /// The dock, the HUD and the navigation controls all need to know whether there is an image;
+    /// every entry point that reads a chrome decision tells them first. Each model keeps its own
+    /// copy of that fact and its own rule about what to do with it.
     private func syncChromePresence() {
         let now = Date().timeIntervalSinceReferenceDate
         let hasImage = viewerState.currentImage != nil
         chrome.toolDock.setHasImage(hasImage, at: now)
         chrome.infoHUD.setHasImage(hasImage, at: now)
+        chrome.navigation.setHasImage(hasImage, at: now)
+        // A first image has no previous and a last one has no next, so the control is not merely
+        // disabled: it is not there.
+        let index = session.currentIndex
+        let count = session.items.count
+        chrome.navigation.setAvailable(previous: index.map { $0 > 0 } ?? false,
+                                       next: index.map { $0 < count - 1 } ?? false)
+        floatingNavigation.setAvailable(previous: chrome.navigation.previous.available,
+                                        next: chrome.navigation.next.available)
     }
+
+    /// The two canvas-edge strips that reveal the navigation controls, in root coordinates.
+    var floatingNavigationRevealZones: (previous: CGRect, next: CGRect) {
+        FloatingNavigationView.revealZones(canvasFrame: canvas.frame)
+    }
+
+    /// Applies the navigation model to the view, transition-counted like the dock so a pointer
+    /// sweep cannot re-issue a fade.
+    private func applyNavigationVisibility() {
+        let snapshot = chrome.snapshot
+        floatingNavigation.setVisible(previous: snapshot.previousNavigation,
+                                     next: snapshot.nextNavigation)
+        appliedNavigationSnapshot = (snapshot.previousNavigation, snapshot.nextNavigation)
+    }
+
+    private var appliedNavigationSnapshot: (previous: Bool, next: Bool)?
 
     /// An image arrived, or a different one did. The HUD reports on the image, so this is the
     /// change that brings it back — and it does so on both the load and the switch.
@@ -1536,6 +1586,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         setChrome(drawer, visible: snapshot.drawer && !immersive)
         setChrome(minimap, visible: snapshot.minimap && !immersive)
         setChrome(infoCard, visible: !immersive && isInfoCardVisible)
+        applyNavigationVisibility()
         if immersive { infoCardSuppressed = true } else if infoCardSuppressed {
             // Leaving immersive mode restores whatever the user had open.
             infoCardSuppressed = false
@@ -1731,6 +1782,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         chrome.pointerMoved(at: now)
         syncChromePresence()
         chrome.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
+        let zones = floatingNavigationRevealZones
+        chrome.navigation.setPointer(previousSide: zones.previous.contains(point),
+                                     nextSide: zones.next.contains(point), at: now)
+        chrome.navigation.pointerOnPrevious = floatingNavigation.previousControl.frame
+            .insetBy(dx: -6, dy: -6)
+            .contains(rootView.convert(point, to: floatingNavigation))
+        chrome.navigation.pointerOnNext = floatingNavigation.nextControl.frame
+            .insetBy(dx: -6, dy: -6)
+            .contains(rootView.convert(point, to: floatingNavigation))
 
         switch zone(forRootPoint: point) {
         case .topChrome:
@@ -1951,6 +2011,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     struct ChromeSnapshot {
         var top: Bool
         var bottom: Bool
+        /// Whether each floating navigation control is being shown.
+        var previousNavigation: Bool
+        var nextNavigation: Bool
         var drawer: Bool
         var minimap: Bool
         var drawerRows: Int
@@ -1976,6 +2039,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     var chromeSnapshot: ChromeSnapshot {
         ChromeSnapshot(
             top: false, bottom: !bottomBar.isHidden,
+            previousNavigation: chrome.snapshot.previousNavigation,
+            nextNavigation: chrome.snapshot.nextNavigation,
             drawer: chrome.snapshot.drawer, minimap: chrome.snapshot.minimap,
             drawerRows: drawer.visibleRowCount,
             drawerReservedWidth: isDrawerReservingSpace ? currentDrawerWidth : 0,
