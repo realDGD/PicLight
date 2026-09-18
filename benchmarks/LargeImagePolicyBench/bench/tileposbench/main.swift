@@ -371,6 +371,90 @@ func quartzOneToOne(width: Int, height: Int) {
     }
 }
 
+/// Convention-free positional acceptance: render the same scene (proxy + tiles) through both
+/// renderers and diff the frames. No hand-derived mapping, no assumption about which way a
+/// CGContext or a CGPoint.applying runs — Quartz is the reference implementation, Metal has to
+/// put the same pixels in the same places.
+func metalVsQuartz(renderer: MetalImageRenderer, device: MTLDevice, tileSize: Int,
+                   viewSize: CGSize, centre: CGPoint) {
+    let sourceSize = CGSize(width: fixtureWidth, height: fixtureHeight)
+    guard let encodingProxy = imageFrom(fixturePixels(), width: fixtureWidth, height: fixtureHeight) else { return }
+    var viewport = ViewportState(fitScale: 1, zoomScale: 1, normalizedCenter: centre)
+    viewport.fitScale = ViewportState.fitScale(imagePixels: sourceSize, viewPoints: viewSize)
+    guard let plan = NativeTilePlanner.plan(
+        sourceRect: NativeTilePlanner.visibleSourceRect(viewport: viewport, sourcePixelSize: sourceSize,
+                                                        viewSize: viewSize),
+        sourcePixelSize: sourceSize, tileSize: tileSize) else { return }
+    final class Box: @unchecked Sendable {
+        private let lock = NSLock(); private var storage: [NativeTile] = []
+        func append(_ t: NativeTile) { lock.lock(); storage.append(t); lock.unlock() }
+        var tiles: [NativeTile] { lock.lock(); defer { lock.unlock() }; return storage }
+    }
+    let box = Box()
+    try? PNGNativeTileProvider().produce(plan: plan, source: fixtureURL, pageIndex: 0, gutter: 1,
+                                        colorSpace: nil, shouldCancel: { false }, onTile: { box.append($0) })
+    let tiles = box.tiles
+    let width = Int(viewSize.width), height = Int(viewSize.height)
+
+    // Metal
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width,
+                                                              height: height, mipmapped: false)
+    descriptor.usage = [.renderTarget, .shaderRead]
+    descriptor.storageMode = .shared
+    guard let target = device.makeTexture(descriptor: descriptor) else { return }
+    _ = renderer.renderOffscreen(image: encodingProxy, nativeTiles: tiles, sourcePixelSize: sourceSize,
+                                 viewport: viewport, viewSize: viewSize, contentsScale: 1,
+                                 backgroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1), into: target)
+    var metal = [UInt8](repeating: 0, count: width * height * 4)
+    metal.withUnsafeMutableBytes { bytes in
+        target.getBytes(bytes.baseAddress!, bytesPerRow: width * 4,
+                        from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+    }
+
+    // Quartz, same scene: fill, transform, proxy, tiles.
+    var quartz = [UInt8](repeating: 0, count: width * height * 4)
+    quartz.withUnsafeMutableBytes { bytes in
+        guard let context = CGContext(data: bytes.baseAddress, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: width * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .none
+        context.concatenate(viewport.imageToViewTransform(sourcePixelSize: sourceSize, viewSize: viewSize))
+        context.draw(encodingProxy, in: ViewportState.centredSourceRect(
+            CGRect(origin: .zero, size: sourceSize), sourcePixelSize: sourceSize))
+        for tile in tiles {
+            context.draw(tile.image, in: ViewportState.centredSourceRect(tile.sourceRect,
+                                                                        sourcePixelSize: sourceSize))
+        }
+    }
+
+    var differing = 0
+    var worst = 0
+    for pixel in stride(from: 0, to: width * height * 4, by: 4) {
+        let dR = abs(Int(metal[pixel + 2]) - Int(quartz[pixel]))
+        let dG = abs(Int(metal[pixel + 1]) - Int(quartz[pixel + 1]))
+        let dB = abs(Int(metal[pixel]) - Int(quartz[pixel + 2]))
+        let delta = max(dR, dG, dB)
+        if delta > 2 { differing += 1 }
+        worst = max(worst, delta)
+    }
+    print(String(format: "  tile %d view %dx%d centre (%.2f,%.2f): tiles=%d differing=%d/%d worst=%d -> %@",
+                 tileSize, width, height, centre.x, centre.y, tiles.count, differing, width * height,
+                 worst, differing == 0 ? "IDENTICAL" : "MISMATCH"))
+}
+
+print("\nMETAL vs QUARTZ, same scene with tiles (Quartz is the reference)")
+for tileSize in [64, 128] {
+    for viewSize in [CGSize(width: 200, height: 160), CGSize(width: 120, height: 120)] {
+        for centre in [CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.2, y: 0.8)] {
+            metalVsQuartz(renderer: renderer, device: device, tileSize: tileSize,
+                          viewSize: viewSize, centre: centre)
+        }
+    }
+}
+
 quartzOneToOne(width: 240, height: 230)
 plainImageOneToOne(renderer: renderer, device: device, width: 240, height: 230)
 plainImageOneToOne(renderer: renderer, device: device, width: 64, height: 64)
