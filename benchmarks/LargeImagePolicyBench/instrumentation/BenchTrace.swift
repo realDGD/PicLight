@@ -210,8 +210,36 @@ enum BenchTrace {
     /// energy asks the question that matters — is this frame as sharp as the source, or
     /// smoothed like an upscaled proxy — and it is immune to a one-pixel slip. Densities are
     /// matched by rendering at the backing scale, so one source pixel is one render pixel.
+    /// Runs the heavy half (a full source decode plus two offscreen renders) off the main
+    /// thread: doing it inline measured as a 53.8 s "main-thread stall", which was the probe
+    /// blocking the app rather than the app blocking itself.
     private static func measureNativeDetail(viewer: ViewerViewController, window: NSWindow) {
-        guard let descriptor = viewer.viewerState.descriptor,
+        // Capture everything the measurement needs on the main thread, then leave it.
+        let captured = (
+            descriptor: viewer.viewerState.descriptor,
+            proxy: viewer.viewerState.currentImage,
+            viewport: viewer.viewerState.viewport,
+            tiles: viewer.canvasNativeTilesForTesting,
+            viewSize: viewer.canvasViewForTesting.bounds.size,
+            backing: window.backingScaleFactor
+        )
+        DispatchQueue.global(qos: .utility).async {
+            measureNativeDetail(captured: captured, proxy: captured.proxy,
+                                viewSize: captured.viewSize, backing: captured.backing)
+        }
+    }
+
+    private static func measureNativeDetail(captured: (descriptor: ImageDescriptor?,
+                                                        proxy: CGImage?,
+                                                        viewport: ViewportState,
+                                                        tiles: [NativeTile],
+                                                        viewSize: CGSize,
+                                                        backing: CGFloat),
+                                             proxy: CGImage?,
+                                             viewSize: CGSize,
+                                             backing: CGFloat) {
+        guard let descriptor = captured.descriptor,
+              let _ = proxy,
               let proxy = viewer.viewerState.currentImage,
               let renderer = MetalImageRenderer(device: MTLCreateSystemDefaultDevice()),
               let device = renderer.device as MTLDevice? else {
@@ -219,13 +247,10 @@ enum BenchTrace {
             return
         }
         let source = descriptor.displayPixelSize
-        let canvas = viewer.canvasViewForTesting
-        let viewSize = canvas.bounds.size
-        let backing = window.backingScaleFactor
         let side = CGSize(width: (viewSize.width * backing).rounded(), height: (viewSize.height * backing).rounded())
         guard side.width >= 32, side.height >= 32 else { return }
 
-        let tiles = viewer.canvasNativeTilesForTesting
+        let tiles = captured.tiles
         func render(_ tiles: [NativeTile]) -> [UInt8]? {
             let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .bgra8Unorm, width: Int(side.width), height: Int(side.height), mipmapped: false)
@@ -233,7 +258,7 @@ enum BenchTrace {
             textureDescriptor.storageMode = .shared
             guard let target = device.makeTexture(descriptor: textureDescriptor) else { return nil }
             guard renderer.renderOffscreen(image: proxy, nativeTiles: tiles,
-                                           sourcePixelSize: source, viewport: viewer.viewerState.viewport,
+                                           sourcePixelSize: source, viewport: captured.viewport,
                                            viewSize: viewSize, contentsScale: backing,
                                            backgroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
                                            into: target) else { return nil }
@@ -277,7 +302,7 @@ enum BenchTrace {
             return
         }
         defer { ps_close(decoder) }
-        let visible = NativeTilePlanner.visibleSourceRect(viewport: viewer.viewerState.viewport,
+        let visible = NativeTilePlanner.visibleSourceRect(viewport: captured.viewport,
                                                           sourcePixelSize: source, viewSize: viewSize)
         let snapped = CGRect(x: visible.minX.rounded(.down), y: visible.minY.rounded(.down),
                              width: visible.width.rounded(.up), height: visible.height.rounded(.up))
