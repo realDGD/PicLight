@@ -141,7 +141,8 @@ public final class MetalImageRenderer {
         guard let layout = Self.textureLayout(for: image), image.width > 0, image.height > 0 else { return false }
         if proxyTextureKey === image, proxyTexture != nil { return true }
 
-        guard let texture = uploadTexture(for: image) else { return false }
+        // The proxy needs its mip chain: it is on screen at every zoom, including well below 1:1.
+        guard let texture = uploadTexture(for: image, mipmapped: true) else { return false }
         self.proxyTexture = texture
         proxyTextureKey = image
         return true
@@ -170,10 +171,11 @@ public final class MetalImageRenderer {
     }
 
     /// Uploads any CGImage as the canonical BGRA texture the shader samples.
-    private func uploadTexture(for image: CGImage) -> MTLTexture? {
+    private func uploadTexture(for image: CGImage, mipmapped: Bool) -> MTLTexture? {
         guard let layout = Self.textureLayout(for: image), image.width > 0, image.height > 0 else { return nil }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: layout.pixelFormat, width: image.width, height: image.height, mipmapped: true)
+            pixelFormat: layout.pixelFormat, width: image.width, height: image.height,
+            mipmapped: mipmapped)
         descriptor.usage = [.shaderRead]
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
@@ -198,6 +200,7 @@ public final class MetalImageRenderer {
         texture.replace(region: MTLRegionMake2D(0, 0, image.width, image.height), mipmapLevel: 0,
                         withBytes: data, bytesPerRow: context.bytesPerRow)
 
+        guard mipmapped else { return texture }
         guard let commandBuffer = queue.makeCommandBuffer(),
               let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
         blit.generateMipmaps(for: texture)
@@ -212,10 +215,13 @@ public final class MetalImageRenderer {
     @discardableResult
     public func prepareTexture(for tile: NativeTile) -> MTLTexture? {
         if let existing = tileTextures[tile.key] { return existing }
-        guard let uploaded = uploadTexture(for: tile.image) else { return nil }
+        // Tiles are requested only when the proxy is out-resolved, i.e. when they are magnified,
+        // so a mip chain buys them nothing — and generating one costs a synchronous GPU wait per
+        // tile on the main thread, measured as a 170 ms stall the first time tiles arrive.
+        guard let uploaded = uploadTexture(for: tile.image, mipmapped: false) else { return nil }
         tileTextures[tile.key] = uploaded
         tileTextureOrder.append(tile.key)
-        tileTextureBytes += uploaded.width * uploaded.height * 4 * 4 / 3
+        tileTextureBytes += uploaded.width * uploaded.height * 4
         evictTileTexturesIfNeeded()
         return uploaded
     }
@@ -226,7 +232,7 @@ public final class MetalImageRenderer {
         let doomed = tileTextures.keys.filter { !keys.contains($0) }
         for key in doomed {
             if let texture = tileTextures.removeValue(forKey: key) {
-                tileTextureBytes -= texture.width * texture.height * 4 * 4 / 3
+                tileTextureBytes -= texture.width * texture.height * 4
             }
         }
         tileTextureOrder.removeAll { !tileTextures.keys.contains($0) }
@@ -236,7 +242,7 @@ public final class MetalImageRenderer {
         while tileTextureBytes > tileTextureBudget, let oldest = tileTextureOrder.first {
             tileTextureOrder.removeFirst()
             if let texture = tileTextures.removeValue(forKey: oldest) {
-                tileTextureBytes -= texture.width * texture.height * 4 * 4 / 3
+                tileTextureBytes -= texture.width * texture.height * 4
             }
         }
     }
