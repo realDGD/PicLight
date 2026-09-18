@@ -117,7 +117,12 @@ public final class MetalImageRenderer {
         let samplerDescriptor = MTLSamplerDescriptor()
         samplerDescriptor.minFilter = .linear
         samplerDescriptor.magFilter = .linear
-        samplerDescriptor.mipFilter = .linear
+        // Nearest mip selection, not trilinear: mipmaps stay mandatory for minification (D-series
+        // gate), but at 1:1 a trilinear tap blends level 0 with level 1 and softens a view that is
+        // already pixel-exact — the "pointless second blur at 1:1" the design warns about. Nearest
+        // selection takes level 0 whenever the derivative says 0, and still picks the right level
+        // where the image is genuinely minified.
+        samplerDescriptor.mipFilter = .nearest
         samplerDescriptor.sAddressMode = .clampToEdge
         samplerDescriptor.tAddressMode = .clampToEdge
         guard let sampler = device.makeSamplerState(descriptor: samplerDescriptor) else { return nil }
@@ -140,6 +145,28 @@ public final class MetalImageRenderer {
         self.proxyTexture = texture
         proxyTextureKey = image
         return true
+    }
+
+    /// A coordinate-encoding image of the given size, for tests that need a tile of a specific
+    /// shape. Kept next to the upload so a test cannot accidentally build a differently laid out
+    /// bitmap than the production path accepts.
+    public func encodedTileImage(width: Int, height: Int) -> CGImage? {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                pixels[offset] = UInt8(x % 251)
+                pixels[offset + 1] = UInt8(y % 241)
+                pixels[offset + 2] = UInt8((x + y) / 2)
+                pixels[offset + 3] = 255
+            }
+        }
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                       bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                       provider: provider, decode: nil, shouldInterpolate: false,
+                       intent: .defaultIntent)
     }
 
     /// Uploads any CGImage as the canonical BGRA texture the shader samples.

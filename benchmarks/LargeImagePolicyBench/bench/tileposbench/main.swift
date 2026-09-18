@@ -113,7 +113,8 @@ func isolatedTileProbe(renderer: MetalImageRenderer, device: MTLDevice) {
     }
     let collector = Collector()
     try? PNGNativeTileProvider().produce(plan: plan, source: fixtureURL, pageIndex: 0, gutter: 1,
-                                        colorSpace: nil, shouldCancel: { false },
+                                        colorSpace: nil, orientation: SourceOrientation(.up),
+                                        shouldCancel: { false },
                                         onTile: { collector.append($0) })
     // Pick a tile in the middle of the visible area, but not the first row: a y error should
     // be visible as the tile landing somewhere else.
@@ -239,7 +240,8 @@ func tileOneToOne(renderer: MetalImageRenderer, device: MTLDevice, tileSize: Int
     let plan = NativeTilePlanner.plan(sourceRect: CGRect(x: 64, y: 64, width: CGFloat(tileSize), height: CGFloat(tileSize)),
                                       sourcePixelSize: sourceSize, tileSize: tileSize)!
     try? PNGNativeTileProvider().produce(plan: plan, source: fixtureURL, pageIndex: 0, gutter: 1,
-                                        colorSpace: nil, shouldCancel: { false },
+                                        colorSpace: nil, orientation: SourceOrientation(.up),
+                                        shouldCancel: { false },
                                         onTile: { box.append($0) })
     let tiles = box.tiles
     guard let tile = tiles.first(where: { $0.key.x == 1 && $0.key.y == 1 && $0.sourceRect.width == CGFloat(tileSize) }),
@@ -392,7 +394,8 @@ func metalVsQuartz(renderer: MetalImageRenderer, device: MTLDevice, tileSize: In
     }
     let box = Box()
     try? PNGNativeTileProvider().produce(plan: plan, source: fixtureURL, pageIndex: 0, gutter: 1,
-                                        colorSpace: nil, shouldCancel: { false }, onTile: { box.append($0) })
+                                        colorSpace: nil, orientation: SourceOrientation(.up),
+                                        shouldCancel: { false }, onTile: { box.append($0) })
     let tiles = box.tiles
     let width = Int(viewSize.width), height = Int(viewSize.height)
 
@@ -498,7 +501,7 @@ for tileSize in tileSizes {
             let collector = Collector()
             do {
                 try PNGNativeTileProvider().produce(plan: plan, source: fixtureURL, pageIndex: 0,
-                                                    gutter: 1, colorSpace: nil,
+                                                    gutter: 1, colorSpace: nil, orientation: SourceOrientation(.up),
                                                     shouldCancel: { false },
                                                     onTile: { collector.append($0) })
             } catch {

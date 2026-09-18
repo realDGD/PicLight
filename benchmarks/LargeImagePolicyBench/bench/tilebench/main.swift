@@ -73,7 +73,7 @@ func run(tileSize: Int) -> Sample? {
     let tally = Tally()
     let start = monotonicNS()
     do {
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil, orientation: SourceOrientation(.up),
                              shouldCancel: { false },
                              onTile: { tally.note($0, since: start) })
     } catch {
