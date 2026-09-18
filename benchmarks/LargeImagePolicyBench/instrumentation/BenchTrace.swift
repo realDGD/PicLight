@@ -271,8 +271,8 @@ enum BenchTrace {
         // The source's own energy over the visible rectangle, so the render has a target.
         var info = ps_info()
         var error = [CChar](repeating: 0, count: 256)
-        guard let url = descriptor.sourceURL,
-              let decoder = url.path.withCString({ ps_open($0, &info, &error, 256) }) else {
+        let url = descriptor.sourceURL
+        guard let decoder = url.path.withCString({ ps_open($0, &info, &error, 256) }) else {
             mark(String(format: "NATIVE VERDICT tiles=%.2f proxy=%.2f (source unreadable)", tilesEnergy, proxyEnergy))
             return
         }
