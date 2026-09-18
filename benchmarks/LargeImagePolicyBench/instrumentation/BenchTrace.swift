@@ -239,8 +239,7 @@ enum BenchTrace {
                                              viewSize: CGSize,
                                              backing: CGFloat) {
         guard let descriptor = captured.descriptor,
-              let _ = proxy,
-              let proxy = viewer.viewerState.currentImage,
+              let proxy,
               let renderer = MetalImageRenderer(device: MTLCreateSystemDefaultDevice()),
               let device = renderer.device as MTLDevice? else {
             mark("NATIVE comparison: no renderer")
