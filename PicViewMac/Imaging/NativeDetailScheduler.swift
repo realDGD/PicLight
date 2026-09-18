@@ -67,13 +67,39 @@ public actor NativeDetailScheduler {
     /// Tiles from a cancelled pass that arrived after the token changed, dropped before they could
     /// be stored.
     private(set) var staleDecodedTilesDiscarded = 0
+    /// Acceptance work still queued for the running pass. A pass is not finished until its producer
+    /// has stopped *and* every tile it emitted has been accepted: the per-tile actor entries are
+    /// unstructured tasks, so their arrival order relative to `passEnded` is not guaranteed.
+    private var passOutstanding: TileCounter?
+    private var producerFinishedToken: Int?
+    private var producerProduced = 0
+    private var producerFailure: String?
+    /// Tiles the provider emitted for the last finished pass, counted on the provider thread.
+    private(set) var lastPassProduced = 0
+    private(set) var lastPassAccepted = 0
+    /// Test-only: records that the pass emitted a tile, the way the provider callback does.
+    func noteEmittedTileForTesting() { passOutstanding?.increment() }
+
+    /// Test-only: the provider has stopped emitting.
+    func noteProducerFinishedForTesting(token: Int, produced: Int) {
+        if let outstanding = passOutstanding {
+            producerFinished(token: token, produced: produced, outstanding: outstanding, failure: nil)
+        }
+    }
+
+    /// Test-only: the plan waiting behind the running pass.
+    var pendingPlanForTesting: NativeTilePlan? { pendingPlan }
+
+    /// Test-only: how many tiles the last finished pass accepted.
+    var lastPassAcceptedForTesting: Int { lastPassAccepted }
+
     /// The pass token, for tests that need to hand a tile to the validation path.
     var passTokenForTesting: Int { generation }
 
     /// Runs the tile-acceptance path directly, so a test can present a tile from a stale token
     /// without having to race a real pass for one.
     func acceptDecodedTileForTesting(_ tile: NativeTile, token: Int) async {
-        acceptDecodedTile(tile, token: token, counter: TileCounter())
+        acceptDecodedTile(tile, token: token, outstanding: passOutstanding ?? TileCounter())
     }
 
     /// The metadata the running pass was started with, for tests of the snapshot contract.
@@ -253,6 +279,10 @@ public actor NativeDetailScheduler {
         inFlightKeys = Set(wanted.filter { cache.tile(for: $0) == nil })
 
         let counter = TileCounter()
+        let outstanding = TileCounter()
+        passOutstanding = outstanding
+        producerFinishedToken = nil
+        passAccepted = 0
         passTask = Task.detached(priority: .utility) { [weak self] in
             guard let scheduler = self else { return }
             let cancelFlag = CancelFlag()
@@ -265,35 +295,37 @@ public actor NativeDetailScheduler {
                                      onTile: { tile in
                                          // Called on the pass's thread, once per tile. The tile is
                                          // handed to the actor, which validates the token *before*
-                                         // storing it: storing first let a cancelled pass's late tile
-                                         // into the CPU cache, where it displaced live tiles.
+                                         // storing it, and the outstanding counter is raised here so
+                                         // the pass cannot be declared finished while this tile is
+                                         // still queued for acceptance.
+                                         counter.increment()
+                                         outstanding.increment()
                                          Task {
-                                             await scheduler.acceptDecodedTile(tile, token: token,
-                                                                               counter: counter)
+                                             await scheduler.acceptDecodedTile(
+                                                 tile, token: token, outstanding: outstanding)
                                          }
                                      })
             } catch {
                 failure = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
             cancelFlag.set()
-            await scheduler.passEnded(token: token, produced: counter.value, failure: failure)
+            await scheduler.producerFinished(token: token, produced: counter.value,
+                                             outstanding: outstanding, failure: failure)
         }
     }
-
-    /// Actor-isolated read so the pass's thread gets a Sendable value.
-    private func currentColorSpace() -> CGColorSpace? { colorSpace }
-
-    private func currentOrientation() -> SourceOrientation { orientation }
 
     /// Validates the pass token, then stores and publishes. The order matters: the previous version
     /// stored the tile and only then checked the token, so tiles from a cancelled pass entered the
     /// CPU cache even though they were never shown.
-    private func acceptDecodedTile(_ tile: NativeTile, token: Int, counter: TileCounter) {
+    private func acceptDecodedTile(_ tile: NativeTile, token: Int, outstanding: TileCounter) {
+        outstanding.decrement()
+        defer { maybeFinishPass() }
         guard token == generation else {
+            // A real invalidation: this pass was superseded before its tail arrived.
             staleDecodedTilesDiscarded += 1
             return
         }
-        counter.increment()
+        passAccepted += 1
         cache.store(tile)
         // `deliver` owns the rest (in-flight bookkeeping, stats, the publish callback).
         deliver(tile, token: token)
@@ -304,6 +336,36 @@ public actor NativeDetailScheduler {
         stats.tilesDelivered += 1
         inFlightKeys.remove(tile.key)
         onTile?(tile)
+    }
+
+    /// Called when the producer is done and when each acceptance completes. The pass finishes only
+    /// when both are true, so a pending plan cannot start — and invalidate the tail tiles that were
+    /// already decoded — before they have been accepted.
+    private func maybeFinishPass() {
+        guard let token = producerFinishedToken, let outstanding = passOutstanding,
+              outstanding.value == 0 else { return }
+        producerFinishedToken = nil
+        passOutstanding = nil
+        let produced = producerProduced
+        let failure = producerFailure
+        producerProduced = 0
+        producerFailure = nil
+        lastPassProduced = produced
+        lastPassAccepted = passAccepted
+        passAccepted = 0
+        passEnded(token: token, produced: produced, failure: failure)
+    }
+
+    private var passAccepted = 0
+
+    /// The producer has stopped emitting. The pass may still have tiles queued for acceptance.
+    private func producerFinished(token: Int, produced: Int, outstanding: TileCounter,
+                                  failure: String?) {
+        guard token == generation else { return }
+        producerFinishedToken = token
+        producerProduced = produced
+        producerFailure = failure
+        maybeFinishPass()
     }
 
     private func passEnded(token: Int, produced: Int, failure: String?) {
@@ -329,6 +391,7 @@ final class TileCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
     func increment() { lock.lock(); count += 1; lock.unlock() }
+    func decrement() { lock.lock(); count -= 1; lock.unlock() }
     var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }
 

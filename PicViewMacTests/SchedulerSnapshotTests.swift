@@ -63,7 +63,7 @@ final class SchedulerSnapshotTests: XCTestCase {
     func testAStaleDecodedTileNeverEntersTheCache() async throws {
         let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
         let scheduler = NativeDetailScheduler(cache: cache, tileSize: 512)
-        let source = Fixtures.url(fixtureName)
+        let source = Fixtures.url("oversized-detail.png")
         await scheduler.request(plan: try plan(x: 0), source: source, epoch: 1)
         let liveToken = await scheduler.passTokenForTesting
 
@@ -114,6 +114,102 @@ final class SchedulerSnapshotTests: XCTestCase {
             token: await scheduler.passTokenForTesting)
         await scheduler.request(plan: try plan(x: 2048), source: sourceB, epoch: 3)
         XCTAssertNotNil(cache.tile(for: keyB), "a same-source request keeps its warm tiles")
+    }
+    /// A pass is not finished while tiles it already emitted are still queued for acceptance.
+    /// Otherwise a pending plan would start first, bump the generation, and the tail tiles would be
+    /// classified as stale even though the provider decoded them successfully.
+    func testAPassWaitsForItsTailTilesBeforeFinishing() async throws {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        let scheduler = NativeDetailScheduler(cache: cache, tileSize: 512)
+        let source = Fixtures.url("oversized-detail.png")
+        await scheduler.request(plan: try plan(x: 0), source: source, epoch: 1)
+        let token = await scheduler.passTokenForTesting
+        let passesAtStart = await scheduler.statistics().passes
+        XCTAssertEqual(passesAtStart, 0)
+
+        // The provider emits three tiles and stops, with two of them still queued for acceptance.
+        for _ in 0..<3 { await scheduler.noteEmittedTileForTesting() }
+        await scheduler.noteProducerFinishedForTesting(token: token, produced: 3)
+        let passesAfterProducer = await scheduler.statistics().passes
+        XCTAssertEqual(passesAfterProducer, 0,
+                       "the pass may not finish while emitted tiles are still queued")
+
+        func tile(_ x: Int) throws -> NativeTile {
+            let key = NativeTileKey(sourcePath: source.path, tileSize: 512, x: x, y: 0)
+            return NativeTile(key: key, sourceRect: CGRect(x: x, y: 0, width: 512, height: 320),
+                              image: try XCTUnwrap(self.thumbnail(width: 512, height: 320)))
+        }
+        await scheduler.acceptDecodedTileForTesting(try tile(0), token: token)
+        await scheduler.acceptDecodedTileForTesting(try tile(512), token: token)
+        let passesMidDrain = await scheduler.statistics().passes
+        let staleMidDrain = await scheduler.staleDecodedTilesDiscarded
+        XCTAssertEqual(passesMidDrain, 0, "still one acceptance outstanding")
+        XCTAssertEqual(staleMidDrain, 0,
+                       "nothing here is stale: these are tiles the pass really decoded")
+
+        await scheduler.acceptDecodedTileForTesting(try tile(1024), token: token)
+        let passesAfterDrain = await scheduler.statistics().passes
+        let produced = await scheduler.lastPassProduced
+        let accepted = await scheduler.lastPassAcceptedForTesting
+        let staleAfterDrain = await scheduler.staleDecodedTilesDiscarded
+        XCTAssertEqual(passesAfterDrain, 1,
+                       "the pass finishes once its acceptance work is drained")
+        XCTAssertEqual(produced, 3, "produced counts what the provider emitted")
+        XCTAssertEqual(accepted, 3, "accepted counts what reached the cache")
+        XCTAssertEqual(staleAfterDrain, 0, "and no live tile was mislabelled stale")
+        XCTAssertEqual(cache.count, 3, "all three are in the cache")
+    }
+
+    /// The pending-plan variant: the queued plan starts only after the old pass's tail is accepted,
+    /// and those tiles keep the old token, so they are stored rather than discarded.
+    func testAPendingPlanStartsOnlyAfterTheTailIsAccepted() async throws {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        let scheduler = NativeDetailScheduler(cache: cache, tileSize: 512)
+        let source = Fixtures.url("oversized-detail.png")
+        await scheduler.request(plan: try plan(x: 0), source: source, epoch: 1)
+        let firstToken = await scheduler.passTokenForTesting
+
+        // A small move within the same source: the running pass covers the viewport, so the second
+        // request becomes a pending plan instead of starting a new pass.
+        await scheduler.request(plan: try plan(x: 512), source: source, epoch: 2)
+        let tokenAfterSecondRequest = await scheduler.passTokenForTesting
+        XCTAssertEqual(tokenAfterSecondRequest, firstToken,
+                       "the second request must not start a new pass yet")
+
+        await scheduler.noteEmittedTileForTesting()
+        await scheduler.noteProducerFinishedForTesting(token: firstToken, produced: 1)
+        let stillPending = await scheduler.pendingPlanForTesting
+        XCTAssertNotNil(stillPending,
+                        "the pending plan is still queued until the tail is accepted")
+
+        let key = NativeTileKey(sourcePath: source.path, tileSize: 512, x: 0, y: 0)
+        let tile = NativeTile(key: key, sourceRect: CGRect(x: 0, y: 0, width: 512, height: 320),
+                              image: try XCTUnwrap(thumbnail(width: 512, height: 320)))
+        await scheduler.acceptDecodedTileForTesting(tile, token: firstToken)
+        XCTAssertNotNil(cache.tile(for: key),
+                        "the tail tile was decoded by a live pass, so it is stored")
+        let staleAfterTail = await scheduler.staleDecodedTilesDiscarded
+        XCTAssertEqual(staleAfterTail, 0, "it must not be counted as stale")
+    }
+
+    /// A pass that really is superseded still drops its late tiles before they reach the cache.
+    func testATrulySupersededPassStillDropsItsLateTiles() async throws {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        let scheduler = NativeDetailScheduler(cache: cache, tileSize: 512)
+        let source = Fixtures.url("oversized-detail.png")
+        await scheduler.request(plan: try plan(x: 0), source: source, epoch: 1)
+        let oldToken = await scheduler.passTokenForTesting
+        await scheduler.noteEmittedTileForTesting()
+
+        // A purge invalidates the pass outright.
+        await scheduler.stopAndPurge(epoch: 2)
+        let key = NativeTileKey(sourcePath: source.path, tileSize: 512, x: 0, y: 0)
+        let tile = NativeTile(key: key, sourceRect: CGRect(x: 0, y: 0, width: 512, height: 320),
+                              image: try XCTUnwrap(thumbnail(width: 512, height: 320)))
+        await scheduler.acceptDecodedTileForTesting(tile, token: oldToken)
+        XCTAssertNil(cache.tile(for: key), "a superseded pass's tile never reaches the cache")
+        let staleCount = await scheduler.staleDecodedTilesDiscarded
+        XCTAssertEqual(staleCount, 1, "and it is counted as stale, which is what it is")
     }
 }
 
