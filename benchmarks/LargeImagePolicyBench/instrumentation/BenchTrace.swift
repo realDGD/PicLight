@@ -397,6 +397,27 @@ enum BenchTrace {
         return nil
     }
 
+    /// Rapid panning with native detail active: the publication generation and the stale-plan guard
+    /// are the two things that must keep up, and the trace records both after each move.
+    static func scheduleRapidPan() {
+        guard enabled,
+              ProcessInfo.processInfo.environment["PICLIGHT_BENCH_RAPIDPAN"] == "1" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 55) {
+            guard let window = NSApp.windows.first(where: { $0.isVisible }),
+                  let viewer = window.contentViewController as? ViewerViewController else { return }
+            let offsets: [Double] = [0.5, -0.5, 0.75, -0.75, 1.0, -1.0]
+            for (index, offset) in offsets.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.6) {
+                    mark("RAPIDPAN move \(index) offset \(offset)")
+                    viewer.panForTesting(byViewports: offset)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        reportResidency(viewer: viewer, label: "rapidpan \(index)")
+                    }
+                }
+            }
+        }
+    }
+
     /// The production residency diagnostics, printed as a mark so the run's own trace carries them.
     private static func reportResidency(viewer: ViewerViewController, label: String) {
         let d = viewer.nativeDetailDiagnostics()
@@ -414,6 +435,12 @@ enum BenchTrace {
              + "warmSubmitted=\(p.warmSubmissionCount) maxPending=\(p.maxPendingPublications) "
              + "duration=\(String(format: "%.0f", p.publicationDurationMS))ms "
              + "mainThread=\(String(format: "%.0f", p.mainThreadPublicationMS))ms")
+        mark("PUBSTALE \(label): stalePublications=\(p.stalePublicationDiscarded) "
+             + "runs=\(p.publicationRuns)")
+        let t = viewer.thumbnailRequestDiagnostics()
+        mark("THUMBNAILS \(label): requests=\(t.requests) active=\(t.active) "
+             + "retryQueued=\(t.retryQueued) maxConcurrentPerURL=\(t.maxConcurrentPerURL) "
+             + "staleDeliveriesIgnored=\(t.staleDeliveriesIgnored)")
         mark("STALEPLAN \(label): skip=\(d.gpuStalePlanSkipped) discard=\(d.gpuStalePlanDiscarded) "
              + "insertions=\(d.gpuResidentInsertions) duplicates=\(d.gpuDuplicateDiscarded)")
         mark("INVARIANTS \(label): creations=\(d.gpuTextureCreations) stale=\(d.gpuStaleDiscarded) "

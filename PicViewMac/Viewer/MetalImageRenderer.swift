@@ -177,6 +177,13 @@ public final class MetalImageRenderer {
         return tileTextures.mapValues { Self.byteCost(of: $0) }
     }
 
+    /// The tiles the renderer currently holds textures for, for tests that assert a stale
+    /// publication did not rewrite the resident set.
+    func residentKeySnapshot() -> Set<NativeTileKey> {
+        tileTextureLock.lock(); defer { tileTextureLock.unlock() }
+        return Set(tileTextures.keys.map { $0.tile })
+    }
+
     func debugHasTexture(_ key: TileTextureKey) -> Bool {
         tileTextureLock.lock(); defer { tileTextureLock.unlock() }
         return tileTextures[key] != nil

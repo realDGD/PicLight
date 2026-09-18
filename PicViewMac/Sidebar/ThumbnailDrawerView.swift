@@ -82,6 +82,28 @@ public final class ThumbnailDrawerView: MaterialHostView {
         cell.setThumbnail(image)
     }
 
+    /// Delivers a thumbnail by identity instead of by the row number captured when the request
+    /// started: the items may have been reordered, inserted into, deleted from or reloaded while the
+    /// request was in flight, and the old index would then belong to a different file.
+    ///
+    /// Returns false when the item is no longer in the list, so the caller can count a delivery it
+    /// deliberately dropped. The image itself stays in the caller's cache: whenever that URL becomes
+    /// visible again the provider serves it from there.
+    @discardableResult
+    public func updateThumbnail(for url: URL, image: CGImage) -> Bool {
+        guard let index = items.firstIndex(where: { $0.url == url }) else { return false }
+        updateThumbnail(at: index, image: image)
+        return true
+    }
+
+    /// The image a row is showing, for tests of the delivery identity.
+    func thumbnailImageForTesting(at index: Int) -> CGImage? {
+        guard let cell = tableView.view(atColumn: 0, row: index, makeIfNecessary: true)
+            as? ThumbnailCellView else { return nil }
+        return (cell.thumbnailImageView as? NSImageView)?.image
+            .flatMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+    }
+
     public func setCurrentIndex(_ index: Int?) {
         currentIndex = index
         applySelection()

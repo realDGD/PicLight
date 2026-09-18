@@ -471,8 +471,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // reading the previous file.
         detailWorkItem?.cancel()
         detailWorkItem = nil
-        detailPlan = nil
-        detailSource = nil
+        setDetailPlan(nil, source: nil)
         inFlightLevel = nil
         detailCapability.removeAll()
         publishNativeTiles([], residentKeys: [])
@@ -594,8 +593,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                                   physicalScale: physicalScale) else {
             // The proxy resolves everything on screen: drop the tiles and their memory
             // rather than keep a cache the viewport cannot use.
-            detailPlan = nil
-            detailSource = nil
+            setDetailPlan(nil, source: nil)
             publishNativeTiles([], residentKeys: [])
             Task { await self.nativeDetail.stopAndPurge() }
             return
@@ -627,8 +625,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // keeps their upload out of the main thread's way.
         canvas.setTileMipmapsEnabled(physicalScale < 1.0)
         let plan = warmPlan.plan
-        detailPlan = plan
-        detailSource = item.url
+        setDetailPlan(plan, source: item.url)
         // Keep what is resident for the *new* plan: publishing empty with an empty resident set here
         // trimmed every texture on each plan update, so a pan re-uploaded tiles that were already on
         // the GPU (measured: 18 uploads for a half-viewport pan whose tiles were all warm).
@@ -649,7 +646,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// visited region is sharp immediately — and hands the rest of the plan to the renderer's
     /// background uploader.
     private func publishCachedTiles(for plan: NativeTilePlan, source: URL) async {
-        await refreshPublishedSets(for: plan, source: source)
+        await refreshPublishedSets(for: plan, source: source,
+                                   generation: detailPublicationGeneration)
     }
 
     /// The three sets, explicitly: visible (drawn), warm (resident, not drawn), and the union the
@@ -657,12 +655,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// previous version published visible+warm as the draw list *and* computed the warm set as the
     /// difference against that same list, which made it empty and left the background uploader
     /// with nothing to do.
-    private func refreshPublishedSets(for plan: NativeTilePlan, source: URL) async {
+    private func refreshPublishedSets(for plan: NativeTilePlan, source: URL,
+                                      generation: UInt64) async {
         let started = Date()
         let visible = await nativeDetail.cachedVisibleTiles(for: plan, source: source)
         let warm = await nativeDetail.cachedWarmTiles(for: plan, source: source)
         let residentKeys = await nativeDetail.residentKeys(for: plan, source: source)
+        if let hook = publicationPauseHook { await hook() }
         await MainActor.run {
+            // The plan may have changed while this publication was reading the scheduler. Applying
+            // now would put the previous plan's tiles back on the canvas and hand the renderer the
+            // previous resident set, bypassing the renderer's own stale-plan guard from above.
+            guard generation == self.detailPublicationGeneration else {
+                self.publicationStats.stalePublicationDiscarded += 1
+                return
+            }
             self.publicationStats.publicationRuns += 1
             self.publicationStats.visibleTilesMaterialized += visible.count
             self.publicationStats.warmTilesMaterialized += warm.count
@@ -685,6 +692,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func publishNativeTiles(_ tiles: [NativeTile], residentKeys: Set<NativeTileKey>) {
+        publishedResidentKeys = residentKeys
         if tiles.isEmpty { submittedWarmKeys = [] }
         canvas.nativeTiles = tiles
         // Trim against what is *resident*, not against what is drawn: trimming to the draw set
@@ -697,6 +705,28 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// them is a draw rather than an upload. Bounded by the GPU budget the renderer was given.
     /// Tiles currently drawn, for the acceptance runner and the tests.
     private(set) var nativeDetailTileCount = 0
+
+    /// The renderer's resident set, for tests that assert a stale publication did not rewrite it.
+    var residentKeysForTesting: Set<NativeTileKey> {
+        canvas.metalRendererForTesting?.residentKeySnapshot() ?? []
+    }
+
+    /// The resident set the viewer last published, which is what it hands the renderer. Unlike the
+    /// renderer's own set this is not subject to live eviction, so a test can compare it exactly.
+    var publishedResidentKeysForTesting: Set<NativeTileKey> { publishedResidentKeys }
+
+    /// Pans by a number of viewports, the way a drag does: the same input the acceptance harness
+    /// uses to move the viewport without touching the zoom.
+    func panForTesting(byViewports viewports: Double) {
+        var viewport = canvasViewportForTesting
+        let visibleWidth = viewport.zoomScale > 0 ? canvas.bounds.width / viewport.zoomScale : 0
+        let sourceWidth = viewerState.descriptor?.displayPixelSize.width ?? 8448
+        guard sourceWidth > 0 else { return }
+        viewport.normalizedCenter = CGPoint(
+            x: viewport.normalizedCenter.x + (visibleWidth * viewports / sourceWidth),
+            y: viewport.normalizedCenter.y)
+        canvasViewportForTesting = viewport
+    }
 
     /// The tiles the canvas is holding, for tests that need to inspect their pixels.
     var canvasNativeTilesForTesting: [NativeTile] { canvas.nativeTiles }
@@ -793,8 +823,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         var warmSubmissionCount = 0
         var pendingPublications = 0
         var maxPendingPublications = 0
-        var publicationDurationMS = 0.0
-        var mainThreadPublicationMS = 0.0
+        public var publicationDurationMS = 0.0
+        public var mainThreadPublicationMS = 0.0
+        /// Publications dropped because the plan changed while they were reading the scheduler.
+        public var stalePublicationDiscarded = 0
+        public var generation = 0
     }
 
     private(set) var publicationStats = PublicationDiagnostics()
@@ -802,6 +835,24 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var submittedWarmKeys: Set<NativeTileKey> = []
     private var publicationScheduled = false
     private var publicationDirty = false
+    private var publishedResidentKeys: Set<NativeTileKey> = []
+    /// Bumped whenever the plan, its source, or the bitmap changes. A publication that started under
+    /// an older generation may not apply its result: it would put the previous plan's tiles back on
+    /// screen and hand the renderer the previous resident set, bypassing the renderer's own
+    /// stale-plan guard from above.
+    private var detailPublicationGeneration: UInt64 = 0
+
+    /// Test-only: awaited inside a publication between the scheduler reads and the apply, so a test
+    /// can change the plan while a publication is in flight without depending on real timing.
+    var publicationPauseHook: (() async -> Void)?
+
+    /// The plan and its source are set together, and every change invalidates publications that are
+    /// still reading the scheduler.
+    private func setDetailPlan(_ plan: NativeTilePlan?, source: URL?) {
+        detailPlan = plan
+        detailSource = source
+        detailPublicationGeneration &+= 1
+    }
 
     /// How long arrivals are collected before one publication runs. Zero means one run-loop turn:
     /// the progressive display must not be delayed by a debounce.
@@ -1024,9 +1075,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             return
         }
         publicationDirty = false
+        let generation = detailPublicationGeneration
         Task { [weak self] in
             guard let self else { return }
-            await self.refreshPublishedSets(for: plan, source: url)
+            await self.refreshPublishedSets(for: plan, source: url, generation: generation)
             self.finishPublication()
         }
     }
@@ -1153,10 +1205,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Re-requests the current item's thumbnail once its bitmap exists. The cell already exists and
     /// is not rebuilt, so without this the row keeps the placeholder although the source it needs is
     /// now in memory.
-    private func retryCurrentItemThumbnail() {
+    /// Test entry point: what the drawer asks for when a row needs its thumbnail.
+    func requestThumbnailForTesting(_ item: FolderItem) {
+        guard let index = session.items.firstIndex(where: { $0.url == item.url }) else { return }
+        requestThumbnail(at: index, for: item)
+    }
+
+    /// How many thumbnail requests have been started for one URL, for tests that assert a retry did
+    /// not duplicate work while other URLs were legitimately in flight.
+    func thumbnailRequestsForTesting(_ url: URL) -> Int { thumbnailRequestsPerURL[url] ?? 0 }
+
+    func retryCurrentItemThumbnail() {
+        // Never clears the in-flight flag: a request that is still running is exactly the case this
+        // retry must not duplicate, and `requestThumbnail` queues the retry behind it instead.
         guard let item = session.currentItem, let index = session.currentIndex,
               thumbnailCache[item.url] == nil, viewerState.currentImage != nil else { return }
-        inFlightThumbnails[item.url] = nil
         requestThumbnail(at: index, for: item)
     }
 
@@ -1164,18 +1227,47 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     func hasCachedThumbnailForTesting(_ url: URL) -> Bool { thumbnailCache[url] != nil }
 
     private func requestThumbnail(at index: Int, for item: FolderItem) {
-        guard inFlightThumbnails[item.url] == nil, thumbnailCache[item.url] == nil else { return }
+        guard thumbnailCache[item.url] == nil else { return }
+        guard inFlightThumbnails[item.url] == nil else {
+            // One request per URL at a time. The retry is queued and only started if this request
+            // turns out to have produced a placeholder.
+            thumbnailRetryQueued.insert(item.url)
+            return
+        }
         inFlightThumbnails[item.url] = true
         thumbnailRequestCount += 1
+        thumbnailRequestsPerURL[item.url, default: 0] += 1
+        activeThumbnailRequests += 1
+        activeThumbnailRequestsPerURL[item.url, default: 0] += 1
+        maxConcurrentThumbnailRequestsPerURL = max(maxConcurrentThumbnailRequestsPerURL,
+                                                   activeThumbnailRequestsPerURL[item.url] ?? 0)
         Task { [weak self] in
             guard let self else { return }
-            defer { self.inFlightThumbnails[item.url] = nil }
             // `nil` leaves the cell as a placeholder: an oversized neighbour is not
             // worth a full-stream decode for a 300 px cell.
-            guard let image = await self.thumbnailImage(for: item) else { return }
-            self.thumbnailCache[item.url] = image
-            self.drawer.updateThumbnail(at: index, image: image)
+            let image = await self.thumbnailImage(for: item)
+            self.finishThumbnailRequest(item, image: image)
         }
+    }
+
+    /// Clears the request state first, so a queued retry can start immediately rather than being
+    /// deferred behind the request that just ended.
+    private func finishThumbnailRequest(_ item: FolderItem, image: CGImage?) {
+        inFlightThumbnails[item.url] = nil
+        activeThumbnailRequests -= 1
+        activeThumbnailRequestsPerURL[item.url, default: 0] -= 1
+        if let image {
+            thumbnailCache[item.url] = image
+            // Delivered by URL: the row captured when the request started may now belong to a
+            // different item.
+            if !drawer.updateThumbnail(for: item.url, image: image) {
+                thumbnailStaleDeliveriesIgnored += 1
+            }
+            return
+        }
+        guard thumbnailRetryQueued.remove(item.url) != nil, viewerState.currentImage != nil,
+              let index = session.items.firstIndex(where: { $0.url == item.url }) else { return }
+        requestThumbnail(at: index, for: item)
     }
 
     /// Row size for a drawer cell thumbnail.
@@ -1194,6 +1286,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// drawer: a windowless test never creates cells, so it would never issue a
     /// thumbnail request and could "pass" while proving nothing.
     func thumbnailImage(for item: FolderItem) async -> CGImage? {
+        if let hook = thumbnailPauseHook { await hook() }
         if item.url == session.currentItem?.url, let bitmap = viewerState.currentImage {
             return await thumbnails.preview(from: bitmap, maxPixelSize: Self.drawerThumbnailPixelSize)
         }
@@ -1203,6 +1296,35 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private var thumbnailCache: [URL: CGImage] = [:]
     private var inFlightThumbnails: [URL: Bool] = [:]
+    /// Retries that arrived while a request was already running for the same URL. Starting a second
+    /// request instead is what the state machine has to prevent.
+    private var thumbnailRetryQueued: Set<URL> = []
+    private var activeThumbnailRequests = 0
+    private var activeThumbnailRequestsPerURL: [URL: Int] = [:]
+    private var thumbnailRequestsPerURL: [URL: Int] = [:]
+    private var maxConcurrentThumbnailRequestsPerURL = 0
+    private var thumbnailStaleDeliveriesIgnored = 0
+
+    /// Test-only: awaited at the start of `thumbnailImage(for:)` so a test can hold a request open.
+    var thumbnailPauseHook: (() async -> Void)?
+
+    struct ThumbnailRequestDiagnostics: Equatable {
+        var requests = 0
+        /// Requests running right now, across all URLs.
+        var active = 0
+        var retryQueued = 0
+        /// The highest number of concurrent requests ever observed for a single URL.
+        var maxConcurrentPerURL = 0
+        var staleDeliveriesIgnored = 0
+    }
+
+    func thumbnailRequestDiagnostics() -> ThumbnailRequestDiagnostics {
+        ThumbnailRequestDiagnostics(requests: thumbnailRequestCount,
+                                    active: activeThumbnailRequests,
+                                    retryQueued: thumbnailRetryQueued.count,
+                                    maxConcurrentPerURL: maxConcurrentThumbnailRequestsPerURL,
+                                    staleDeliveriesIgnored: thumbnailStaleDeliveriesIgnored)
+    }
 
     // MARK: - Chrome visibility
 
