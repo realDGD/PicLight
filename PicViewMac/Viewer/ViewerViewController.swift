@@ -632,22 +632,39 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         publishNativeTiles([], residentKeys: residentKeysForTesting(plan: plan, source: item.url))
         warmTileCount = 0
         let url = item.url
+        // Everything a request needs is captured here, while the plan is created, on the main actor:
+        // the generation it belongs to and the source metadata it must be decoded with. Reading any
+        // of it inside the task would let a request for one source run with another source's
+        // orientation or colour space, and let an abandoned plan read the *current* generation and
+        // pass the publication guard as if it were current.
+        let generation = detailPublicationGeneration
+        let colorSpace = bitmap.colorSpace
+        let orientation = SourceOrientation(descriptor.orientation)
         Task { [weak self] in
             guard let self else { return }
+            if let hook = self.directRequestPauseHook { await hook() }
+            guard generation == self.detailPublicationGeneration else {
+                self.staleDirectRequestSkips += 1
+                return
+            }
+            self.recordRequestSnapshotForTesting(url, colorSpace, orientation)
             await self.nativeDetail.request(plan: plan, source: url,
-                                            colorSpace: self.viewerState.currentImage?.colorSpace,
-                                            orientation: SourceOrientation(
-                                                self.viewerState.descriptor?.orientation ?? .up))
-            await self.publishCachedTiles(for: plan, source: url)
+                                            colorSpace: colorSpace,
+                                            orientation: orientation)
+            guard generation == self.detailPublicationGeneration else {
+                self.staleDirectPublicationDiscards += 1
+                return
+            }
+            await self.publishCachedTiles(for: plan, source: url, generation: generation)
         }
     }
 
     /// Publishes what the viewport can use right now — cached visible tiles, so a pan back to a
     /// visited region is sharp immediately — and hands the rest of the plan to the renderer's
     /// background uploader.
-    private func publishCachedTiles(for plan: NativeTilePlan, source: URL) async {
-        await refreshPublishedSets(for: plan, source: source,
-                                   generation: detailPublicationGeneration)
+    private func publishCachedTiles(for plan: NativeTilePlan, source: URL,
+                                    generation: UInt64) async {
+        await refreshPublishedSets(for: plan, source: source, generation: generation)
     }
 
     /// The three sets, explicitly: visible (drawn), warm (resident, not drawn), and the union the
@@ -705,6 +722,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// them is a draw rather than an upload. Bounded by the GPU budget the renderer was given.
     /// Tiles currently drawn, for the acceptance runner and the tests.
     private(set) var nativeDetailTileCount = 0
+
+    /// The current item's URL, for tests that switch sources.
+    var currentItemURLForTesting: URL? { session.currentItem?.url }
 
     /// The renderer's resident set, for tests that assert a stale publication did not rewrite it.
     var residentKeysForTesting: Set<NativeTileKey> {
@@ -845,6 +865,26 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Test-only: awaited inside a publication between the scheduler reads and the apply, so a test
     /// can change the plan while a publication is in flight without depending on real timing.
     var publicationPauseHook: (() async -> Void)?
+
+    /// Test-only: awaited at the top of the direct request task, before it reads any metadata or
+    /// calls the scheduler, so a test can change the source while the request is still pending.
+    var directRequestPauseHook: (() async -> Void)?
+
+    /// Test-only: what the last direct request put on the wire — the source it asked for and the
+    /// metadata it sent with it. A request whose source and metadata come from different snapshots
+    /// shows up here.
+    var requestSnapshotsForTesting: [(source: URL, colorSpace: CGColorSpace?,
+                                     orientation: SourceOrientation)] = []
+
+    func recordRequestSnapshotForTesting(_ source: URL, _ colorSpace: CGColorSpace?,
+                                         _ orientation: SourceOrientation) {
+        requestSnapshotsForTesting.append((source, colorSpace, orientation))
+    }
+
+    /// Test-only counters, so a test can tell "the request never started" apart from "the request ran
+    /// and its publication was dropped".
+    private(set) var staleDirectRequestSkips = 0
+    private(set) var staleDirectPublicationDiscards = 0
 
     /// The plan and its source are set together, and every change invalidates publications that are
     /// still reading the scheduler.
@@ -1265,7 +1305,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             }
             return
         }
-        guard thumbnailRetryQueued.remove(item.url) != nil, viewerState.currentImage != nil,
+        // Always consume the queued retry, whatever the outcome: leaving it set would fire it later
+        // against a state it was not queued for.
+        guard thumbnailRetryQueued.remove(item.url) != nil else { return }
+        // The retry exists for one situation: the current item had no bitmap when it was first asked
+        // for, and now it does. Once the user has moved to another item that situation is gone, and
+        // starting the request again would only decode a placeholder nobody is waiting for.
+        guard session.currentItem?.url == item.url else {
+            thumbnailRetryDroppedBecauseNoLongerCurrent += 1
+            return
+        }
+        guard viewerState.currentImage != nil,
               let index = session.items.firstIndex(where: { $0.url == item.url }) else { return }
         requestThumbnail(at: index, for: item)
     }
@@ -1304,6 +1354,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var thumbnailRequestsPerURL: [URL: Int] = [:]
     private var maxConcurrentThumbnailRequestsPerURL = 0
     private var thumbnailStaleDeliveriesIgnored = 0
+    private(set) var thumbnailRetryDroppedBecauseNoLongerCurrent = 0
 
     /// Test-only: awaited at the start of `thumbnailImage(for:)` so a test can hold a request open.
     var thumbnailPauseHook: (() async -> Void)?
@@ -1316,6 +1367,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         /// The highest number of concurrent requests ever observed for a single URL.
         var maxConcurrentPerURL = 0
         var staleDeliveriesIgnored = 0
+        /// Queued retries dropped because the user had moved to another item by the time the
+        /// placeholder result came back.
+        var retryDroppedNotCurrent = 0
     }
 
     func thumbnailRequestDiagnostics() -> ThumbnailRequestDiagnostics {
@@ -1323,7 +1377,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                     active: activeThumbnailRequests,
                                     retryQueued: thumbnailRetryQueued.count,
                                     maxConcurrentPerURL: maxConcurrentThumbnailRequestsPerURL,
-                                    staleDeliveriesIgnored: thumbnailStaleDeliveriesIgnored)
+                                    staleDeliveriesIgnored: thumbnailStaleDeliveriesIgnored,
+                                    retryDroppedNotCurrent: thumbnailRetryDroppedBecauseNoLongerCurrent)
     }
 
     // MARK: - Chrome visibility

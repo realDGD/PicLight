@@ -238,6 +238,38 @@ final class ThumbnailRequestStateTests: XCTestCase {
         viewer.thumbnailPauseHook = nil
     }
 
+    /// A queued retry belongs to the item that was current when it was queued. If the user has moved
+    /// on by the time the placeholder result comes back, starting it again decodes a placeholder for
+    /// a row that is no longer waiting for anything.
+    func testAQueuedRetryIsDroppedWhenTheUserMovesToAnotherItem() throws {
+        let (viewer, controller, item) = try makeViewer()
+        defer { controller.close() }
+        // Catch the first request for the current item, which happens before its bitmap exists.
+        let gate = PauseGate()
+        viewer.thumbnailPauseHook = gate.hookAll
+        XCTAssertTrue(pump(until: { viewer.thumbnailRequestsForTesting(item.url) == 1 }, timeout: 15),
+                      "the first request must be running")
+        viewer.retryCurrentItemThumbnail()          // queued behind the running request
+        XCTAssertGreaterThanOrEqual(viewer.thumbnailRequestDiagnostics().retryQueued, 1)
+
+        // The user moves to the next file and its bitmap arrives.
+        viewer.perform(.nextImage)
+        XCTAssertTrue(pump(until: { viewer.currentItemURLForTesting != item.url }, timeout: 15),
+                      "the current item must change")
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }, timeout: 15),
+                      "the new item's bitmap must exist before the old result comes back")
+        let before = viewer.thumbnailRequestsForTesting(item.url)
+
+        gate.releaseAll()
+        XCTAssertTrue(pump(until: { viewer.thumbnailRequestDiagnostics().active == 0 }, timeout: 15))
+        _ = pump(until: { false }, timeout: 0.3)
+        XCTAssertEqual(viewer.thumbnailRequestsForTesting(item.url), before,
+                       "the old item's queued retry must not start another request")
+        XCTAssertGreaterThanOrEqual(viewer.thumbnailRequestDiagnostics().retryDroppedNotCurrent, 1,
+                                    "and the drop is counted")
+        viewer.thumbnailPauseHook = nil
+    }
+
     /// Once the thumbnail is cached a retry is a no-op — the guard that keeps already-satisfied rows
     /// from starting work.
     func testRetryIsANoOpOnceTheThumbnailIsCached() throws {

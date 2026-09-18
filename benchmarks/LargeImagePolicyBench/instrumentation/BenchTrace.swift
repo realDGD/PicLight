@@ -397,6 +397,26 @@ enum BenchTrace {
         return nil
     }
 
+    /// Switch to the next file and back, quickly, so the direct request path runs under a source and
+    /// plan change — the path the generation capture and the metadata snapshot exist for.
+    static func scheduleItemSwitch() {
+        guard enabled,
+              ProcessInfo.processInfo.environment["PICLIGHT_BENCH_SWITCH"] == "1" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 62) {
+            guard let window = NSApp.windows.first(where: { $0.isVisible }),
+                  let viewer = window.contentViewController as? ViewerViewController else { return }
+            for step in 0..<6 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 0.4) {
+                    viewer.perform(step % 2 == 0 ? .nextImage : .previousImage)
+                    mark("SWITCH step \(step)")
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+                reportResidency(viewer: viewer, label: "after switch")
+            }
+        }
+    }
+
     /// Rapid panning with native detail active: the publication generation and the stale-plan guard
     /// are the two things that must keep up, and the trace records both after each move.
     static func scheduleRapidPan() {
@@ -436,11 +456,14 @@ enum BenchTrace {
              + "duration=\(String(format: "%.0f", p.publicationDurationMS))ms "
              + "mainThread=\(String(format: "%.0f", p.mainThreadPublicationMS))ms")
         mark("PUBSTALE \(label): stalePublications=\(p.stalePublicationDiscarded) "
-             + "runs=\(p.publicationRuns)")
+             + "runs=\(p.publicationRuns) generation=\(p.generation)")
+        mark("DIRECTSTALE \(label): requestSkips=\(viewer.staleDirectRequestSkips) "
+             + "publicationDiscards=\(viewer.staleDirectPublicationDiscards)")
         let t = viewer.thumbnailRequestDiagnostics()
         mark("THUMBNAILS \(label): requests=\(t.requests) active=\(t.active) "
              + "retryQueued=\(t.retryQueued) maxConcurrentPerURL=\(t.maxConcurrentPerURL) "
-             + "staleDeliveriesIgnored=\(t.staleDeliveriesIgnored)")
+             + "staleDeliveriesIgnored=\(t.staleDeliveriesIgnored) "
+             + "retryDroppedNotCurrent=\(t.retryDroppedNotCurrent)")
         mark("STALEPLAN \(label): skip=\(d.gpuStalePlanSkipped) discard=\(d.gpuStalePlanDiscarded) "
              + "insertions=\(d.gpuResidentInsertions) duplicates=\(d.gpuDuplicateDiscarded)")
         mark("INVARIANTS \(label): creations=\(d.gpuTextureCreations) stale=\(d.gpuStaleDiscarded) "
