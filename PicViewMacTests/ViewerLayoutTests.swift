@@ -78,22 +78,22 @@ final class ViewerLayoutTests: XCTestCase {
         defer { controller.close() }
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
         XCTAssertEqual(dock.commands,
-                       [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomToFitWidth,
-                        .previousImage, .nextImage, .zoomActualPixels, .moveToTrash,
-                        .showImageInfo])
+                       [.zoomOut, .zoomIn, .zoomToFit, .zoomToFitWidth, .zoomActualPixels,
+                        .previousImage, .nextImage,
+                        .rotateClockwise, .toggleMirror, .moveToTrash,
+                        .toggleThumbnailDrawer, .showImageInfo])
     }
 
     /// Adjustments first, then moving through the folder, then the zoom and file
     /// actions - with the navigation pair sitting in the middle of the dock.
     func testDockUsesTheRequestedZoomSymbols() {
-        let symbols = ViewerToolDockView.toolDefinitions
-        XCTAssertEqual(symbols.first { $0.command == .zoomToFit }?.symbol,
+        XCTAssertEqual(ViewerToolDockView.fitSymbol,
                        "arrow.down.left.and.arrow.up.right.rectangle")
-        XCTAssertEqual(symbols.first { $0.command == .zoomToFitWidth }?.symbol,
-                       "arrow.left.and.right.square")
-        // Both must actually resolve on this system.
-        for name in ["arrow.down.left.and.arrow.up.right.rectangle", "arrow.left.and.right.square"] {
-            XCTAssertNotNil(NSImage(systemSymbolName: name, accessibilityDescription: nil), name)
+        XCTAssertEqual(ViewerToolDockView.fitWidthSymbol, "arrow.left.and.right.square")
+        // Every symbol the dock declares must actually resolve on this system.
+        for item in ViewerToolDockView.layout {
+            guard case let .command(symbol, _, _) = item else { continue }
+            XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), symbol)
         }
     }
 
@@ -106,18 +106,20 @@ final class ViewerLayoutTests: XCTestCase {
         let nextIndex = try XCTUnwrap(commands.firstIndex(of: .nextImage))
         XCTAssertEqual(nextIndex, previousIndex + 1, "the navigation pair is adjacent")
 
-        let centre = Double(commands.count - 1) / 2
-        let pairCentre = Double(previousIndex + nextIndex) / 2
-        XCTAssertLessThanOrEqual(abs(pairCentre - centre), 1.0,
-                                 "the pair sits within one slot of the dock's centre "
-                                   + "(\(pairCentre) vs \(centre))")
+        // The pair sits inside the navigation group, with the zoom group before it and the image
+        // actions after. The dock used to be one flat strip with the pair in the middle; the
+        // redesign gives it four groups, so the contract is the group's position, not the centre.
+        let zoomGroup = try XCTUnwrap(commands.firstIndex(of: .zoomToFit))
+        let firstImageAction = try XCTUnwrap(commands.firstIndex(of: .rotateClockwise))
+        XCTAssertLessThan(zoomGroup, previousIndex, "zoom leads")
+        XCTAssertLessThan(nextIndex, firstImageAction, "navigation precedes the image actions")
+        XCTAssertEqual(nextIndex, previousIndex + 1, "and the pair is adjacent")
 
         // Group separators, drawn as arranged subviews that are not buttons.
         let separators = dock.subviews.compactMap { $0 as? NSStackView }
             .flatMap { $0.arrangedSubviews.filter { $0 is NSBox } }
-        XCTAssertEqual(separators.count, 3,
-                       "one before the pair, one before the zoom group, one before the pin")
-        _ = centre
+        XCTAssertEqual(separators.count, 4,
+                       "one between each pair of groups, plus the pin's own")
     }
 
     /// Presence and enabled state are not enough: a button with no icon renders as

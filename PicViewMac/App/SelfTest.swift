@@ -498,19 +498,27 @@ enum SelfTest {
               "the drawer is content only")
 
         check("tool dock carries the viewer commands",
-              dock.commands == [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomToFitWidth,
-                                .previousImage, .nextImage, .zoomActualPixels,
-                                .moveToTrash, .showImageInfo],
+              dock.commands == [.zoomOut, .zoomIn, .zoomToFit, .zoomToFitWidth,
+                                .zoomActualPixels, .previousImage, .nextImage,
+                                .rotateClockwise, .toggleMirror, .moveToTrash,
+                                .toggleThumbnailDrawer, .showImageInfo],
               "\(dock.commands.count) commands")
         let pairIndexes = dock.commands.indices.filter {
             [.previousImage, .nextImage].contains(dock.commands[$0])
         }
         let pairCentre = pairIndexes.isEmpty ? -1
             : Double(pairIndexes.reduce(0, +)) / Double(pairIndexes.count)
-        check("previous/next sit in the middle of the dock",
-              pairIndexes.count == 2
-                && abs(pairCentre - Double(dock.commands.count - 1) / 2) <= 1.0,
-              "pair centre \(pairCentre) of \(dock.commands.count)")
+        check("previous/next are adjacent",
+              pairIndexes.count == 2 && pairIndexes[1] == pairIndexes[0] + 1,
+              "pair at \(pairIndexes)")
+        check("the pin is the last control in the dock",
+              dock.arrangedViewsForTesting.last === dock.pinControl)
+        check("the dock reports a real zoom percentage",
+              dock.zoomReadoutText.hasSuffix("%") && !dock.zoomReadoutText.isEmpty,
+              dock.zoomReadoutText)
+        check("the dock reports the folder position",
+              dock.positionReadoutText.contains("/"),
+              dock.positionReadoutText)
         check("tool dock is a viewer subview, not a window",
               dock.isDescendant(of: viewer.view))
 

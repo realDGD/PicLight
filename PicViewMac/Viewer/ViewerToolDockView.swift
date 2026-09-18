@@ -39,28 +39,74 @@ public final class ViewerToolDockView: MaterialHostView {
     public var onPinChanged: ((Bool) -> Void)?
     public private(set) var isPinned = false
 
-    /// Layout: image adjustments and zoom on the left, the folder navigation pair in
-    /// the middle, file and information actions on the right. `isGroupStart` draws a
-    /// hairline separator before the entry.
+    /// Multiplicative zoom step. A fixed percentage delta would make a small zoom crawl and a
+    /// large one jump; a ratio moves the same visual distance at every scale.
+    public static let zoomStep: CGFloat = 1.25
+
+    /// Symbols the dock owns by name, so a test can assert the control without rendering it.
+    public static let zoomOutSymbol = "minus.magnifyingglass"
+    public static let zoomInSymbol = "plus.magnifyingglass"
+    public static let fitSymbol = "arrow.down.left.and.arrow.up.right.rectangle"
+    public static let fitWidthSymbol = "arrow.left.and.right.square"
+    public static let actualPixelsSymbol = "1.square"
+    public static let previousSymbol = "chevron.left"
+    public static let nextSymbol = "chevron.right"
+    public static let rotateSymbol = "rotate.right"
+    public static let mirrorSymbol = "arrow.left.and.right.righttriangle.left.righttriangle.right"
+    public static let trashSymbol = "trash"
+    public static let browserSymbol = "square.grid.3x3.square"
+    public static let drawerSymbol = "sidebar.left"
+    public static let infoSymbol = "info.circle"
+
+    /// One entry in the dock, in layout order. The list *is* the layout: the stack is built from
+    /// it, so a test can assert the grouping without measuring a rendered view.
     ///
-    /// The pair is centred deliberately: four tools precede it and three follow, so it
-    /// sits within half a slot of the dock's middle.
-    static let toolDefinitions: [(symbol: String, command: ViewerCommand, tooltip: String,
-                                  isGroupStart: Bool)] = [
-        ("rotate.right", .rotateClockwise, "顺时针旋转", false),
-        ("arrow.left.and.right.righttriangle.left.righttriangle.right", .toggleMirror, "水平镜像", false),
-        ("arrow.down.left.and.arrow.up.right.rectangle", .zoomToFit, "适应窗口", false),
-        ("arrow.left.and.right.square", .zoomToFitWidth, "适应宽度", false),
-        ("arrow.left", .previousImage, "上一张", true),
-        ("arrow.right", .nextImage, "下一张", false),
-        ("1.square", .zoomActualPixels, "实际像素 100%", true),
-        ("trash", .moveToTrash, "移到废纸篓", false),
-        ("info.circle", .showImageInfo, "图像信息", false),
+    /// A readout is not a control. The zoom percentage and the position report state the dock does
+    /// not own — the viewport and the folder session respectively — which is why they are cases
+    /// here rather than labels the dock keeps its own copy of.
+    public enum Item: Equatable, Sendable {
+        case command(symbol: String, command: ViewerCommand, tooltip: String)
+        case separator
+        /// The live zoom percentage, from `ViewportState.zoomPercent`.
+        case zoomReadout
+        /// `current / total`, from `FolderSession.positionDescription`.
+        case positionReadout
+        case pin
+    }
+
+    /// Logical groups, left to right: zoom, navigation, image actions, browser/chrome actions,
+    /// and the pin — which is last, behind its own separator, because it governs the dock itself
+    /// rather than the image.
+    public static let layout: [Item] = [
+        .command(symbol: zoomOutSymbol, command: .zoomOut, tooltip: "缩小"),
+        .zoomReadout,
+        .command(symbol: zoomInSymbol, command: .zoomIn, tooltip: "放大"),
+        .command(symbol: fitSymbol, command: .zoomToFit, tooltip: "适应窗口"),
+        .command(symbol: fitWidthSymbol, command: .zoomToFitWidth, tooltip: "适应宽度"),
+        .command(symbol: actualPixelsSymbol, command: .zoomActualPixels, tooltip: "实际像素 100%"),
+        .separator,
+        .command(symbol: previousSymbol, command: .previousImage, tooltip: "上一张"),
+        .positionReadout,
+        .command(symbol: nextSymbol, command: .nextImage, tooltip: "下一张"),
+        .separator,
+        .command(symbol: rotateSymbol, command: .rotateClockwise, tooltip: "顺时针旋转"),
+        .command(symbol: mirrorSymbol, command: .toggleMirror, tooltip: "水平镜像"),
+        .command(symbol: trashSymbol, command: .moveToTrash, tooltip: "移到废纸篓"),
+        .separator,
+        .command(symbol: drawerSymbol, command: .toggleThumbnailDrawer,
+                 tooltip: "显示 / 隐藏缩略图抽屉"),
+        .command(symbol: infoSymbol, command: .showImageInfo, tooltip: "图像信息"),
+        .separator,
+        .pin,
     ]
 
     private let stack = NSStackView()
     private let playbackButton = DockButton(symbol: "pause.fill", tooltip: "暂停 / 播放")
-    private var toolButtons: [DockButton] = []
+    /// Buttons that map to a `ViewerCommand`, in layout order. The pin and the playback button are
+    /// not among them: neither is a viewer command.
+    private(set) var commandButtons: [DockButton] = []
+    private let zoomLabel = ViewerToolDockView.makeReadoutLabel()
+    private let positionLabel = ViewerToolDockView.makeReadoutLabel()
     /// The live `info.circle` button, so `isInfoVisible` reports the dock rather than
     /// a button that was never added to it.
     private var infoButton: DockButton?
@@ -81,26 +127,32 @@ public final class ViewerToolDockView: MaterialHostView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
-        for definition in Self.toolDefinitions {
-            if definition.isGroupStart { stack.addArrangedSubview(Self.separator()) }
-            let button = DockButton(symbol: definition.symbol, tooltip: definition.tooltip)
-            button.onActivate = { [weak self] in self?.onCommand?(definition.command) }
-            if definition.command == .showImageInfo { infoButton = button }
-            toolButtons.append(button)
-            stack.addArrangedSubview(button)
+        for item in Self.layout {
+            switch item {
+            case let .command(symbol, command, tooltip):
+                let button = DockButton(symbol: symbol, tooltip: tooltip)
+                button.onActivate = { [weak self] in self?.onCommand?(command) }
+                if command == .showImageInfo { infoButton = button }
+                commandButtons.append(button)
+                stack.addArrangedSubview(button)
+            case .separator:
+                stack.addArrangedSubview(Self.separator())
+            case .zoomReadout:
+                stack.addArrangedSubview(zoomLabel)
+            case .positionReadout:
+                stack.addArrangedSubview(positionLabel)
+            case .pin:
+                pinButton.onActivate = { [weak self] in self?.togglePinned() }
+                stack.addArrangedSubview(pinButton)
+            }
         }
 
         playbackButton.setSymbol("pause.fill")
         playbackButton.isHidden = true
         playbackButton.onActivate = { [weak self] in self?.onCommand?(.togglePlayback) }
-        stack.addArrangedSubview(playbackButton)
-
-        // The pin is the last control and sits behind its own separator: it governs
-        // the dock itself rather than the image, so it must not read as one more
-        // image action.
-        stack.addArrangedSubview(Self.separator())
-        pinButton.onActivate = { [weak self] in self?.togglePinned() }
-        stack.addArrangedSubview(pinButton)
+        // The playback button belongs with the image actions, not after the pin: everything before
+        // the trailing separator is dock content, and everything after is the dock's own control.
+        stack.insertArrangedSubview(playbackButton, at: playbackInsertionIndex)
 
         wireHoverNeighbours()
 
@@ -114,8 +166,54 @@ public final class ViewerToolDockView: MaterialHostView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    /// Commands the dock exposes, for tests and for the acceptance runner.
-    public var commands: [ViewerCommand] { Self.toolDefinitions.map(\.command) }
+    /// Commands the dock exposes, in layout order, for tests and for the acceptance runner.
+    public var commands: [ViewerCommand] {
+        Self.layout.compactMap {
+            if case let .command(_, command, _) = $0 { return command }
+            return nil
+        }
+    }
+
+    /// Where the playback button goes: immediately before the separator that precedes the pin, so
+    /// it reads as one more image action.
+    private var playbackInsertionIndex: Int {
+        let pinIndex = stack.arrangedSubviews.firstIndex { $0 === pinButton } ?? stack.arrangedSubviews.count
+        let separatorBefore = stack.arrangedSubviews[..<pinIndex]
+            .lastIndex { ($0 as? NSBox)?.boxType == .separator } ?? pinIndex
+        return separatorBefore
+    }
+
+    /// A readout: a fixed-width label so the pill does not twitch every time the number changes.
+    private static func makeReadoutLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.widthAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
+        return label
+    }
+
+    /// The zoom percentage, taken from the viewport's own state. The dock never computes a zoom of
+    /// its own: it reports the one the canvas is using.
+    public func setZoomPercent(_ percent: Int) {
+        zoomLabel.stringValue = "\(percent)%"
+    }
+
+    /// `current / total`, from the same `FolderSession` source the info HUD reads.
+    public func setPosition(_ description: String) {
+        positionLabel.stringValue = description
+    }
+
+    /// The strip's arranged subviews, in layout order, for tests that check the order of what is
+    /// actually in the stack rather than the declaration it was built from.
+    var arrangedViewsForTesting: [NSView] { stack.arrangedSubviews }
+
+    /// The readouts as rendered, for tests.
+    var zoomReadoutText: String { zoomLabel.stringValue }
+    var positionReadoutText: String { positionLabel.stringValue }
+    var zoomReadoutView: NSTextField { zoomLabel }
+    var positionReadoutView: NSTextField { positionLabel }
 
     /// A hairline between tool groups.
     private static func separator() -> NSBox {
@@ -157,8 +255,8 @@ public final class ViewerToolDockView: MaterialHostView {
     /// The pin button, for tests and the acceptance runner.
     var pinControl: DockButton { pinButton }
 
-    /// Total controls in the strip, in layout order — the pin included.
-    var allButtons: [DockButton] { toolButtons + [playbackButton, pinButton] }
+    /// Every button in the strip, in layout order — the pin included.
+    var allButtons: [DockButton] { commandButtons + [playbackButton, pinButton] }
 
     // MARK: - Geometry
 
@@ -389,7 +487,11 @@ final class DockButton: NSButton {
     private func applyScale(duration: TimeInterval) {
         guard let layer else { return }
         let bounds = layer.bounds
-        let scale = effectiveScale
+        // Reduce Motion drops the enlargement and the press dip outright rather than merely
+        // making them instant: a jumping icon is still motion, and the setting asks for less of it.
+        // `effectiveScale` keeps the composed value either way — it is the model, this is the
+        // rendering of it.
+        let scale = AccessibilityAppearance.reduceMotion ? 1 : effectiveScale
         var transform = CATransform3DIdentity
         transform = CATransform3DTranslate(transform, bounds.width / 2, bounds.height / 2, 0)
         transform = CATransform3DScale(transform, scale, scale, 1)

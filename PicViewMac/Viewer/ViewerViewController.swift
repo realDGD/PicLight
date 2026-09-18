@@ -1519,6 +1519,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The chrome state the views are currently showing, so a tick can tell whether anything
     /// needs re-applying.
     private var appliedChromeSnapshot: ViewerChromeModel.Snapshot?
+    /// The dock visibility the views are currently showing, so a repeated request for the same
+    /// state does not re-issue the transition.
+    private var appliedDockVisible: Bool?
 
     private func applyChromeVisibility() {
         let snapshot = chrome.snapshot
@@ -1628,7 +1631,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The slide is a layer transform, so the dock's frame never changes and the
     /// canvas keeps exactly the geometry it had while the dock was hidden. Reduce
     /// Motion collapses both the fade and the slide to nothing.
+    /// Transitions actually started. The acceptance evidence that a pointer sweep does not
+    /// restart the dock's animation is this number not moving.
+    private(set) var dockVisibilityTransitionCount = 0
+
     private func setDockChrome(visible: Bool) {
+        // Target-state idempotent. `applyChromeVisibility` runs on every pointer move, and the
+        // dock's visibility is derived from the hover model each time; without this guard the
+        // fade and the slide were re-issued on every event, so the dock never settled while the
+        // pointer was inside its reveal strip.
+        guard appliedDockVisible != visible else { return }
+        appliedDockVisible = visible
+        dockVisibilityTransitionCount += 1
         let reduceMotion = AccessibilityAppearance.reduceMotion
         let duration = AccessibilityAppearance.chromeAnimationDuration(reduceMotion: reduceMotion)
         let offset = ViewerToolDockView.hiddenOffset(reduceMotion: reduceMotion)
@@ -1758,6 +1772,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .lastImage:
             pendingDirection = .forward
             session.goLast()
+        case .zoomIn:
+            canvas.zoomBy(factor: ViewerToolDockView.zoomStep)
+        case .zoomOut:
+            canvas.zoomBy(factor: 1 / ViewerToolDockView.zoomStep)
         case .zoomToFit:
             canvas.setZoomToFit()
         case .zoomToFitWidth:
@@ -1882,6 +1900,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                          descriptor: viewerState.descriptor, viewport: canvas.viewport,
                          metadata: viewerState.metadata,
                          pageDescription: viewerState.pageDescription)
+        // The dock's readouts come from the same two sources as the HUD's: one viewport and one
+        // folder session, so the two surfaces can never disagree about either number.
+        toolDock.setZoomPercent(canvas.viewport.zoomPercent)
+        toolDock.setPosition(session.positionDescription)
     }
 
     /// Viewport-only update: panning and zooming move the rectangle and must never

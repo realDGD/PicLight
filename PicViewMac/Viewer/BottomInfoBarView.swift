@@ -52,4 +52,8 @@ public final class BottomInfoBarView: MaterialHostView {
         }
         label.stringValue = parts.joined(separator: "   ·   ")
     }
+
+    /// The line as rendered, for tests and for the acceptance runner: "what does the readout
+    /// actually say" is a question about the view, not about the inputs it was handed.
+    var renderedText: String { label.stringValue }
 }

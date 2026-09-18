@@ -10,6 +10,8 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
     case previousImage
     case firstImage
     case lastImage
+    case zoomIn
+    case zoomOut
     case zoomToFit
     case zoomToFitWidth
     case zoomActualPixels
@@ -36,6 +38,8 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
         case .previousImage: return "上一张图像"
         case .firstImage: return "第一张图像"
         case .lastImage: return "最后一张图像"
+        case .zoomIn: return "放大"
+        case .zoomOut: return "缩小"
         case .zoomToFit: return "适应窗口"
         case .zoomToFitWidth: return "适应宽度"
         case .zoomActualPixels: return "实际像素 100%"

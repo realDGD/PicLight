@@ -153,6 +153,16 @@ public final class ImageCanvasView: NSView {
         viewport = updated
     }
 
+    /// Multiplies the zoom by `factor`, around the centre of the view.
+    ///
+    /// Goes through the same intent the wheel and pinch gestures produce, so the clamping rules
+    /// (never below a quarter of Fit, never above the 40× ceiling) and the "zoom is around a point"
+    /// behaviour are one implementation rather than a second one that can drift.
+    public func zoomBy(factor: CGFloat) {
+        guard renderImage != nil, factor > 0, factor.isFinite else { return }
+        apply(.zoom(factor: factor, anchor: CGPoint(x: bounds.midX, y: bounds.midY)))
+    }
+
     public func setZoomToFit() {
         guard renderImage != nil else { return }
         var updated = viewport
