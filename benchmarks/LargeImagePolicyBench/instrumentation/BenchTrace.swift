@@ -366,6 +366,16 @@ enum BenchTrace {
                          + " image " + String(format: "%.0fx%.0f at (%.0f,%.0f)",
                                               image.width, image.height, image.minX, image.minY)
                          + " border " + String(format: "%.0fx%.0f", border.width, border.height)
+                         + " card " + String(format: "%.0fx%.0f at (%.0f,%.0f)",
+                                             cell.selectionBackgroundView.frame.width,
+                                             cell.selectionBackgroundView.frame.height,
+                                             cell.selectionBackgroundView.frame.minX,
+                                             cell.selectionBackgroundView.frame.minY)
+                         + " label " + String(format: "%.0fx%.0f at (%.0f,%.0f)",
+                                              cell.nameLabelView.frame.width,
+                                              cell.nameLabelView.frame.height,
+                                              cell.nameLabelView.frame.minX,
+                                              cell.nameLabelView.frame.minY)
                          + " current=\(!cell.selectionBorderView.isHidden) hasImage=\(hasImage)")
                 }
             }
@@ -395,6 +405,32 @@ enum BenchTrace {
             if let found = findView(ofType: ofType, in: sub) { return found }
         }
         return nil
+    }
+
+    /// Empty the folder (the "last item deleted" case) while native detail is active, then report
+    /// what is left behind: plan, tiles, textures.
+    static func scheduleEmptyState() {
+        guard enabled,
+              ProcessInfo.processInfo.environment["PICLIGHT_BENCH_EMPTY"] == "1" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 70) {
+            guard let window = NSApp.windows.first(where: { $0.isVisible }),
+                  let viewer = window.contentViewController as? ViewerViewController else { return }
+            mark("EMPTY before: plan=\(viewer.detailPlanForTesting != nil) "
+                 + "canvasTiles=\(viewer.canvasNativeTilesForTesting.count) "
+                 + "resident=\(viewer.residentKeysForTesting.count) "
+                 + "cpuCache=\(viewer.nativeDetailDiagnostics().cpuCacheTiles)")
+            viewer.session.setItems([], preferredIdentity: nil)
+            viewer.reloadCurrentImageForTesting()
+            for delay in [1.0, 4.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    let d = viewer.nativeDetailDiagnostics()
+                    mark("EMPTY after: plan=\(viewer.detailPlanForTesting != nil) "
+                         + "canvasTiles=\(viewer.canvasNativeTilesForTesting.count) "
+                         + "resident=\(viewer.residentKeysForTesting.count) "
+                         + "cpuCache=\(d.cpuCacheTiles) gpuResident=\(d.gpuResidentTiles)")
+                }
+            }
+        }
     }
 
     /// Switch to the next file and back, quickly, so the direct request path runs under a source and

@@ -6,6 +6,10 @@ import AppKit
 final class ThumbnailCellView: NSTableCellView {
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("ThumbnailCellView")
     static let thumbnailHeight: CGFloat = 132
+    /// The slot the filename occupies inside the selection card. Fixed, so showing or hiding the
+    /// filename on hover cannot make the card jump.
+    static let filenameSlotHeight: CGFloat = 18
+    static let cardPadding: CGFloat = 8
     static let rowHeight: CGFloat = 168
 
     private let imageView2 = NSImageView()
@@ -57,10 +61,18 @@ final class ThumbnailCellView: NSTableCellView {
         addSubview(nameLabel)
 
         NSLayoutConstraint.activate([
-            selectionBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            selectionBackground.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            // The selection card wraps the thumbnail and the filename slot, not the whole row. The
+            // row is 168 pt tall by design, so binding the card to the cell painted the selection
+            // colour over a large empty band under a wide image.
+            selectionBackground.leadingAnchor.constraint(equalTo: imageView2.leadingAnchor,
+                                                         constant: -Self.cardPadding),
+            selectionBackground.trailingAnchor.constraint(equalTo: imageView2.trailingAnchor,
+                                                          constant: Self.cardPadding),
+            selectionBackground.topAnchor.constraint(equalTo: imageView2.topAnchor,
+                                                     constant: -Self.cardPadding),
+            selectionBackground.bottomAnchor.constraint(equalTo: imageView2.bottomAnchor,
+                                                        constant: Self.cardPadding
+                                                            + Self.filenameSlotHeight),
 
             imageView2.centerXAnchor.constraint(equalTo: centerXAnchor),
             imageView2.topAnchor.constraint(equalTo: topAnchor, constant: 8),
@@ -134,6 +146,8 @@ final class ThumbnailCellView: NSTableCellView {
     /// Exposed for tests: the current-item frame must outrank the thumbnail.
     var selectionBorderView: NSView { selectionBorder }
     var thumbnailImageView: NSView { imageView2 }
+    var selectionBackgroundView: NSView { selectionBackground }
+    var nameLabelView: NSView { nameLabel }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

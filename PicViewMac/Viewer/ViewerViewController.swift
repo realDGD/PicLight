@@ -456,6 +456,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             onTitleChanged?(nil)
             refreshBottomBar()
             renderEmptyState()
+            // No image, so no native detail: without this the pass for the deleted image kept
+            // running, its tile arrivals kept scheduling publications, and its textures stayed
+            // resident (measured: 12 resident textures and 12 cached tiles after the last item went
+            // away, with the plan still set).
+            clearNativeDetail()
             return
         }
 
@@ -469,13 +474,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         stopAnimation()
         // Tiles belong to one source: drop them with the image, and stop any pass still
         // reading the previous file.
-        detailWorkItem?.cancel()
-        detailWorkItem = nil
-        setDetailPlan(nil, source: nil)
+        clearNativeDetail()
         inFlightLevel = nil
         detailCapability.removeAll()
-        publishNativeTiles([], residentKeys: [])
-        Task { await self.nativeDetail.stopAndPurge() }
         // A pending resize upgrade belongs to the image being replaced.
         resizeUpgradeWorkItem?.cancel()
         resizeUpgradeWorkItem = nil
@@ -578,7 +579,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         detailWorkItem = nil
         guard let item = session.currentItem, let descriptor = viewerState.descriptor,
               let bitmap = viewerState.currentImage else {
-            publishNativeTiles([], residentKeys: [])
+            // Nothing to show native detail for: stop the pass and drop its tiles and textures
+            // rather than only emptying the draw list.
+            clearNativeDetail()
             return
         }
         let sourceSize = descriptor.displayPixelSize
@@ -593,9 +596,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                                   physicalScale: physicalScale) else {
             // The proxy resolves everything on screen: drop the tiles and their memory
             // rather than keep a cache the viewport cannot use.
-            setDetailPlan(nil, source: nil)
-            publishNativeTiles([], residentKeys: [])
-            Task { await self.nativeDetail.stopAndPurge() }
+            clearNativeDetail()
             return
         }
 
@@ -616,7 +617,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                                  cpuBudgetBytes: nativeDetailCPUBudgetBytes,
                                                  margin: WarmAreaPolicy.requestedMargin,
                                                  directionHint: hint) else {
-            publishNativeTiles([], residentKeys: [])
+            // The geometry is unusable for a plan, which is a reason to disable native detail, not
+            // just to publish nothing: the previous plan and its pass would otherwise keep running.
+            clearNativeDetail()
             return
         }
         nativeDetailClampedByBudget = warmPlan.clampedByBudget
@@ -723,6 +726,26 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// them is a draw rather than an upload. Bounded by the GPU budget the renderer was given.
     /// Tiles currently drawn, for the acceptance runner and the tests.
     private(set) var nativeDetailTileCount = 0
+
+    /// Turns native detail off, completely. Every path that disables it goes through here: the
+    /// previous version had four hand-written variants, and two of them — the missing current item
+    /// and an unusable warm plan — cleared only the draw list, leaving the scheduler's pass running
+    /// and its textures resident for an image nobody was looking at any more.
+    private func clearNativeDetail() {
+        detailWorkItem?.cancel()
+        detailWorkItem = nil
+        setDetailPlan(nil, source: nil)
+        publishNativeTiles([], residentKeys: [])
+        warmTileCount = 0
+        submittedWarmKeys.removeAll()
+        lastDetailVisibleRect = nil
+        lastDetailDirectionHint = .zero
+        Task { await self.nativeDetail.stopAndPurge() }
+    }
+
+    /// Re-runs the image load with whatever the session currently holds — the way deleting the last
+    /// item in a folder does. Nothing else about the viewer changes.
+    func reloadCurrentImageForTesting() { loadCurrentImage() }
 
     /// The current item's URL, for tests that switch sources.
     var currentItemURLForTesting: URL? { session.currentItem?.url }
@@ -1264,6 +1287,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         requestThumbnail(at: index, for: item)
     }
 
+    /// Thumbnail cache size, counted the way the images are actually stored (w × h × 4). There is no
+    /// budget on it: this is the number that would justify one.
+    var thumbnailCacheCountForTesting: Int { thumbnailCache.count }
+
+    var thumbnailCacheBytesForTesting: Int {
+        thumbnailCache.values.reduce(0) { $0 + $1.width * $1.height * 4 }
+    }
+
     /// Whether a drawer thumbnail has been delivered, for tests and the acceptance runner.
     func hasCachedThumbnailForTesting(_ url: URL) -> Bool { thumbnailCache[url] != nil }
 
@@ -1294,6 +1325,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Clears the request state first, so a queued retry can start immediately rather than being
     /// deferred behind the request that just ended.
     private func finishThumbnailRequest(_ item: FolderItem, image: CGImage?) {
+        // Consumed by every completion, successful or not: the queued retry describes "this item had
+        // no bitmap yet", and once a request has completed there is nothing left for it to do. The
+        // success path used to return before this line, leaving the entry set so a later state could
+        // fire it against a request that had already been answered.
+        let hadQueuedRetry = thumbnailRetryQueued.remove(item.url) != nil
         inFlightThumbnails[item.url] = nil
         activeThumbnailRequests -= 1
         activeThumbnailRequestsPerURL[item.url, default: 0] -= 1
@@ -1306,9 +1342,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             }
             return
         }
-        // Always consume the queued retry, whatever the outcome: leaving it set would fire it later
-        // against a state it was not queued for.
-        guard thumbnailRetryQueued.remove(item.url) != nil else { return }
+        guard hadQueuedRetry else { return }
         // The retry exists for one situation: the current item had no bitmap when it was first asked
         // for, and now it does. Once the user has moved to another item that situation is gone, and
         // starting the request again would only decode a placeholder nobody is waiting for.

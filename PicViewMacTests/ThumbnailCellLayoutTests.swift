@@ -165,4 +165,109 @@ final class ThumbnailCellLayoutTests: XCTestCase {
         XCTAssertEqual(subject.selectionBorderView.frame.width,
                        subject.thumbnailImageView.frame.width + 8)
     }
+
+    // MARK: - Selection card geometry
+
+    /// The selection card must wrap the thumbnail and its filename slot, not the whole row: the row
+    /// is 168 pt tall, so a wide image left a large empty band painted in the selection colour.
+    func testSelectionCardWrapsTheContentNotTheRow() {
+        let cases: [(name: String, width: Int, height: Int)] = [
+            ("3:2 landscape", 300, 200),
+            ("1:1 square", 200, 200),
+            ("2:3 portrait", 200, 300),
+            ("4:1 ultra wide", 400, 100),
+            ("1:4 ultra tall", 100, 400),
+        ]
+        for entry in cases {
+            let subject = cell()
+            subject.configure(item: item(), image: nil, isCurrent: true, filenameMode: .always)
+            subject.layoutSubtreeIfNeeded()
+            subject.setThumbnail(image(width: entry.width, height: entry.height))
+            subject.layoutSubtreeIfNeeded()
+
+            let card = subject.selectionBackgroundView.frame
+            let box = subject.thumbnailImageView.frame
+            let row = subject.bounds.height
+            XCTAssertGreaterThan(card.width, box.width,
+                                 "\(entry.name): the card is a card, not the bare box")
+            XCTAssertLessThanOrEqual(card.height, row + 0.5,
+                                     "\(entry.name): the card must fit the row")
+            // The contract: the card is the image box plus the padding and the filename slot, so it
+            // hugs the content instead of the row. (The row is 168 pt by design, so for a tall
+            // thumbnail the card is necessarily close to it.)
+            let expected = box.height + 2 * ThumbnailCellView.cardPadding
+                + ThumbnailCellView.filenameSlotHeight
+            XCTAssertEqual(card.height, expected, accuracy: 0.5,
+                           "\(entry.name): the card must be the image box plus padding and slot")
+            if entry.width > entry.height {
+                XCTAssertLessThan(card.height, row - 4,
+                                  "\(entry.name): a wide image's card is strictly shorter than "
+                                  + "the row (card \(card.height) of row \(row))")
+            }
+            // The filename slot is inside the card, so the label sits within it.
+            let label = subject.nameLabelView.frame
+            XCTAssertGreaterThanOrEqual(label.minY, card.minY - 0.5, entry.name)
+            XCTAssertLessThanOrEqual(label.maxY, card.maxY + 0.5, entry.name)
+        }
+    }
+
+    /// Hiding the filename on hover must not resize the card.
+    func testSelectionCardHeightIsStableAcrossFilenameModes() {
+        let subject = cell()
+        subject.configure(item: item(), image: image(width: 300, height: 200), isCurrent: true,
+                          filenameMode: .always)
+        subject.layoutSubtreeIfNeeded()
+        let visible = subject.selectionBackgroundView.frame
+        subject.filenameMode = .hover            // hidden until the pointer enters
+        subject.layoutSubtreeIfNeeded()
+        let hidden = subject.selectionBackgroundView.frame
+        XCTAssertEqual(visible.height, hidden.height, accuracy: 0.5,
+                       "the card must not change height when the filename is hidden")
+        XCTAssertEqual(visible.minY, hidden.minY, accuracy: 0.5)
+    }
+
+    /// The card follows the image box for every shape, including the placeholder before an
+    /// asynchronous thumbnail arrives.
+    func testSelectionCardTracksTheImageBoxAcrossAsyncArrival() {
+        let subject = cell()
+        subject.configure(item: item(), image: nil, isCurrent: true, filenameMode: .always)
+        subject.layoutSubtreeIfNeeded()
+        let placeholder = subject.selectionBackgroundView.frame
+        XCTAssertGreaterThan(placeholder.width, 100,
+                             "the placeholder card must not collapse")
+        XCTAssertLessThan(placeholder.height, subject.bounds.height - 4,
+                          "nor fill the whole row")
+        XCTAssertEqual(placeholder.height,
+                       subject.thumbnailImageView.frame.height
+                           + 2 * ThumbnailCellView.cardPadding
+                           + ThumbnailCellView.filenameSlotHeight,
+                       accuracy: 0.5,
+                       "the placeholder card hugs the placeholder box")
+
+        subject.setThumbnail(image(width: 200, height: 300))
+        subject.layoutSubtreeIfNeeded()
+        let portrait = subject.selectionBackgroundView.frame
+        XCTAssertGreaterThan(portrait.height, placeholder.height,
+                             "a portrait thumbnail's card is taller than the placeholder's")
+        XCTAssertLessThanOrEqual(portrait.height, subject.bounds.height + 0.5)
+        XCTAssertGreaterThan(portrait.width, 0)
+    }
+
+    /// Cell reuse: the card must not keep a stale geometry.
+    func testSelectionCardFollowsReuse() {
+        let subject = cell()
+        subject.configure(item: item(), image: image(width: 400, height: 100), isCurrent: true,
+                          filenameMode: .always)
+        subject.layoutSubtreeIfNeeded()
+        let wide = subject.selectionBackgroundView.frame.height
+        subject.configure(item: item("b.png"), image: nil, isCurrent: true, filenameMode: .always)
+        subject.layoutSubtreeIfNeeded()
+        subject.setThumbnail(image(width: 200, height: 300))
+        subject.layoutSubtreeIfNeeded()
+        let tall = subject.selectionBackgroundView.frame.height
+        XCTAssertGreaterThan(tall, wide, "the card must follow the new aspect after reuse")
+        XCTAssertEqual(subject.selectionBackgroundView.frame.width,
+                       subject.thumbnailImageView.frame.width + 2 * ThumbnailCellView.cardPadding,
+                       accuracy: 0.5)
+    }
 }
