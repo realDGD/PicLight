@@ -18,6 +18,19 @@ enum BenchTrace {
     /// reported as "peakFootprint" was the footprint at finish, which understates
     /// short-lived transients.
     nonisolated(unsafe) static var peakFootprintSeen: Int64 = 0
+    nonisolated static let peakLock = NSLock()
+    /// The peak, taken under a lock: the heartbeat thread writes it and the main thread reads it in
+    /// `finish()`, and the unlocked version once reported 0.199 GiB for a run whose own pulse lines
+    /// showed 3.5 GiB. A metric that disagrees with itself is worse than no metric.
+    nonisolated static func recordFootprint(_ bytes: Int64) {
+        peakLock.lock()
+        if bytes > peakFootprintSeen { peakFootprintSeen = bytes }
+        peakLock.unlock()
+    }
+    nonisolated static func peakFootprint() -> Int64 {
+        peakLock.lock(); defer { peakLock.unlock() }
+        return peakFootprintSeen
+    }
     /// Frames the viewer actually published versus frames decoded and frames drawn:
     /// the gap between them is decode work that never reached the screen.
     nonisolated(unsafe) private static var appliedFrames = 0
@@ -416,7 +429,7 @@ enum BenchTrace {
             while true {
                 Thread.sleep(forTimeInterval: 0.25)
                 let m = currentMemory()
-                if m.footprint > peakFootprintSeen { peakFootprintSeen = m.footprint }
+                recordFootprint(m.footprint)
                 let pingStart = benchNow()
                 DispatchQueue.main.async {
                     let latency = benchNow() - pingStart
@@ -471,7 +484,7 @@ enum BenchTrace {
         out += lines.joined(separator: "\n") + "\n"
         out += String(format: "\npeakRSS_getrusage = %.3f GiB\n", Double(m.peakRSS) / 1073741824)
         out += String(format: "footprint_at_finish   = %.3f GiB\n", Double(m.peakFootprint) / 1073741824)
-        out += String(format: "peakFootprint_sampled = %.3f GiB (250 ms sampling)\n", Double(peakFootprintSeen) / 1073741824)
+        out += String(format: "peakFootprint_sampled = %.3f GiB (250 ms sampling)\n", Double(peakFootprint()) / 1073741824)
         out += String(format: "total_wall        = %.3f s\n", benchNow() - start)
         out += "canvas_draws      = \(drawCount)\n"
         out += "frames_applied    = \(appliedFrameCount)\n"

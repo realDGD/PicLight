@@ -417,6 +417,9 @@ if let renderer {
             private var firstAt: Double?
             private var count = 0
             private var decodeMS = 0.0
+            /// The device, held here because the tile callback is `@Sendable` and the renderer is
+            /// not. The bench only needs `makeTexture` from it.
+            var device: MTLDevice?
             func add(label: String, _ ms: Double) { lock.lock(); stages.append((label, ms)); lock.unlock() }
             func markFirst(_ ms: Double) { lock.lock(); if firstAt == nil { firstAt = ms }; count += 1; lock.unlock() }
             func addDecode(_ ms: Double) { lock.lock(); decodeMS = ms; lock.unlock() }
@@ -433,6 +436,7 @@ if let renderer {
             }
         }
         let box = StageBox()
+        box.device = renderer.device
         let start = monotonicNS()
         let provider = PNGNativeTileProvider()
         try? provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 0, colorSpace: nil,
@@ -456,7 +460,7 @@ if let renderer {
                 width: tile.image.width, height: tile.image.height, mipmapped: false)
             descriptor.usage = [.shaderRead]
             descriptor.storageMode = .shared
-            guard let texture = renderer.device.makeTexture(descriptor: descriptor),
+            guard let texture = box.device?.makeTexture(descriptor: descriptor),
                   let data = context.data else { return }
             box.add(label: "texture create", millis(phase, monotonicNS()))
             phase = monotonicNS()
