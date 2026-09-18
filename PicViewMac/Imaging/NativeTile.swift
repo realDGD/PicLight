@@ -212,7 +212,29 @@ public final class NativeTileCache: @unchecked Sendable {
         let tile: NativeTile
         let cost: Int
         var used: UInt64
+        /// The version of the source file this tile was decoded from. Compared against the version
+        /// the scheduler reports, so a file replaced at the same path can never be served from the
+        /// previous file's pixels — the key stays path-based, so no caller can build a mismatched one.
+        var sourceVersion: String
     }
+
+    /// Identity of the file the tiles for this path came from: size and modification date together,
+    /// because neither alone survives a fast replacement. Changing it drops that path's tiles.
+    public func setSourceVersion(_ version: String, for path: String) {
+        lock.lock(); defer { lock.unlock() }
+        sourceVersions[path] = version
+        for (key, entry) in entries where key.sourcePath == path && entry.sourceVersion != version {
+            storedBytes -= entry.cost
+            pinned.remove(key)
+            entries.removeValue(forKey: key)
+            versionMismatches += 1
+        }
+    }
+
+    /// Tiles dropped because their source file was replaced.
+    public private(set) var versionMismatches = 0
+
+    private var sourceVersions: [String: String] = [:]
 
     public init(totalCostLimit: Int = 192 * 1024 * 1024) {
         self.totalCostLimit = totalCostLimit
@@ -248,7 +270,8 @@ public final class NativeTileCache: @unchecked Sendable {
         clock += 1
         if let existing = entries[tile.key] { storedBytes -= existing.cost }
         let cost = tile.byteCost
-        entries[tile.key] = Entry(tile: tile, cost: cost, used: clock)
+        entries[tile.key] = Entry(tile: tile, cost: cost, used: clock,
+                                  sourceVersion: sourceVersions[tile.key.sourcePath] ?? "")
         storedBytes += cost
         evictIfNeeded()
     }

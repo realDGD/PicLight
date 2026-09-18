@@ -94,6 +94,15 @@ public actor NativeDetailScheduler {
         }
     }
 
+    /// Size and modification date together: a fast replacement changes the size or the date, and
+    /// neither alone is reliable.
+    static func sourceVersion(of url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let size = values?.fileSize ?? -1
+        let date = values?.contentModificationDate?.timeIntervalSince1970 ?? -1
+        return "\(size)-\(date)"
+    }
+
     /// Test-only: the page the running pass is decoding.
     var runningPageIndexForTesting: Int { runningPageIndex }
 
@@ -143,6 +152,7 @@ public actor NativeDetailScheduler {
                               colorSpace: CGColorSpace?, orientation: SourceOrientation) {
         self.colorSpace = colorSpace
         self.orientation = orientation
+        cache.setSourceVersion(Self.sourceVersion(of: source), for: source.path)
         // Tiles belong to one source. When the request is for a different one, the previous source's
         // tiles are dropped instead of being cached out of budget until something else evicts them;
         // a request for the same source keeps them, so a disable → re-enable stays warm.
