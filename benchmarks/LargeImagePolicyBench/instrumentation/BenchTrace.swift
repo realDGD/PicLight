@@ -325,6 +325,26 @@ enum BenchTrace {
                         line += image == nil ? "nil" : "image"
                         if let image { line += " \(image.width)x\(image.height)" }
                         mark(line)
+                        // Push it in directly and read the row again: if the cell takes it, the
+                        // source and the delivery both work and only the *request* is missing; if
+                        // the row still reports no image, the cell the probe reads is not the cell
+                        // the drawer updates.
+                        if let image {
+                            drawer.updateThumbnail(at: 0, image: image)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if let cell = table.view(atColumn: 0, row: 0, makeIfNecessary: true)
+                                        as? ThumbnailCellView {
+                                    let hasImage = (cell.thumbnailImageView as? NSImageView)?.image != nil
+                                    mark("DRAWER after direct update: hasImage=\(hasImage) "
+                                         + "image " + String(format: "%.0fx%.0f",
+                                                             cell.thumbnailImageView.frame.width,
+                                                             cell.thumbnailImageView.frame.height)
+                                         + " border " + String(format: "%.0fx%.0f",
+                                                               cell.selectionBorderView.frame.width,
+                                                               cell.selectionBorderView.frame.height))
+                                }
+                            }
+                        }
                     }
                 }
                 let rows = table.rows(in: table.visibleRect)
