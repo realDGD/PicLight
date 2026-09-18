@@ -6,8 +6,19 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [.executable(name: "PicViewMac", targets: ["PicViewMac"])],
     targets: [
+        // Row-streaming PNG decoder for native-detail tiles. ImageIO has no region
+        // decode (measured: a 512×512 crop of a 12000×9000 PNG costs a full decode and
+        // its 0.43 GiB peak), so native pixels for part of a huge image can only come
+        // from inflating the stream ourselves and keeping the rows the viewer needs.
+        .target(
+            name: "PicPNGStream",
+            path: "PicPNGStream",
+            publicHeadersPath: "include",
+            linkerSettings: [.linkedLibrary("z")]
+        ),
         .executableTarget(
             name: "PicViewMac",
+            dependencies: ["PicPNGStream"],
             path: "PicViewMac",
             // Shipped as a *copied source file*, not `.process`ed: `.process` runs the
             // Xcode Metal toolchain at build time, and a missing toolchain then fails
@@ -22,7 +33,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PicViewMacTests",
-            dependencies: ["PicViewMac"],
+            dependencies: ["PicViewMac", "PicPNGStream"],
             path: "PicViewMacTests",
             resources: [.copy("Fixtures")]
         ),

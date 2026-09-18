@@ -1,0 +1,28 @@
+
+PNG — region-12000x9000.png, 0.30 GiB
+  full decode + materialize           403 ms  peak 0.44 GiB
+  thumbnail maxPixelSize  1024        505 ms  1024x768  peak 0.03 GiB
+  thumbnail maxPixelSize  4096        537 ms  4096x3072  peak 0.21 GiB
+  crop 512x512 from a 12000x9000           375 ms  peak 0.43 GiB
+  subsampleFactor 4                1000 ms  3000x2250  peak 0.05 GiB
+
+JPEG — region-12000x9000.jpeg, 0.11 GiB
+  full decode + materialize           390 ms  peak 0.77 GiB
+  thumbnail maxPixelSize  1024        576 ms  1024x768  peak 0.16 GiB
+  thumbnail maxPixelSize  4096        880 ms  4096x3072  peak 0.36 GiB
+  crop 512x512 from a 12000x9000           355 ms  peak 0.83 GiB
+  subsampleFactor 4                1257 ms  3000x2250  peak 0.19 GiB
+
+TIFF — region-12000x9000.tiff, 0.30 GiB
+  full decode + materialize            59 ms  peak 0.43 GiB
+  thumbnail maxPixelSize  1024         99 ms  1024x768  peak 0.04 GiB
+  thumbnail maxPixelSize  4096        274 ms  4096x3072  peak 0.21 GiB
+  crop 512x512 from a 12000x9000            55 ms  peak 0.43 GiB
+  subsampleFactor 4                 229 ms  3000x2250  peak 0.05 GiB
+
+BMP — region-12000x9000.bmp, 0.30 GiB
+  full decode + materialize            54 ms  peak 0.43 GiB
+  thumbnail maxPixelSize  1024         88 ms  1024x768  peak 0.04 GiB
+  thumbnail maxPixelSize  4096        262 ms  4096x3072  peak 0.21 GiB
+  crop 512x512 from a 12000x9000            51 ms  peak 0.43 GiB
+  subsampleFactor 4                 195 ms  3000x2250  peak 0.05 GiB

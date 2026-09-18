@@ -48,6 +48,7 @@ swiftc -O -swift-version 6 "$VENDOR"/*.swift "$HERE/bench/Probe.swift" "$HERE/be
 swiftc -O "$HERE/bench/gen/main.swift"       -o "$WORK/gen"
 swiftc -O "$HERE/bench/minbench/main.swift"  -o "$WORK/minbench"
 swiftc -O "$HERE/bench/probebench/main.swift" -o "$WORK/probebench"
+swiftc -O "$HERE/bench/regionbench/main.swift" -o "$WORK/regionbench"
 
 echo "built from $REF:"
 echo "  $WORK/picbench  (A/B/E gates)"
