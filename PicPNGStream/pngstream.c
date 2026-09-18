@@ -35,6 +35,9 @@ struct ps_decoder {
 
     uint8_t *region_pixels;
     int32_t rows_done;
+    ps_row_fn row_callback;
+    void *row_context;
+    uint8_t *row_pixels;      /* the expanded scanline handed to the callback */
 
     int saw_iend;
     int finished;
@@ -230,6 +233,12 @@ fail: {
 }
 }
 
+void ps_set_row_callback(ps_decoder *decoder, void *context, ps_row_fn callback) {
+    if (!decoder) return;
+    decoder->row_context = context;
+    decoder->row_callback = callback;
+}
+
 int ps_set_region(ps_decoder *decoder, ps_rect region) {
     if (!decoder) return 0;
     if (region.width <= 0 || region.height <= 0) return 0;
@@ -294,19 +303,11 @@ static inline uint8_t premultiply(uint8_t value, uint8_t alpha) {
     return (uint8_t)(((unsigned)value * alpha + 127) / 255);
 }
 
-static void expand_row(ps_decoder *decoder) {
+/// Expands one scanline into `out` for columns [x0, x1). Shared by the region path and the
+/// row-callback path so both see identical pixels.
+static void expand_row_range(ps_decoder *decoder, const uint8_t *row, int32_t x0, int32_t x1,
+                             uint8_t *out) {
     const ps_info *info = &decoder->info;
-    /* +1 skips the filter byte: the unfiltered pixel data starts after it. Reading from
-     * the filter byte shifts every pixel by one byte, which the ImageIO comparison caught. */
-    const uint8_t *row = decoder->current_row + 1;
-    int32_t y = decoder->rows_done;
-    if (!decoder->region_pixels) return;
-    if (y < decoder->region.y || y >= decoder->region.y + decoder->region.height) return;
-
-    uint8_t *out = decoder->region_pixels
-                 + (size_t)(y - decoder->region.y) * decoder->region.width * 4;
-    int32_t x0 = decoder->region.x;
-    int32_t x1 = decoder->region.x + decoder->region.width;
 
     switch (info->color_type) {
         case 6: { /* rgba */
@@ -380,6 +381,35 @@ static void expand_row(ps_decoder *decoder) {
         default:
             break;
     }
+}
+
+/// Hand the row to whichever consumer is installed.
+static int emit_row(ps_decoder *decoder) {
+    const uint8_t *row = decoder->current_row + 1;
+    int32_t y = decoder->rows_done;
+    if (decoder->row_callback) {
+        if (!decoder->row_pixels) {
+            decoder->row_pixels = malloc((size_t)decoder->info.width * 4);
+            if (!decoder->row_pixels) {
+                ps_error(decoder, "out of memory for the scanline buffer");
+                return -1;
+            }
+        }
+        expand_row_range(decoder, row, 0, decoder->info.width, decoder->row_pixels);
+        if (decoder->row_callback(decoder->row_context, y, decoder->row_pixels,
+                                  (size_t)decoder->info.width * 4) == 0) {
+            decoder->finished = 1;
+            return 0;
+        }
+        return 1;
+    }
+    if (!decoder->region_pixels) return 1;
+    if (y < decoder->region.y || y >= decoder->region.y + decoder->region.height) return 1;
+    uint8_t *out = decoder->region_pixels
+                 + (size_t)(y - decoder->region.y) * decoder->region.width * 4;
+    expand_row_range(decoder, row, decoder->region.x,
+                     decoder->region.x + decoder->region.width, out);
+    return 1;
 }
 
 static void unfilter_row(ps_decoder *decoder) {
@@ -483,7 +513,10 @@ int ps_step(ps_decoder *decoder, char *err, size_t err_len) {
         if (err) snprintf(err, err_len, "%s", decoder->error);
         return -1;
     }
-    expand_row(decoder);
+    if (emit_row(decoder) < 0) {
+        if (err) snprintf(err, err_len, "%s", decoder->error);
+        return -1;
+    }
 
     /* Swap scanline buffers: the row just unfiltered becomes "previous". */
     uint8_t *swap = decoder->previous_row;
@@ -524,5 +557,6 @@ void ps_close(ps_decoder *decoder) {
     free(decoder->previous_row);
     free(decoder->current_row);
     free(decoder->region_pixels);
+    free(decoder->row_pixels);
     free(decoder);
 }

@@ -95,107 +95,95 @@ public struct PNGNativeTileProvider: NativeTileProviding {
         // sample at their edges, and clip so we never ask for pixels that do not exist.
         let wantedCanonical = plan.decodeRect.insetBy(dx: -CGFloat(gutter), dy: -CGFloat(gutter))
             .intersection(imageBounds)
-        let wanted = orientation.rawRect(forCanonicalRect: wantedCanonical, rawPixelSize: rawPixelSize)
+        // Whole raw pixels: the row sink indexes rows and columns by integer offsets, and a
+        // fractional origin turns into a one-pixel slice error (measured as two of three channels
+        // differing across a whole tile). The previous region path quantized the same way through
+        // `ps_rect(Int32(...))`, so this keeps the behaviour it replaced.
+        let rawBounds = CGRect(origin: .zero, size: rawPixelSize)
+        let requested = orientation.rawRect(forCanonicalRect: wantedCanonical, rawPixelSize: rawPixelSize)
+        let wanted = CGRect(x: requested.minX.rounded(.down), y: requested.minY.rounded(.down),
+                            width: requested.width.rounded(.down),
+                            height: requested.height.rounded(.down))
+            .intersection(rawBounds)
         guard wanted.width >= 1, wanted.height >= 1 else {
             throw NativeTileProviderError.decodeFailed("empty plan")
         }
-        let region = ps_rect(x: Int32(wanted.minX), y: Int32(wanted.minY),
-                             width: Int32(wanted.width), height: Int32(wanted.height))
-        guard ps_set_region(decoder, region) == 1 else {
-            throw NativeTileProviderError.decodeFailed(
-                "cannot hold a \(Int(wanted.width))×\(Int(wanted.height)) region")
-        }
 
-        let pending: [PendingTile] = plan.allCoordinates.map { coordinate in
-            // The tile's canonical rectangle is what the plan and the renderer speak; the raw
-            // rectangle is what the region buffer holds.
-            let canonicalRect = NativeTilePlanner.sourceRect(for: coordinate, tileSize: plan.tileSize,
-                                                             sourcePixelSize: canonicalPixelSize)
+        // One accumulator per tile. Rows are written straight into them as the stream passes, so
+        // the decoder never holds a buffer as large as the plan: at 0.2 magnification a nine-grid
+        // region is 3.4 GiB, while the tiles a viewport actually needs are a few hundred. This is
+        // the difference between a warm area being affordable and being an OOM.
+        var accumulators: [TileAccumulator] = plan.allCoordinates.map { coordinate in
+            // Whole pixels here too: a fractional tile rect truncates differently for the column
+            // offset and for the pixel count, which showed up as a one-column shift in the tile
+            // (G, which depends only on y, survived; R and B did not).
+            let planned = NativeTilePlanner.sourceRect(for: coordinate,
+                                                       tileSize: plan.tileSize,
+                                                       sourcePixelSize: canonicalPixelSize)
+                .intersection(wantedCanonical)
+            let canonicalRect = CGRect(x: planned.minX.rounded(.down), y: planned.minY.rounded(.down),
+                                       width: planned.width.rounded(.down),
+                                       height: planned.height.rounded(.down))
                 .intersection(wantedCanonical)
             let rawRect = orientation.rawRect(forCanonicalRect: canonicalRect,
-                                              rawPixelSize: rawPixelSize)
-                .intersection(wanted)
-            return PendingTile(key: NativeTileKey(sourcePath: source.path, pageIndex: pageIndex,
-                                                  tileSize: plan.tileSize,
-                                                  x: coordinate.x, y: coordinate.y),
-                               coordinate: coordinate,
-                               canonicalRect: canonicalRect,
-                               sourceRect: rawRect)
+                                              rawPixelSize: rawPixelSize).intersection(wanted)
+            return TileAccumulator(key: NativeTileKey(sourcePath: source.path, pageIndex: pageIndex,
+                                                      tileSize: plan.tileSize,
+                                                      x: coordinate.x, y: coordinate.y),
+                                   canonicalRect: canonicalRect, rawRect: rawRect)
+        }
+        // Row ownership: which accumulators still need this row. Rows arrive in raw order.
+        var pending = Array(accumulators.indices)
+        var nextToDeliver = 0
+
+        let context = RowContext(accumulators: accumulators)
+        ps_set_row_callback(decoder, Unmanaged.passUnretained(context).toOpaque()) { rawContext, row, pixels, _ in
+            guard let rawContext, let pixels else { return 0 }
+            let context = Unmanaged<RowContext>.fromOpaque(rawContext).takeUnretainedValue()
+            return context.write(row: Int(row), from: pixels) ? 1 : 0
         }
 
-        var nextToDeliver = 0
-        let regionStride = Int(wanted.width) * 4
-
-        func deliverReadyTiles(decodedRows: Int) {
-            while nextToDeliver < pending.count {
-                let candidate = pending[nextToDeliver]
-                // Rows arrive in raw order, so readiness is a raw-space question.
-                guard decodedRows >= Int(candidate.sourceRect.maxY) else { return }
+        func deliverReadyTiles(cancelled: Bool) {
+            while nextToDeliver < accumulators.count {
+                let accumulator = accumulators[nextToDeliver]
+                guard accumulator.rowsWritten >= Int(accumulator.rawRect.height) else { return }
                 nextToDeliver += 1
-                if let tile = Self.slice(candidate: candidate, wanted: wanted,
-                                         regionStride: regionStride, decoder: decoder,
-                                         colorSpace: colorSpace, orientation: orientation,
-                                         rawPixelSize: rawPixelSize) {
-                    onTile(tile)
-                }
+                guard !cancelled else { return }
+                guard let tile = Self.makeTile(from: accumulator, orientation: orientation,
+                                               rawPixelSize: rawPixelSize,
+                                               colorSpace: colorSpace) else { continue }
+                onTile(tile)
             }
         }
+        _ = pending
 
         while true {
-            if shouldCancel() { return }
+            if shouldCancel() {
+                deliverReadyTiles(cancelled: true)
+                return
+            }
             let status = ps_step(decoder, &error, 256)
             if status < 0 {
                 throw NativeTileProviderError.decodeFailed(String(cString: error))
             }
-            deliverReadyTiles(decodedRows: Int(ps_rows_done(decoder)))
+            deliverReadyTiles(cancelled: false)
             if status == 0 { break }
         }
-        deliverReadyTiles(decodedRows: Int(info.height))
+        deliverReadyTiles(cancelled: false)
     }
 
-    /// Copies one tile out of the region buffer into an image of its own.
-    ///
-    /// The image carries its own source rectangle, so the renderers draw the whole texture
-    /// over it and never do texture-coordinate arithmetic. Tiles overlap by the gutter when
-    /// they have one, which is harmless — the overlapping pixels are the same pixels.
-    private static func slice(candidate: PendingTile,
-                             wanted: CGRect,
-                             regionStride: Int,
-                             decoder: OpaquePointer,
-                             colorSpace: CGColorSpace?,
-                             orientation: SourceOrientation,
-                             rawPixelSize: CGSize) -> NativeTile? {
-        guard let base = ps_region_pixels(decoder) else { return nil }
-        let rect = candidate.sourceRect
+    /// Copies one accumulator's pixels into canonical order and builds its image.
+    private static func makeTile(from accumulator: TileAccumulator,
+                                 orientation: SourceOrientation,
+                                 rawPixelSize: CGSize,
+                                 colorSpace: CGColorSpace?) -> NativeTile? {
+        let rect = accumulator.rawRect
         guard rect.width >= 1, rect.height >= 1 else { return nil }
-
-        let width = Int(rect.width)
-        let height = Int(rect.height)
-        let offsetX = Int(rect.minX - wanted.minX)
-        let offsetY = Int(rect.minY - wanted.minY)
-        let storedStride = width * 4
-
-        var pixels = [UInt8](repeating: 0, count: storedStride * height)
-        pixels.withUnsafeMutableBytes { destination in
-            guard let target = destination.baseAddress else { return }
-            for row in 0..<height {
-                let source = base + (offsetY + row) * regionStride + offsetX * 4
-                memcpy(target + row * storedStride, source, storedStride)
-            }
-        }
-
-        // The pixels are the file's own bytes, so they must carry the file's colour space.
-        // Tagging them sRGB made a profiled source render with shifted colour next to the
-        // proxy, which ImageIO had colour-managed — visible on the investigation image as a
-        // measurable difference from the source pixels. The proxy's space is the same
-        // interpretation ImageIO arrived at, so taking it from there keeps the base layer
-        // and the tiles consistent.
         let space = colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
-        // Raw order → canonical order. For an `.up` source this is a no-op, which is why the
-        // whole orientation path stayed untested until a file with metadata met it.
-        let canonical = orientation.canonicalPixels(fromRawBuffer: pixels, rawRect: rect,
-                                                    rawPixelSize: rawPixelSize)
-        guard let provider = CGDataProvider(data: Data(canonical.pixels) as CFData),
+        let canonical = orientation.canonicalPixels(fromRawBuffer: accumulator.pixels,
+                                                    rawRect: rect, rawPixelSize: rawPixelSize)
+        guard canonical.size.width >= 1, canonical.size.height >= 1,
+              let provider = CGDataProvider(data: Data(canonical.pixels) as CFData),
               let image = CGImage(
                 width: Int(canonical.size.width), height: Int(canonical.size.height),
                 bitsPerComponent: 8, bitsPerPixel: 32,
@@ -203,7 +191,63 @@ public struct PNGNativeTileProvider: NativeTileProviding {
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
               ) else { return nil }
-
-        return NativeTile(key: candidate.key, sourceRect: candidate.canonicalRect, image: image)
+        return NativeTile(key: accumulator.key, sourceRect: accumulator.canonicalRect, image: image)
     }
 }
+
+/// The row sink's state: for each incoming scanline, copy the column ranges that belong to the
+/// tiles whose vertical span covers it. Kept out of the decoder on purpose — the C side only
+/// knows about rows.
+private final class RowContext {
+    private let accumulators: [TileAccumulator]
+
+    init(accumulators: [TileAccumulator]) {
+        self.accumulators = accumulators
+    }
+
+    /// Returns false when every tile has all its rows, so the decode can stop early.
+    func write(row: Int, from pixels: UnsafePointer<UInt8>) -> Bool {
+        var stillNeeded = false
+        for accumulator in accumulators {
+            let rect = accumulator.rawRect
+            guard rect.width >= 1, rect.height >= 1 else { continue }
+            let rowIndex = row - Int(rect.minY)
+            guard rowIndex >= 0, rowIndex < Int(rect.height) else {
+                if accumulator.rowsWritten < Int(rect.height) { stillNeeded = true }
+                continue
+            }
+            if rowIndex != accumulator.rowsWritten { continue }
+            let width = Int(rect.width)
+            // Absolute, not relative to the decoded region: the row handed to this sink is a whole
+            // image scanline (the decoder expands from column 0), so subtracting the region origin
+            // reads a tile's pixels from the wrong part of the row — visible as a tile whose
+            // content is a different source column.
+            let sourceOffset = Int(rect.minX) * 4
+            let targetOffset = rowIndex * width * 4
+            accumulator.pixels.withUnsafeMutableBytes { destination in
+                guard let base = destination.baseAddress else { return }
+                memcpy(base + targetOffset, pixels + sourceOffset, width * 4)
+            }
+            accumulator.rowsWritten += 1
+            if accumulator.rowsWritten < Int(rect.height) { stillNeeded = true }
+        }
+        return stillNeeded
+    }
+}
+
+/// Per-tile pixel storage with the bookkeeping the row sink needs.
+private final class TileAccumulator: @unchecked Sendable {
+    let key: NativeTileKey
+    let canonicalRect: CGRect
+    let rawRect: CGRect
+    var pixels: [UInt8]
+    var rowsWritten = 0
+
+    init(key: NativeTileKey, canonicalRect: CGRect, rawRect: CGRect) {
+        self.key = key
+        self.canonicalRect = canonicalRect
+        self.rawRect = rawRect
+        self.pixels = [UInt8](repeating: 0, count: max(1, Int(rawRect.width) * Int(rawRect.height) * 4))
+    }
+}
+

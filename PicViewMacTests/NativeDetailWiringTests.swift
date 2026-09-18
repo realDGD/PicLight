@@ -124,6 +124,18 @@ final class NativeDetailWiringTests: XCTestCase {
                 }
             }
         }
+        if largeDifferences > 0 {
+            var first = ""
+            for y in [0, 1, 8] where y < Int(rect.height) {
+                let referenceValues = (0..<4).map { Int(reference[(y * Int(rect.width) + $0) * 4]) }
+                let tileValues = (0..<4).map { Int(tilePixels[(y * tile.image.width + $0) * 4]) }
+                let line = "TILEDBG rect=\(rect) image=\(tile.image.width)x\(tile.image.height) y=\(y)\n"
+                    + "  reference R \(referenceValues)\n  tile      R \(tileValues)\n"
+                FileHandle.standardError.write(Data(line.utf8))
+            }
+            first = "see TILEDBG"
+            _ = first
+        }
         XCTAssertGreaterThan(compared, 0)
         XCTAssertEqual(largeDifferences, 0,
                        "\(largeDifferences) of \(compared) channels differ from the source pixels: "

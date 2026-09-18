@@ -82,6 +82,12 @@ BUNDLE="$WORK/PicViewMac_PicViewMac.bundle/Contents/Resources"
 mkdir -p "$BUNDLE"
 cp "$ROOT/PicViewMac/Shaders/ImageShaders.metal" "$BUNDLE/"
 swiftc -O -swift-version 6 "${DECODER_FLAGS[@]}" \
+    "$HERE/bench/warmbench/main.swift" "$VENDOR/NativeTile.swift" "$VENDOR/NativeTileProvider.swift" \
+    "$VENDOR/SourceOrientation.swift" "$VENDOR/ViewportState.swift" "$VENDOR/DecodeBudget.swift" \
+    "$VENDOR/RenderImage.swift" "$VENDOR/ImageDescriptor.swift" \
+    "$VENDOR/MetalImageRenderer.swift" "$VENDOR/MetalLibraryLocator.swift" \
+    -framework Metal -framework MetalKit -o "$WORK/warmbench"
+swiftc -O -swift-version 6 "${DECODER_FLAGS[@]}" \
     "$HERE/bench/tileposbench/main.swift" "$VENDOR/NativeTile.swift" "$VENDOR/NativeTileProvider.swift" \
     "$VENDOR/SourceOrientation.swift" \
     "$VENDOR/ViewportState.swift" "$VENDOR/DecodeBudget.swift" "$VENDOR/RenderImage.swift" \

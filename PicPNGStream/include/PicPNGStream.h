@@ -64,6 +64,18 @@ int ps_step(ps_decoder *decoder, char *err, size_t err_len);
 /// How many source rows have been decoded so far (for progress and cancellation tests).
 int32_t ps_rows_done(const ps_decoder *decoder);
 
+/// Called for every decoded scanline of the *region*, in order, with tightly packed RGBA8 of
+/// the region's full width (region.width * 4 bytes). Returning 0 stops the decode.
+///
+/// This is the row-streaming interface: a caller that wants several distant tiles keeps one
+/// scanline plus its own tile buffers instead of a buffer as large as the whole region. For a
+/// nine-grid at 0.2 magnification the region approach needs 3.4 GiB; this needs the tiles.
+typedef int (*ps_row_fn)(void *context, int32_t row, const uint8_t *pixels, size_t bytes);
+
+/// Installs the per-row callback. When set, `ps_set_region` is not required and the region
+/// buffer is never allocated.
+void ps_set_row_callback(ps_decoder *decoder, void *context, ps_row_fn callback);
+
 /// RGBA8 pixels of the retained region, tightly packed, width*height*4 bytes, with RGB
 /// premultiplied by alpha — the same layout the viewer uploads for the bounded proxy
 /// (CGContext's premultipliedLast) and what a source-over blend expects. Rows are filled
