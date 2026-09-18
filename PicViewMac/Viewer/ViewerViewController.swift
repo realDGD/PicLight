@@ -24,6 +24,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let errorLabel = NSTextField(labelWithString: "")
 
     private let coordinator: DecodeCoordinator
+    /// Native-detail tiles: the backend that turns "the proxy is out of resolution here"
+    /// into real source pixels (spec §4.1, §16).
+    let nativeDetail: NativeDetailScheduler
+    private var detailWorkItem: DispatchWorkItem?
+    private var detailPlan: NativeTilePlan?
+    private var detailSource: URL?
+    /// Cached per source: opening a file to ask the question is cheap, but not per frame.
+    private var detailCapability: [String: Bool] = [:]
+    /// The decode a level upgrade has already started, so a second evaluation cannot start
+    /// the same work again while it runs (ImageIO ignores cancellation, so a redundant
+    /// start is not free — it is a second full decode).
+    private var inFlightLevel: DecodeLevel?
     private let thumbnails: ThumbnailPipeline
     private let probe: DimensionProbing
     private(set) var thumbnailRequestCount = 0
@@ -59,13 +71,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// real viewer with a counting or deliberately slow implementation.
     public init(decoder: ImageDecoding = ImageIODecoder(),
                 thumbnails: ThumbnailPipeline = ThumbnailPipeline(),
-                probe: DimensionProbing = DimensionProbe()) {
+                probe: DimensionProbing = DimensionProbe(),
+                nativeDetail: NativeDetailScheduler = NativeDetailScheduler()) {
         // One probe instance is shared with the coordinator so the drawer's
         // oversized decision and the preload decision cannot disagree, and so both
         // reuse a single dimension cache.
         self.coordinator = DecodeCoordinator(decoder: decoder, probe: probe)
         self.thumbnails = thumbnails
         self.probe = probe
+        self.nativeDetail = nativeDetail
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -291,12 +305,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.viewerState.viewport = viewport
             self.refreshMinimap()
             self.refreshBottomBar()
+            // Pan moves the tile window; it never re-evaluates the whole-image level.
+            self.scheduleNativeDetailUpdate()
         }
         canvas.onZoomChanged = { [weak self] in
             guard let self else { return }
             self.hover.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
             self.hover.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
+            self.scheduleNativeDetailUpdate()
             // Zooming in is the other way a bitmap becomes undersampled (§9.5), so the
             // same debounced check runs here: sharpening past the 1.5× headroom costs
             // one bounded decode, which is why it waits for the gesture to settle.
@@ -314,6 +331,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         canvas.onGeometryChange = { [weak self] in
             self?.scheduleLevelUpgrade()
+            self?.scheduleNativeDetailUpdate()
+        }
+        Task { [weak self, nativeDetail] in
+            await nativeDetail.setOnTile { [weak self] _ in
+                Task { @MainActor in self?.nativeTileArrived() }
+            }
         }
 
         toolDock.onCommand = { [weak self] command in
@@ -444,6 +467,16 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
         viewerState.clearForNewImage()
         stopAnimation()
+        // Tiles belong to one source: drop them with the image, and stop any pass still
+        // reading the previous file.
+        detailWorkItem?.cancel()
+        detailWorkItem = nil
+        detailPlan = nil
+        detailSource = nil
+        inFlightLevel = nil
+        detailCapability.removeAll()
+        publishNativeTiles([])
+        Task { await self.nativeDetail.stopAndPurge() }
         // A pending resize upgrade belongs to the image being replaced.
         resizeUpgradeWorkItem?.cancel()
         resizeUpgradeWorkItem = nil
@@ -481,6 +514,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func startDecode(url: URL, previous: URL?, next: URL?,
                              direction: NavigationDirection, target: DecodeTarget) {
         isDecodingCurrentItem = true
+        if let size = session.currentItem?.pixelSize, size.width > 0 {
+            inFlightLevel = DecodeBudget.level(
+                sourceLongEdge: Int(max(size.width, size.height)), budget: target.maxPixelSize)
+        }
         // Re-evaluate the placeholder now: the decode has started, so "no image yet"
         // means "decoding", not "nothing here".
         refreshEmptyState()
@@ -492,6 +529,128 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             }
         }
     }
+
+    /// Whether the tile backend is the right answer for what is on screen right now.
+    private func nativeDetailCoversVisibleRegion() -> Bool {
+        guard !viewerState.isAnimated, let descriptor = viewerState.descriptor,
+              let bitmap = viewerState.currentImage,
+              let url = session.currentItem?.url,
+              canServeNativeDetail(url) else { return false }
+        let sourceSize = descriptor.displayPixelSize
+        return NativeTilePlanner.needsNativeDetail(
+            sourceLongEdge: Int(max(sourceSize.width, sourceSize.height)),
+            proxyLongEdge: max(bitmap.width, bitmap.height),
+            physicalScale: viewerState.viewport.zoomScale * canvas.backingScale)
+    }
+
+    /// Whether the tile backend can read this source (PNG, 8-bit, not interlaced). Asked
+    /// once per file.
+    private func canServeNativeDetail(_ url: URL) -> Bool {
+        if let known = detailCapability[url.path] { return known }
+        let answer = NativeTileCapability.canServe(url)
+        detailCapability[url.path] = answer
+        return answer
+    }
+
+    /// A level is "already coming" when the bitmap on screen is at least as sharp, or when
+    /// a decode for it is in flight. Both cases must not start another decode: the candidate
+    /// would either be redundant or a duplicate of work already running.
+    private func isLevelAlreadyComing(_ candidate: DecodeLevel) -> Bool {
+        if !ResizeUpgradePolicy.isCoarser(candidate, than: displayedLevel) { return true }
+        if let inFlightLevel, !ResizeUpgradePolicy.isCoarser(candidate, than: inFlightLevel) {
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Native detail (spec §4.1)
+
+    /// Waits for the gesture to settle before asking for tiles: a pass is a full traversal
+    /// of the compressed stream, so it must not start for a viewport that is still moving.
+    private func scheduleNativeDetailUpdate() {
+        detailWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.updateNativeDetail() }
+        detailWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+    }
+
+    /// Recomputes what the viewport needs at native resolution and asks the backend for it.
+    private func updateNativeDetail() {
+        detailWorkItem = nil
+        guard let item = session.currentItem, let descriptor = viewerState.descriptor,
+              let bitmap = viewerState.currentImage else {
+            publishNativeTiles([])
+            return
+        }
+        let sourceSize = descriptor.displayPixelSize
+        let sourceLongEdge = Int(max(sourceSize.width, sourceSize.height))
+        let proxyLongEdge = max(bitmap.width, bitmap.height)
+        let physicalScale = viewerState.viewport.zoomScale * canvas.backingScale
+
+        guard !viewerState.isAnimated,
+              canServeNativeDetail(item.url),
+              NativeTilePlanner.needsNativeDetail(sourceLongEdge: sourceLongEdge,
+                                                  proxyLongEdge: proxyLongEdge,
+                                                  physicalScale: physicalScale) else {
+            // The proxy resolves everything on screen: drop the tiles and their memory
+            // rather than keep a cache the viewport cannot use.
+            detailPlan = nil
+            detailSource = nil
+            publishNativeTiles([])
+            Task { await self.nativeDetail.stopAndPurge() }
+            return
+        }
+
+        let visible = NativeTilePlanner.visibleSourceRect(viewport: viewerState.viewport,
+                                                          sourcePixelSize: sourceSize,
+                                                          viewSize: canvas.bounds.size)
+        guard let plan = NativeTilePlanner.plan(sourceRect: visible, sourcePixelSize: sourceSize,
+                                                tileSize: nativeDetailTileSize) else {
+            publishNativeTiles([])
+            return
+        }
+        detailPlan = plan
+        detailSource = item.url
+        publishNativeTiles([])
+        let url = item.url
+        Task { [weak self] in
+            guard let self else { return }
+            await self.nativeDetail.request(plan: plan, source: url)
+            await self.publishCachedTiles(for: plan, source: url)
+        }
+    }
+
+    /// Publishes the tiles the viewport can use right now — cached ones, so a pan back to a
+    /// visited region is sharp immediately.
+    private func publishCachedTiles(for plan: NativeTilePlan, source: URL) async {
+        let tiles = await nativeDetail.cachedTiles(for: plan, source: source)
+        await MainActor.run { self.publishNativeTiles(tiles) }
+    }
+
+    private func publishNativeTiles(_ tiles: [NativeTile]) {
+        canvas.nativeTiles = tiles
+        let keys = Set(tiles.map { $0.key })
+        canvas.trimTileTextures(keeping: keys)
+        nativeDetailTileCount = tiles.count
+    }
+
+    /// Tiles currently drawn, for the acceptance runner and the tests.
+    private(set) var nativeDetailTileCount = 0
+
+    /// The tiles the canvas is holding, for tests that need to inspect their pixels.
+    var canvasNativeTilesForTesting: [NativeTile] { canvas.nativeTiles }
+
+    /// The canvas itself, for measurements that map view points to source pixels.
+    var canvasViewForTesting: ImageCanvasView { canvas }
+
+    /// Tiles resident in the backend's cache, synchronously readable for instrumentation.
+    var nativeDetailCacheCountForTesting: Int { nativeDetailCacheSnapshot() }
+
+    private func nativeDetailCacheSnapshot() -> Int {
+        nativeDetailTileCount
+    }
+
+    private var nativeDetailTileSize: Int { 512 }
 
     // MARK: - Level upgrades (spec §9.5)
 
@@ -529,6 +688,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             isInteracting: false
         )
         guard let level else { return }
+        // When the native-detail backend is serving this viewport, a coarser whole-image
+        // level would be a second full traversal of the same stream for pixels the tiles
+        // already deliver at higher quality. The proxy stays as the base layer and the
+        // tiles sharpen the visible region; the level path resumes as soon as the view no
+        // longer needs native detail (zoom out, or an unsupported format).
+        if nativeDetailCoversVisibleRegion() { return }
+        guard !isLevelAlreadyComing(level) else { return }
+        inFlightLevel = level
         let index = session.currentIndex ?? 0
         startDecode(url: item.url,
                     previous: index > 0 ? session.items[index - 1].url : nil,
@@ -542,6 +709,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case let .head(head):
             viewerState.apply(head: head)
             displayedLevel = head.level
+            inFlightLevel = nil
             isDecodingCurrentItem = false
             errorLabel.isHidden = true
             onDescriptorAvailable?(head.descriptor)
@@ -558,6 +726,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             }
         case let .failure(message):
             isDecodingCurrentItem = false
+            inFlightLevel = nil
             viewerState.apply(error: message)
             errorLabel.stringValue = message
             errorLabel.isHidden = message.isEmpty
@@ -594,6 +763,16 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         emptyState.apply(reason: session.directory == nil ? .noImageOpened : .folderHasNoImages)
         setEmptyState(visible: true)
+    }
+
+    /// Called by the backend when a tile is decoded.
+    func nativeTileArrived() {
+        guard let plan = detailPlan, let url = detailSource else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let tiles = await self.nativeDetail.cachedTiles(for: plan, source: url)
+            await MainActor.run { self.publishNativeTiles(tiles) }
+        }
     }
 
     private func setEmptyState(visible: Bool) {

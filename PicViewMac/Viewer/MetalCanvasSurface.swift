@@ -16,6 +16,7 @@ final class MetalCanvasSurface: MTKView, MTKViewDelegate {
 
     private let renderer: MetalImageRenderer
     private var renderImage: RenderImage?
+    private var nativeTiles: [NativeTile] = []
     private var viewport = ViewportState()
     private var backgroundColor: CGColor = NSColor.clear.cgColor
 
@@ -36,8 +37,10 @@ final class MetalCanvasSurface: MTKView, MTKViewDelegate {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func update(renderImage: RenderImage?, viewport: ViewportState, backgroundColor: NSColor) {
+    func update(renderImage: RenderImage?, nativeTiles: [NativeTile],
+                viewport: ViewportState, backgroundColor: NSColor) {
         self.renderImage = renderImage
+        self.nativeTiles = nativeTiles
         self.viewport = viewport
         self.backgroundColor = backgroundColor.cgColor
         guard renderImage != nil else { return }
@@ -74,6 +77,16 @@ final class MetalCanvasSurface: MTKView, MTKViewDelegate {
                         viewSize: bounds.size,
                         contentsScale: window?.backingScaleFactor ?? 2,
                         into: encoder)
+        // Native detail is layered over the proxy, so a tile that has not arrived yet is
+        // simply the proxy showing through.
+        for tile in nativeTiles {
+            renderer.encode(tile: tile,
+                            sourcePixelSize: renderImage.sourcePixelSize,
+                            viewport: viewport,
+                            viewSize: bounds.size,
+                            contentsScale: window?.backingScaleFactor ?? 2,
+                            into: encoder)
+        }
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()

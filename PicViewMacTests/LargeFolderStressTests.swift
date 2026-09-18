@@ -31,6 +31,8 @@ final class CountingDecoder: ImageDecoding, @unchecked Sendable {
     init(payload: CGImage = FakeDecoder.pixel, delay: TimeInterval = 0,
          document: Document = .animation(frameCount: 3),
          pixelSize: CGSize = CGSize(width: 64, height: 48)) {
+        // Argument order kept for the existing call sites; `pixelSize` before `payload` in
+        // the label list is what callers already use.
         self.payload = payload
         self.delay = delay
         self.document = document

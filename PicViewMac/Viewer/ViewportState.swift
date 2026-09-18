@@ -95,7 +95,19 @@ public struct ViewportState: Equatable, Sendable {
         )
     }
 
-    /// Image space → view space, exactly as both renderers build it (Quartz
+    /// A rectangle in source pixel coordinates (top-left origin, the space tiles are
+    /// indexed in) expressed in the renderers' centred, y-up source space.
+    ///
+    /// The y flip is not cosmetic: `CGContext.draw` puts an image's first row at the
+    /// rect's maximum y, so source row 0 lives at +height/2. Getting this wrong draws
+    /// tiles upside down in one place and correctly in the other.
+    public static func centredSourceRect(_ rect: CGRect, sourcePixelSize: CGSize) -> CGRect {
+        CGRect(x: rect.minX - sourcePixelSize.width / 2,
+               y: sourcePixelSize.height / 2 - rect.maxY,
+               width: rect.width, height: rect.height)
+    }
+
+    /// Source space → view space, exactly as both renderers build it (Quartz
     /// concatenates it, Metal maps quad corners through it). One implementation so
     /// the two paths cannot drift, and so tests can assert the mapping itself.
     public func imageToViewTransform(sourcePixelSize: CGSize, viewSize: CGSize) -> CGAffineTransform {

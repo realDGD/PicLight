@@ -42,6 +42,12 @@ final class ResizeWiringTests: XCTestCase {
         return Harness(controller: controller, decoder: decoder)
     }
 
+    /// Note on scope: with a source the native-detail backend can serve, a zoom or resize no
+    /// longer buys a coarser whole-image level — the tiles answer that requirement directly
+    /// and at higher quality (see `NativeDetailWiringTests`). These two tests therefore use a
+    /// source the tile backend refuses (16-bit PNG), which is exactly the case where the
+    /// whole-image level path still has to do the work.
+
     private func scratchImage(_ name: String) throws -> (URL, URL) {
         let directory = try Fixtures.makeScratchDirectory("resize-wiring")
         let url = directory.appendingPathComponent(name)
@@ -92,8 +98,10 @@ final class ResizeWiringTests: XCTestCase {
     }
 
     func testAGrownWindowNeverLeavesTheBitmapUndersampled() throws {
-        let (directory, url) = try scratchImage("giant.png")
-        defer { try? FileManager.default.removeItem(at: directory) }
+        // The file itself is a 16-bit PNG: the tile backend refuses it ("unsupported PNG:
+        // bit depth 16"), so the level path must still upgrade.
+        let url = Fixtures.url("depth16.png")
+        guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("fixture missing") }
 
         let harness = makeHarness(pixelSize: CGSize(width: 48000, height: 32000), probeEdge: 48000)
         defer { harness.controller.close() }
@@ -188,8 +196,9 @@ final class ResizeWiringTests: XCTestCase {
 extension ResizeWiringTests {
 
     func testZoomingInBuysTheCoarserLevelAfterTheDebounce() throws {
-        let (directory, url) = try scratchImage("giant.png")
-        defer { try? FileManager.default.removeItem(at: directory) }
+        // 16-bit source: not servable by the tile backend, so the level path answers.
+        let url = Fixtures.url("depth16.png")
+        guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("fixture missing") }
 
         let harness = makeHarness(pixelSize: CGSize(width: 48000, height: 32000), probeEdge: 48000)
         defer { harness.controller.close() }

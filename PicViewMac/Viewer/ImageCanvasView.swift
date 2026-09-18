@@ -20,6 +20,17 @@ public final class ImageCanvasView: NSView {
     /// published without the geometry they belong to.
     public var image: CGImage? { renderImage?.bitmap }
 
+    /// Native-detail tiles drawn over the bounded proxy. The proxy is always drawn
+    /// first, so a missing or late tile degrades to exactly what was on screen before
+    /// rather than to a hole.
+    public var nativeTiles: [NativeTile] = [] {
+        didSet {
+            guard nativeTiles.map({ $0.key }) != oldValue.map({ $0.key }) else { return }
+            pushToMetal()
+            needsDisplay = true
+        }
+    }
+
     public var viewport = ViewportState() {
         didSet { pushToMetal(); needsDisplay = true; onViewportChange?(viewport) }
     }
@@ -40,6 +51,9 @@ public final class ImageCanvasView: NSView {
         return MetalImageRenderer()
     }
     private var metalSurface: MetalCanvasSurface?
+    /// Kept so tile textures can be trimmed from the viewer's side; the surface holds the
+    /// same renderer.
+    private var metalRenderer: MetalImageRenderer?
 
     /// True when this canvas is drawing through Metal rather than Quartz.
     public var isUsingMetal: Bool { metalSurface != nil }
@@ -59,6 +73,7 @@ public final class ImageCanvasView: NSView {
         guard window != nil else {
             metalSurface?.removeFromSuperview()
             metalSurface = nil
+            metalRenderer = nil
             needsDisplay = true
             return
         }
@@ -69,6 +84,7 @@ public final class ImageCanvasView: NSView {
         }
         addSubview(surface)
         metalSurface = surface
+        metalRenderer = renderer
         pushToMetal()
         needsDisplay = true
     }
@@ -76,7 +92,9 @@ public final class ImageCanvasView: NSView {
     private func pushToMetal() {
         guard let surface = metalSurface else { return }
         let renderable = renderImage.map { MetalImageRenderer.canRender($0.bitmap) } ?? false
+        let renderableTiles = renderable ? nativeTiles.filter { MetalImageRenderer.canRender($0.image) } : []
         surface.update(renderImage: renderable ? renderImage : nil,
+                       nativeTiles: renderableTiles,
                        viewport: viewport, backgroundColor: backgroundColor)
     }
 
@@ -235,13 +253,25 @@ public final class ImageCanvasView: NSView {
         // different things.
         let source = renderImage.sourcePixelSize
         let zoom = viewport.zoomScale
+        // Interpolation is about *backing* pixels, not points: at 100 % on a 2× display
+        // zoomScale is 0.5 point per source pixel, so the old `zoom < 0.999` test called a
+        // true 1:1 pixel view a minification and smoothed it — which is exactly the blur
+        // the Retina case reported. Minify → smooth; 1:1 and above → leave the pixels alone.
+        let physicalScale = zoom * backingScale
 
         context.saveGState()
-        context.interpolationQuality = zoom < 0.999 ? .high : .none
+        context.interpolationQuality = physicalScale < 0.999 ? .high : .none
         context.concatenate(viewport.imageToViewTransform(sourcePixelSize: source,
                                                          viewSize: bounds.size))
         context.draw(renderImage.bitmap, in: CGRect(x: -source.width / 2, y: -source.height / 2,
                                                     width: source.width, height: source.height))
+        // Native detail over the proxy: the same transform, each tile in its own source
+        // rectangle. Tiles overlap by their gutter, and the overlapping pixels are the
+        // same pixels, so no seam shows and no blend is needed.
+        for tile in nativeTiles where MetalImageRenderer.canRender(tile.image) {
+            context.draw(tile.image, in: ViewportState.centredSourceRect(tile.sourceRect,
+                                                                        sourcePixelSize: source))
+        }
         context.restoreGState()
     }
 
@@ -315,10 +345,12 @@ public final class ImageCanvasView: NSView {
             viewport = updated
             onZoomChanged?()
         case let .pan(delta):
+            // Panning is not a zoom: reporting it as one made every drag re-evaluate the
+            // whole-image decode level, which is the wrong job for a gesture that only
+            // moves the viewport (spec §9.5 / the tile window owns pan).
             var updated = viewport
             updated.pan(byViewDelta: delta, imagePixels: imagePixelSize, viewPoints: bounds.size)
             viewport = updated
-            onZoomChanged?()
         case .previousImage:
             onNavigate?(-1)
         case .nextImage:
@@ -361,6 +393,12 @@ public final class ImageCanvasView: NSView {
     /// resize-driven level decision. Deliberately not called for viewport changes:
     /// zoom and pan must stay free.
     public var onGeometryChange: (() -> Void)?
+
+    /// Drops GPU textures for tiles the viewer no longer publishes, so texture memory
+    /// follows the tile cache instead of growing on its own.
+    public func trimTileTextures(keeping keys: Set<NativeTileKey>) {
+        metalRenderer?.trimTileTextures(keeping: keys)
+    }
 
     public override func layout() {
         super.layout()

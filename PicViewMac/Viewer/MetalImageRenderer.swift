@@ -76,6 +76,13 @@ public final class MetalImageRenderer {
     private let sampler: MTLSamplerState
     private var texture: MTLTexture?
     private var textureKey: CGImage?
+    /// Tile textures, keyed by tile identity rather than by image pointer: the same tile
+    /// arrives again after a pan and must not be uploaded twice.
+    private var tileTextures: [NativeTileKey: MTLTexture] = [:]
+    private var tileTextureOrder: [NativeTileKey] = []
+    /// Bytes of tile texture storage, including each tile's mip chain.
+    public private(set) var tileTextureBytes = 0
+    public var tileTextureBudget = 192 * 1024 * 1024
     private var corners = [SIMD2<Float>](repeating: .zero, count: 4)
     private let uvs: [SIMD2<Float>] = [SIMD2(0, 1), SIMD2(1, 1), SIMD2(0, 0), SIMD2(1, 0)]
 
@@ -162,6 +169,45 @@ public final class MetalImageRenderer {
         return true
     }
 
+    /// Uploads one tile, reusing its texture if it is already resident.
+    @discardableResult
+    public func prepareTexture(for tile: NativeTile) -> Bool {
+        if let existing = tileTextures[tile.key] {
+            texture = existing
+            textureKey = nil
+            return true
+        }
+        guard prepareTexture(for: tile.image) else { return false }
+        guard let uploaded = texture else { return false }
+        tileTextures[tile.key] = uploaded
+        tileTextureOrder.append(tile.key)
+        tileTextureBytes += uploaded.width * uploaded.height * 4 * 4 / 3
+        evictTileTexturesIfNeeded()
+        texture = uploaded
+        return true
+    }
+
+    /// Drops tile textures whose tiles are no longer cached, so GPU memory follows the tile
+    /// cache instead of growing on its own.
+    public func trimTileTextures(keeping keys: Set<NativeTileKey>) {
+        let doomed = tileTextures.keys.filter { !keys.contains($0) }
+        for key in doomed {
+            if let texture = tileTextures.removeValue(forKey: key) {
+                tileTextureBytes -= texture.width * texture.height * 4 * 4 / 3
+            }
+        }
+        tileTextureOrder.removeAll { !tileTextures.keys.contains($0) }
+    }
+
+    private func evictTileTexturesIfNeeded() {
+        while tileTextureBytes > tileTextureBudget, let oldest = tileTextureOrder.first {
+            tileTextureOrder.removeFirst()
+            if let texture = tileTextures.removeValue(forKey: oldest) {
+                tileTextureBytes -= texture.width * texture.height * 4 * 4 / 3
+            }
+        }
+    }
+
     /// Texture storage in bytes, including the mip chain (4/3 of the base level).
     public var textureBytes: Int {
         guard let texture else { return 0 }
@@ -197,10 +243,31 @@ public final class MetalImageRenderer {
                        viewSize: CGSize, contentsScale: CGFloat,
                        into encoder: MTLRenderCommandEncoder) {
         guard prepareTexture(for: image) else { return }
+        encodeQuad(sourceRect: CGRect(origin: .zero, size: sourcePixelSize),
+                   sourcePixelSize: sourcePixelSize, viewport: viewport,
+                   viewSize: viewSize, contentsScale: contentsScale, into: encoder)
+    }
+
+    /// Draws one native-detail tile over the proxy. The tile carries its own source
+    /// rectangle and its texture is the tile's own image, so no texture-coordinate
+    /// arithmetic happens here — which is also why adjoining tiles cannot disagree about
+    /// where their shared edge is.
+    public func encode(tile: NativeTile, sourcePixelSize: CGSize, viewport: ViewportState,
+                       viewSize: CGSize, contentsScale: CGFloat,
+                       into encoder: MTLRenderCommandEncoder) {
+        guard prepareTexture(for: tile) else { return }
+        encodeQuad(sourceRect: tile.sourceRect, sourcePixelSize: sourcePixelSize,
+                   viewport: viewport, viewSize: viewSize, contentsScale: contentsScale,
+                   into: encoder)
+    }
+
+    private func encodeQuad(sourceRect: CGRect, sourcePixelSize: CGSize, viewport: ViewportState,
+                            viewSize: CGSize, contentsScale: CGFloat,
+                            into encoder: MTLRenderCommandEncoder) {
         let drawableSize = CGSize(width: viewSize.width * contentsScale, height: viewSize.height * contentsScale)
-        corners = Self.quadCorners(sourcePixelSize: sourcePixelSize, viewport: viewport,
-                                  viewSize: viewSize, contentsScale: contentsScale,
-                                  drawableSize: drawableSize)
+        corners = Self.quadCorners(sourceRect: sourceRect, sourcePixelSize: sourcePixelSize,
+                                  viewport: viewport, viewSize: viewSize,
+                                  contentsScale: contentsScale, drawableSize: drawableSize)
         encoder.setRenderPipelineState(pipeline)
         corners.withUnsafeBytes { bytes in
             encoder.setVertexBytes(bytes.baseAddress!, length: bytes.count, index: 0)
@@ -221,15 +288,23 @@ public final class MetalImageRenderer {
     /// or doubles the image.
     static func quadCorners(sourcePixelSize: CGSize, viewport: ViewportState, viewSize: CGSize,
                             contentsScale: CGFloat, drawableSize: CGSize) -> [SIMD2<Float>] {
+        quadCorners(sourceRect: CGRect(origin: .zero, size: sourcePixelSize),
+                    sourcePixelSize: sourcePixelSize, viewport: viewport, viewSize: viewSize,
+                    contentsScale: contentsScale, drawableSize: drawableSize)
+    }
+
+    /// Corners of an arbitrary source rectangle, for native-detail tiles.
+    static func quadCorners(sourceRect: CGRect, sourcePixelSize: CGSize, viewport: ViewportState,
+                            viewSize: CGSize, contentsScale: CGFloat,
+                            drawableSize: CGSize) -> [SIMD2<Float>] {
         // One transform for both renderers: the Quartz path concatenates the same
         // value, so a rotated or mirrored view cannot drift between the two.
         let transform = viewport.imageToViewTransform(sourcePixelSize: sourcePixelSize,
                                                      viewSize: viewSize)
-        let halfWidth = sourcePixelSize.width / 2
-        let halfHeight = sourcePixelSize.height / 2
+        let centred = ViewportState.centredSourceRect(sourceRect, sourcePixelSize: sourcePixelSize)
         // Order matches `uvs`: bottom-left, bottom-right, top-left, top-right.
-        let points = [CGPoint(x: -halfWidth, y: -halfHeight), CGPoint(x: halfWidth, y: -halfHeight),
-                      CGPoint(x: -halfWidth, y: halfHeight), CGPoint(x: halfWidth, y: halfHeight)]
+        let points = [CGPoint(x: centred.minX, y: centred.minY), CGPoint(x: centred.maxX, y: centred.minY),
+                      CGPoint(x: centred.minX, y: centred.maxY), CGPoint(x: centred.maxX, y: centred.maxY)]
         let scaleX = drawableSize.width > 0 ? contentsScale / drawableSize.width * 2 : 0
         let scaleY = drawableSize.height > 0 ? contentsScale / drawableSize.height * 2 : 0
         return points.map { point in

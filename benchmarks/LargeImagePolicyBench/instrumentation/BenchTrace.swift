@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Darwin
+import PicPNGStream
 
 // TEMPORARY benchmark instrumentation for the 1.9 GB image investigation.
 // Exists only in the throwaway copy under /tmp; enabled with
@@ -163,6 +164,141 @@ enum BenchTrace {
                 resizeStep += 1
             }
         }
+    }
+
+    // MARK: - native-detail probe (PICLIGHT_BENCH_ZOOM=1)
+
+    /// Drives the app to 100 %, then answers the question the whole native-detail backend
+    /// exists for: are the pixels on screen the source's own pixels, or the proxy blown up?
+    ///
+    /// It compares, for a grid of samples: what the canvas actually rendered, the source
+    /// pixels read independently through the streaming decoder, and what the bounded proxy
+    /// would have shown. Colour-space conversion between the window and the raw file can
+    /// shift values a little, which is why the verdict is a *comparison of distances*
+    /// rather than an absolute equality.
+    static func scheduleZoomProbe() {
+        guard enabled,
+              let mode = ProcessInfo.processInfo.environment["PICLIGHT_BENCH_ZOOM"], mode == "1" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+            guard let window = NSApp.windows.first(where: { $0.isVisible }),
+                  let viewer = window.contentViewController as? ViewerViewController else {
+                mark("NATIVE probe: no visible viewer")
+                return
+            }
+            viewer.perform(.zoomActualPixels)
+            mark(String(format: "NATIVE zoom to 100%% (zoom=%.4f backing=%.1f)",
+                        viewer.viewerState.viewport.zoomScale, window.backingScaleFactor))
+            for step in 1...12 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 5) {
+                    mark(String(format: "NATIVE tiles=%d cacheTiles=%d",
+                                viewer.canvasNativeTilesForTesting.count,
+                                viewer.nativeDetailCacheCountForTesting))
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 40) {
+                measureNativeDetail(viewer: viewer, window: window)
+            }
+        }
+    }
+
+    private static func measureNativeDetail(viewer: ViewerViewController, window: NSWindow) {
+        guard let descriptor = viewer.viewerState.descriptor,
+              let proxy = viewer.viewerState.currentImage else {
+            mark("NATIVE comparison: nothing on screen")
+            return
+        }
+        let source = descriptor.displayPixelSize
+        var viewport = viewer.viewerState.viewport
+        viewport.viewRotationQuarterTurns = 0
+        viewport.mirroredHorizontally = false
+        let canvas = viewer.canvasViewForTesting
+        let viewSize = canvas.bounds.size
+        guard viewSize.width > 8, viewSize.height > 8 else { return }
+
+        // One decode of the visible rectangle, sampled for the reference values.
+        let transform = viewport.imageToViewTransform(sourcePixelSize: source, viewSize: viewSize)
+        let inverse = transform.inverted()
+        let visible = CGRect(origin: .zero, size: viewSize).applying(inverse)
+        let visibleSource = CGRect(x: visible.minX + source.width / 2,
+                                   y: source.height / 2 - visible.maxY,
+                                   width: visible.width, height: visible.height)
+            .intersection(CGRect(origin: .zero, size: source))
+        guard visibleSource.width >= 2, visibleSource.height >= 2 else { return }
+
+        // Render what the window shows right now.
+        guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return }
+        canvas.cacheDisplay(in: canvas.bounds, to: rep)
+        let repScale = CGFloat(rep.pixelsWide) / max(canvas.bounds.width, 1)
+
+        guard let url = viewer.viewerState.descriptor?.sourceURL else { return }
+        var info = ps_info()
+        var error = [CChar](repeating: 0, count: 256)
+        guard let decoder = url.path.withCString({ ps_open($0, &info, &error, 256) }) else {
+            mark("NATIVE comparison: decoder refused: \(String(cString: error))")
+            return
+        }
+        defer { ps_close(decoder) }
+        let region = ps_rect(x: Int32(visibleSource.minX), y: Int32(visibleSource.minY),
+                             width: Int32(visibleSource.width), height: Int32(visibleSource.height))
+        guard ps_set_region(decoder, region) == 1 else { return }
+        var status: Int32 = 1
+        while status == 1 { status = ps_step(decoder, &error, 256) }
+        guard status == 0, let native = ps_region_pixels(decoder) else {
+            mark("NATIVE comparison: decode failed")
+            return
+        }
+        let nativeStride = Int(visibleSource.width) * 4
+
+        // How far the proxy is from that rectangle, for the control distance.
+        let proxyWidth = proxy.width, proxyHeight = proxy.height
+        let proxyStride = proxy.bytesPerRow
+        let proxyData = proxy.dataProvider?.data
+        let proxyBytes = proxyData.map { CFDataGetBytePtr($0) }
+
+        var samples = 0
+        var renderedVsNative = 0.0
+        var renderedVsProxy = 0.0
+        for row in 0..<8 {
+            for column in 0..<8 {
+                let fx = (Double(column) + 0.5) / 8
+                let fy = (Double(row) + 0.5) / 8
+                let sx = visibleSource.minX + CGFloat(fx) * visibleSource.width
+                let sy = visibleSource.minY + CGFloat(fy) * visibleSource.height
+                let centred = ViewportState.centredSourceRect(
+                    CGRect(x: sx, y: sy, width: 1, height: 1), sourcePixelSize: source)
+                let viewPoint = CGPoint(x: centred.midX, y: centred.midY).applying(transform)
+                let px = Int(viewPoint.x * repScale), py = Int((viewSize.height - viewPoint.y) * repScale)
+                guard px >= 0, py >= 0, px < rep.pixelsWide, py < rep.pixelsHigh else { continue }
+                guard let rendered = rep.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) else { continue }
+
+                let nx = Int(sx - visibleSource.minX), ny = Int(sy - visibleSource.minY)
+                let n = native + ny * nativeStride + nx * 4
+                let nativeRed = Double(n[0]), nativeGreen = Double(n[1]), nativeBlue = Double(n[2])
+
+                var proxyRed = 0.0, proxyGreen = 0.0, proxyBlue = 0.0
+                if let proxyBytes {
+                    let bx = min(proxyWidth - 1, max(0, Int(Double(nx) / Double(visibleSource.width) * Double(proxyWidth))))
+                    let by = min(proxyHeight - 1, max(0, Int(Double(ny) / Double(visibleSource.height) * Double(proxyHeight))))
+                    let p = proxyBytes + by * proxyStride + bx * 4
+                    // The proxy is uploaded as BGRA premultiplied; only the ordering matters here.
+                    proxyBlue = Double(p[0]); proxyGreen = Double(p[1]); proxyRed = Double(p[2])
+                }
+                let renderedRed = Double(rendered.redComponent) * 255
+                let renderedGreen = Double(rendered.greenComponent) * 255
+                let renderedBlue = Double(rendered.blueComponent) * 255
+                renderedVsNative += (abs(renderedRed - nativeRed) + abs(renderedGreen - nativeGreen)
+                                     + abs(renderedBlue - nativeBlue)) / 3
+                renderedVsProxy += (abs(renderedRed - proxyRed) + abs(renderedGreen - proxyGreen)
+                                    + abs(renderedBlue - proxyBlue)) / 3
+                samples += 1
+            }
+        }
+        guard samples > 0 else { return }
+        let toNative = renderedVsNative / Double(samples)
+        let toProxy = renderedVsProxy / Double(samples)
+        mark(String(format: "NATIVE VERDICT samples=%d meanDeltaToNative=%.1f meanDeltaToProxy=%.1f -> %@",
+                    samples, toNative, toProxy,
+                    toNative < toProxy ? "screen is NATIVE SOURCE pixels" : "screen is the PROXY upscaled"))
     }
 
     // MARK: - heartbeat: memory + main-thread responsiveness, off-main
