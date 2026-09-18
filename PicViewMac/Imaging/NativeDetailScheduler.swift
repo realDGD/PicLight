@@ -33,8 +33,15 @@ public actor NativeDetailScheduler {
     private var inFlightKeys: Set<NativeTileKey> = []
     private var stats = NativeDetailStats()
 
+    /// The CPU tile budget the warm-area policy must be clamped against. One number, kept here:
+    /// a policy that plans for 256 MiB while the cache evicts at 192 MiB promises residency it
+    /// cannot deliver (measured at 0.5, where the plan filled the budget and the cache started
+    /// dropping the outermost warm tiles). `nonisolated` because the cache is already a
+    /// lock-protected class and the policy runs on the main actor.
+    public nonisolated var cacheCostLimit: Int { cache.totalCostLimit }
+
     public init(provider: NativeTileProviding = PNGNativeTileProvider(),
-                cache: NativeTileCache = NativeTileCache(),
+                cache: NativeTileCache = NativeTileCache(totalCostLimit: 256 * 1024 * 1024),
                 tileSize: Int = 512,
                 gutter: Int = 1) {
         self.provider = provider
@@ -53,11 +60,15 @@ public actor NativeDetailScheduler {
                         orientation: SourceOrientation = .up) {
         self.colorSpace = colorSpace
         self.orientation = orientation
-        let visibleKeys = Set(plan.visible.map { key($0, source: source, pageIndex: pageIndex) })
+        let visibleKeys = Set(plan.visible.map {
+            key($0, tileSize: plan.tileSize, source: source, pageIndex: pageIndex)
+        })
         cache.pin(visibleKeys)
 
         if let running = runningPlan, let runningSource, runningSource == source {
-            let covered = Set(running.allCoordinates.map { key($0, source: source, pageIndex: pageIndex) })
+            let covered = Set(running.allCoordinates.map {
+                key($0, tileSize: running.tileSize, source: source, pageIndex: pageIndex)
+            })
             let missing = visibleKeys.subtracting(covered)
             if missing.isEmpty {
                 pendingPlan = nil          // the running pass already covers this viewport
@@ -106,13 +117,44 @@ public actor NativeDetailScheduler {
 
     /// Tiles a plan wants that are already decoded, in the plan's order. `visibleOnly` keeps the
     /// canvas's draw list to what is actually on screen while the rest stays warm.
-    public func cachedTiles(for plan: NativeTilePlan, source: URL, pageIndex: Int = 0,
-                            visibleOnly: Bool = false) -> [NativeTile] {
-        let coordinates = visibleOnly ? plan.visible : plan.allCoordinates
-        return coordinates.compactMap { cache.tile(for: key($0, source: source, pageIndex: pageIndex)) }
+    public func cachedTiles(for plan: NativeTilePlan, source: URL, pageIndex: Int = 0) -> [NativeTile] {
+        tiles(for: plan.allCoordinates, plan: plan, source: source, pageIndex: pageIndex)
     }
 
-    private func key(_ coordinate: TileCoordinate, source: URL, pageIndex: Int) -> NativeTileKey {
+    /// What is on screen. The draw list comes from here and nowhere else: a warm tile that reaches
+    /// the canvas is a warm tile being drawn, which is not what "resident" means.
+    public func cachedVisibleTiles(for plan: NativeTilePlan, source: URL,
+                                   pageIndex: Int = 0) -> [NativeTile] {
+        tiles(for: plan.visible, plan: plan, source: source, pageIndex: pageIndex)
+    }
+
+    /// The rest of the plan: decoded, kept, and *not* drawn. This is the set the renderer warms in
+    /// the background, so a pan onto it is a draw rather than an upload.
+    public func cachedWarmTiles(for plan: NativeTilePlan, source: URL,
+                                pageIndex: Int = 0) -> [NativeTile] {
+        tiles(for: plan.ring, plan: plan, source: source, pageIndex: pageIndex)
+    }
+
+    /// Keys of the whole plan, so the renderer trims its texture cache against what is *resident*
+    /// rather than against what happens to be drawn this frame.
+    public func residentKeys(for plan: NativeTilePlan, source: URL,
+                             pageIndex: Int = 0) -> Set<NativeTileKey> {
+        Set(plan.allCoordinates.map { key($0, tileSize: plan.tileSize, source: source,
+                                          pageIndex: pageIndex) })
+    }
+
+    private func tiles(for coordinates: [TileCoordinate], plan: NativeTilePlan, source: URL,
+                       pageIndex: Int) -> [NativeTile] {
+        coordinates.compactMap {
+            cache.tile(for: key($0, tileSize: plan.tileSize, source: source, pageIndex: pageIndex))
+        }
+    }
+
+    /// The grid size is taken from the plan being asked about, not from the scheduler's own
+    /// default: a plan built with another tile size would otherwise look up keys that cannot exist
+    /// (this project has already paid once for a tile-size key collision).
+    private func key(_ coordinate: TileCoordinate, tileSize: Int, source: URL,
+                     pageIndex: Int) -> NativeTileKey {
         NativeTileKey(sourcePath: source.path, pageIndex: pageIndex,
                       tileSize: tileSize, x: coordinate.x, y: coordinate.y)
     }
@@ -128,7 +170,9 @@ public actor NativeDetailScheduler {
         let cache = self.cache
         let gutter = self.gutter
 
-        let wanted = plan.allCoordinates.map { key($0, source: source, pageIndex: pageIndex) }
+        let wanted = plan.allCoordinates.map {
+            key($0, tileSize: plan.tileSize, source: source, pageIndex: pageIndex)
+        }
         inFlightKeys = Set(wanted.filter { cache.tile(for: $0) == nil })
 
         let counter = TileCounter()

@@ -245,8 +245,8 @@ final class NativeDetailPositionTests: XCTestCase {
                                   image: fine.image)
         let coarseTile = NativeTile(key: coarseKey, sourceRect: CGRect(x: 128, y: 128, width: 128, height: 128),
                                     image: try XCTUnwrap(renderer.encodedTileImage(width: 128, height: 128)))
-        let fineTexture = try XCTUnwrap(renderer.prepareTexture(for: fineTile))
-        let coarseTexture = try XCTUnwrap(renderer.prepareTexture(for: coarseTile))
+        let fineTexture = try XCTUnwrap(renderer.prepareTexture(for: fineTile, variant: .baseOnly))
+        let coarseTexture = try XCTUnwrap(renderer.prepareTexture(for: coarseTile, variant: .baseOnly))
         XCTAssertNotEqual(fineTexture.width, coarseTexture.width,
                           "the coarse tile must not reuse the fine tile's texture")
         XCTAssertEqual(coarseTexture.width, 128)

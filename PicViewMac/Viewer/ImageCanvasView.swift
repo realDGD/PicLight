@@ -401,14 +401,30 @@ public final class ImageCanvasView: NSView {
     }
 
     /// Uploads warm tiles on the renderer's background queue, so a pan onto them is a draw
-    /// rather than a main-thread upload (measured: 204 tiles cost 88 ms synchronously).
+    /// rather than a main-thread upload (measured: 204 tiles cost 88 ms synchronously). The
+    /// variant is fixed per batch so nothing mutable is shared with the upload thread.
     public func warmTileTextures(_ tiles: [NativeTile]) {
-        metalRenderer?.warmTilesInBackground(tiles)
+        metalRenderer?.warmTilesInBackground(tiles, variant: tileVariant)
     }
 
-    /// Mipmaps for tiles are worth their cost only when tiles are minified (physicalScale < 1).
+    /// The tile texture flavour for the current magnification (mipmapped while tiles are
+    /// minified). Setting it drops the other flavour, so the GPU cache cannot hold both.
     public func setTileMipmapsEnabled(_ enabled: Bool) {
-        metalRenderer?.tileWantsMipmaps = enabled
+        let variant: MetalImageRenderer.TileTextureVariant = enabled ? .mipmapped : .baseOnly
+        guard variant != tileVariant else { return }
+        tileVariant = variant
+        metalRenderer?.tileVariantForEncoding = variant
+        metalRenderer?.dropTileTextures(of: enabled ? .baseOnly : .mipmapped)
+    }
+
+    private var tileVariant: MetalImageRenderer.TileTextureVariant = .baseOnly
+
+    /// Texture cache diagnostics, for tests and the acceptance runner.
+    public func tileTextureDiagnostics() -> (resident: Int, bytes: Int, budget: Int, uploads: Int,
+                                             hits: Int, backgroundUploads: Int,
+                                             synchronousUploads: Int) {
+        guard let renderer = metalRenderer else { return (0, 0, 0, 0, 0, 0, 0) }
+        return renderer.tileTextureDiagnostics()
     }
 
     public override func layout() {

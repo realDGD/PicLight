@@ -475,7 +475,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         detailSource = nil
         inFlightLevel = nil
         detailCapability.removeAll()
-        publishNativeTiles([])
+        publishNativeTiles([], residentKeys: [])
         Task { await self.nativeDetail.stopAndPurge() }
         // A pending resize upgrade belongs to the image being replaced.
         resizeUpgradeWorkItem?.cancel()
@@ -579,7 +579,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         detailWorkItem = nil
         guard let item = session.currentItem, let descriptor = viewerState.descriptor,
               let bitmap = viewerState.currentImage else {
-            publishNativeTiles([])
+            publishNativeTiles([], residentKeys: [])
             return
         }
         let sourceSize = descriptor.displayPixelSize
@@ -596,7 +596,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // rather than keep a cache the viewport cannot use.
             detailPlan = nil
             detailSource = nil
-            publishNativeTiles([])
+            publishNativeTiles([], residentKeys: [])
             Task { await self.nativeDetail.stopAndPurge() }
             return
         }
@@ -607,11 +607,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // Warm plan instead of a one-tile ring: one viewport in each direction, clamped by the
         // CPU tile budget. The sweep (results/warm-strategy-sweep.txt) is what sets the budget —
         // measured, the full nine-grid is 3.38 GiB at physicalScale 0.2 and 150 MiB at 1.0.
+        // Where the viewport is travelling, in source space: the tiles on that side are the ones
+        // about to enter, so they are ordered first. Derived from the visible rectangle itself, so
+        // there is no view-to-source sign ambiguity to get wrong.
+        let hint = WarmAreaPolicy.directionHint(from: lastDetailVisibleRect, to: visible)
+        lastDetailVisibleRect = visible
+        lastDetailDirectionHint = hint
         guard let warmPlan = WarmAreaPolicy.plan(visible: visible, sourcePixelSize: sourceSize,
                                                  tileSize: nativeDetailTileSize,
                                                  cpuBudgetBytes: nativeDetailCPUBudgetBytes,
-                                                 margin: WarmAreaPolicy.requestedMargin) else {
-            publishNativeTiles([])
+                                                 margin: WarmAreaPolicy.requestedMargin,
+                                                 directionHint: hint) else {
+            publishNativeTiles([], residentKeys: [])
             return
         }
         nativeDetailClampedByBudget = warmPlan.clampedByBudget
@@ -622,7 +629,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let plan = warmPlan.plan
         detailPlan = plan
         detailSource = item.url
-        publishNativeTiles([])
+        // Keep what is resident for the *new* plan: publishing empty with an empty resident set here
+        // trimmed every texture on each plan update, so a pan re-uploaded tiles that were already on
+        // the GPU (measured: 18 uploads for a half-viewport pan whose tiles were all warm).
+        publishNativeTiles([], residentKeys: residentKeysForTesting(plan: plan, source: item.url))
+        warmTileCount = 0
         let url = item.url
         Task { [weak self] in
             guard let self else { return }
@@ -634,28 +645,39 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
-    /// Publishes the tiles the viewport can use right now — cached ones, so a pan back to a
-    /// visited region is sharp immediately.
+    /// Publishes what the viewport can use right now — cached visible tiles, so a pan back to a
+    /// visited region is sharp immediately — and hands the rest of the plan to the renderer's
+    /// background uploader.
     private func publishCachedTiles(for plan: NativeTilePlan, source: URL) async {
-        let tiles = await nativeDetail.cachedTiles(for: plan, source: source)
-        await MainActor.run { self.publishNativeTiles(tiles) }
+        await refreshPublishedSets(for: plan, source: source)
     }
 
-    private func publishNativeTiles(_ tiles: [NativeTile]) {
+    /// The three sets, explicitly: visible (drawn), warm (resident, not drawn), and the union the
+    /// renderer trims its texture cache against. Keeping them separate is the whole point — the
+    /// previous version published visible+warm as the draw list *and* computed the warm set as the
+    /// difference against that same list, which made it empty and left the background uploader
+    /// with nothing to do.
+    private func refreshPublishedSets(for plan: NativeTilePlan, source: URL) async {
+        let visible = await nativeDetail.cachedVisibleTiles(for: plan, source: source)
+        let warm = await nativeDetail.cachedWarmTiles(for: plan, source: source)
+        let residentKeys = await nativeDetail.residentKeys(for: plan, source: source)
+        await MainActor.run {
+            self.publishNativeTiles(visible, residentKeys: residentKeys)
+            self.canvas.warmTileTextures(warm)
+            self.warmTileCount = warm.count
+        }
+    }
+
+    private func publishNativeTiles(_ tiles: [NativeTile], residentKeys: Set<NativeTileKey>) {
         canvas.nativeTiles = tiles
-        let keys = Set(tiles.map { $0.key })
-        canvas.trimTileTextures(keeping: keys)
+        // Trim against what is *resident*, not against what is drawn: trimming to the draw set
+        // deleted the warm textures the background uploader had just created.
+        canvas.trimTileTextures(keeping: residentKeys)
         nativeDetailTileCount = tiles.count
     }
 
     /// Hands the warm (not yet visible) tiles to the renderer's background uploader, so a pan onto
     /// them is a draw rather than an upload. Bounded by the GPU budget the renderer was given.
-    private func warmTileTextures(_ tiles: [NativeTile], visibleKeys: Set<NativeTileKey>) {
-        let warm = tiles.filter { !visibleKeys.contains($0.key) }
-        guard !warm.isEmpty else { return }
-        canvas.warmTileTextures(warm)
-    }
-
     /// Tiles currently drawn, for the acceptance runner and the tests.
     private(set) var nativeDetailTileCount = 0
 
@@ -669,16 +691,79 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// nine-grid is 580 MiB and at 0.2 it is 3.38 GiB, so 256 MiB keeps the nine-grid at 1.0 and
     /// 2.0 while clamping it at 0.5 and 0.2 — where the viewport itself is already hundreds of
     /// megabytes and visible tiles win unconditionally.
-    var nativeDetailCPUBudgetBytes: Int { 256 * 1024 * 1024 }
+    /// The warm-area budget *is* the cache's budget — one number, not two. A policy planning for
+    /// 256 MiB while the cache evicted at 192 MiB promised residency it could not deliver.
+    var nativeDetailCPUBudgetBytes: Int { nativeDetail.cacheCostLimit }
 
     /// Set when the last warm plan was clamped by the budget, for tests and the acceptance runner.
     private(set) var nativeDetailClampedByBudget = false
 
-    /// Tiles resident in the backend's cache, synchronously readable for instrumentation.
-    var nativeDetailCacheCountForTesting: Int { nativeDetailCacheSnapshot() }
+    /// The plan's keys, synchronously: the cache is lock-protected, so the trim target can be
+    /// computed without awaiting the scheduler.
+    func residentKeysForTesting(plan: NativeTilePlan, source: URL) -> Set<NativeTileKey> {
+        Set(plan.allCoordinates.map {
+            NativeTileKey(sourcePath: source.path, tileSize: plan.tileSize, x: $0.x, y: $0.y)
+        })
+    }
 
-    private func nativeDetailCacheSnapshot() -> Int {
-        nativeDetailTileCount
+    /// The visible source rectangle the last plan was built from, for the direction hint.
+    private var lastDetailVisibleRect: CGRect?
+
+    /// The last plan and the hint it was ordered with, for tests.
+    var detailPlanForTesting: (plan: NativeTilePlan, hint: CGVector)? {
+        guard let detailPlan else { return nil }
+        return (detailPlan, lastDetailDirectionHint)
+    }
+
+    private(set) var lastDetailDirectionHint: CGVector = .zero
+
+    /// Tiles resident in the backend's cache, synchronously readable for instrumentation.
+    /// Real counts for tests and the acceptance runner. The previous version reported the
+    /// *published* tile count as the cache count, which hid the difference between drawn and
+    /// resident tiles exactly when it mattered.
+    struct NativeDetailDiagnostics: Equatable {
+        var visibleTiles = 0
+        var warmTiles = 0
+        var cpuCacheTiles = 0
+        var cpuCacheBytes = 0
+        var cpuPinnedTiles = 0
+        var cpuBudgetBytes = 0
+        var gpuResidentTiles = 0
+        var gpuWarmTiles = 0
+        var gpuTextureBytes = 0
+        var gpuBudgetBytes = 0
+        var gpuUploads = 0
+        var gpuCacheHits = 0
+        var gpuBackgroundUploads = 0
+        var gpuSynchronousUploads = 0
+        var clampedByBudget = false
+    }
+
+    private(set) var warmTileCount = 0
+
+    var nativeDetailCacheCountForTesting: Int { nativeDetailTileCount }
+
+    func nativeDetailDiagnostics() -> NativeDetailDiagnostics {
+        var report = NativeDetailDiagnostics()
+        report.visibleTiles = nativeDetailTileCount
+        report.warmTiles = warmTileCount
+        // The cache is a lock-protected class, so its occupancy is readable without awaiting the
+        // scheduler — which matters for diagnostics that must not suspend.
+        report.cpuCacheTiles = nativeDetail.cache.count
+        report.cpuCacheBytes = nativeDetail.cache.byteCount
+        report.cpuPinnedTiles = nativeDetail.cache.pinnedKeys.count
+        report.cpuBudgetBytes = nativeDetail.cacheCostLimit
+        let gpu = canvas.tileTextureDiagnostics()
+        report.gpuResidentTiles = gpu.resident
+        report.gpuWarmTiles = max(0, gpu.resident - nativeDetailTileCount)
+        report.gpuTextureBytes = gpu.bytes
+        report.gpuBudgetBytes = gpu.budget
+        report.gpuUploads = gpu.uploads
+        report.gpuCacheHits = gpu.hits
+        report.gpuBackgroundUploads = gpu.backgroundUploads
+        report.gpuSynchronousUploads = gpu.synchronousUploads
+        report.clampedByBudget = nativeDetailClampedByBudget
+        return report
     }
 
     private var nativeDetailTileSize: Int { 512 }
@@ -801,11 +886,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         guard let plan = detailPlan, let url = detailSource else { return }
         Task { [weak self] in
             guard let self else { return }
-            let visible = await self.nativeDetail.cachedTiles(for: plan, source: url)
-            await MainActor.run {
-                self.publishNativeTiles(visible)
-                self.warmTileTextures(visible, visibleKeys: Set(visible.map { $0.key }))
-            }
+            await self.refreshPublishedSets(for: plan, source: url)
         }
     }
 

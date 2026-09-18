@@ -43,7 +43,8 @@ public enum WarmAreaPolicy {
                             sourcePixelSize: CGSize,
                             tileSize: Int,
                             cpuBudgetBytes: Int,
-                            margin: CGFloat = requestedMargin) -> WarmAreaPlan? {
+                            margin: CGFloat = requestedMargin,
+                            directionHint: CGVector = .zero) -> WarmAreaPlan? {
         guard visible.width >= 1, visible.height >= 1, tileSize > 0 else { return nil }
         let bounds = CGRect(origin: .zero, size: sourcePixelSize)
         let steps = ([margin] + marginSteps.filter { $0 < margin }).map { $0 }
@@ -63,7 +64,7 @@ public enum WarmAreaPolicy {
             let bytes = tileBytes(plan.allCoordinates, sourcePixelSize: sourcePixelSize,
                                   tileSize: tileSize)
             let ordered = order(plan: plan, visibleRect: visible, sourcePixelSize: sourcePixelSize,
-                                tileSize: tileSize)
+                                tileSize: tileSize, directionHint: directionHint)
             let visibleTiles = ordered.filter { visibleKeys.contains($0) }
             let warmTiles = ordered.filter { !visibleKeys.contains($0) }
             let shaped = NativeTilePlan(tileSize: plan.tileSize, visible: visibleTiles,
@@ -73,6 +74,19 @@ public enum WarmAreaPolicy {
             if bytes <= cpuBudgetBytes || candidate == 0 { return result }
         }
         return fallback
+    }
+
+    /// The hint is the movement of the *visible rectangle in source space*, which is what the
+    /// viewer measures: the side the viewport is travelling toward is the side that will enter it.
+    /// Normalised, so only the direction matters, and it changes ordering only — never the warm set.
+    public static func directionHint(from previous: CGRect?, to current: CGRect) -> CGVector {
+        guard let previous, previous.width > 0, previous.height > 0 else { return .zero }
+        let dx = current.midX - previous.midX
+        let dy = current.midY - previous.midY
+        let length = hypot(dx, dy)
+        // Below a few percent of a viewport this is re-layout noise, not travel.
+        guard length > max(current.width, current.height) * 0.03 else { return .zero }
+        return CGVector(dx: dx / length, dy: dy / length)
     }
 
     /// Tile bytes for a set of coordinates, following the same clipping the provider uses.
