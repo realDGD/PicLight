@@ -132,7 +132,9 @@ streams the PNG itself and draws native tiles over the proxy:
 | time from the zoom gesture to tiles on screen | 10.5 s (220 ms debounce + one pass) |
 | whole-image decodes for the gesture | 0 (the level path stands down; the pass replaces it) |
 | peak footprint / peak RSS | 0.226 GiB / 2.113 GiB |
-| main-thread stall | max 88 ms (the first frame that uploads tile textures) |
+| main-thread stall | max 88 ms (tile texture uploads; warm tiles now upload on a background queue) |
+| warm tiles kept | 40 (nine-grid plan, clamped by a 256 MiB tile budget) |
+| footprint with the warm plan | 0.348 GiB |
 
 Why a custom decoder: measured with `bench/regionbench`, no format ImageIO reads offers a region
 decode — a 512×512 crop costs a full decode in every case (PNG 375 ms against 403 ms) — so native

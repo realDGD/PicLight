@@ -1281,6 +1281,41 @@ renders the same scene through both renderers and diffs whole frames:
 Tiles also skip the mip chain now: they are requested only when magnified, and generating a chain
 cost a synchronous GPU wait per tile on the main thread (a 170 ms stall that is 88 ms without it).
 
+**Warm area (2026-09-18).** Native detail is fetched for a *nine-grid* around the viewport — the
+plan asks for roughly one viewport in every direction, not a one-tile ring — so a pan of up to a
+screen lands on decoded tiles. Measured with `bench/warmbench` (`results/warm-strategy-sweep.txt`,
+one traversal per scale on the investigation image):
+
+| physicalScale | visible source | visible tiles | +1 ring | full nine-grid | pan 0.5 vp | pan 1.0 vp |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.2 | 12000×8000 | 408 / 408 MiB | 494 MiB | 3456 / 3.38 GiB | 56 % warm | 8 % warm |
+| 0.5 | 4800×3200 | 70 / 70 MiB | 108 MiB | 580 / 580 MiB | 63.6 % | 20 % |
+| 1.0 | 2400×1600 | 24 / 24 MiB | 48 MiB | 150 / 150 MiB | 54.5 % | 8 % |
+| 2.0 | 1200×800 | 12 / 12 MiB | 30 MiB | 48 / 48 MiB | 54.5 % | 10 % |
+
+(the last two columns are the *current one-ring*; with the full nine-grid the 0.5 and 1.0-viewport
+pans are 100 % warm at every scale, i.e. sharp with only a texture upload, and a 2-viewport jump is
+still 8–33 %.)
+
+The nine-grid is what the user asked for and it is unaffordable at the low end, so it is a request
+clamped by a byte budget: the margin steps 1.0 → 0.75 → 0.5 → 0.25 → 0 and visible tiles are never
+dropped — at 0.2 the viewport alone is 408 MiB, so the honest plan there is visible-only and it says
+it was clamped. Budget 256 MiB: the nine-grid fits at 1.0 (150 MiB) and 2.0 (48 MiB), and clamps in
+between. Ordering is visible first, then nearest to the viewport centre, with a direction hint that
+pulls the side being moved toward forward without starving the other side.
+
+Residency is two-tier: the canvas draws the visible tiles, and the rest of the plan goes to the
+renderer's upload queue, so a pan onto a warm tile is a draw rather than a main-thread upload
+(measured: 204 tiles cost 88 ms synchronously — that stall is what the queue removes). Tile mipmaps
+follow the magnification: below 1.0 tiles are minified (up to 5:1 at the 0.2 threshold) and get the
+chain the D-series gate argues for, above it they skip it.
+
+**The decoder no longer allocates a region.** It exposes a per-row callback; the provider copies the
+column ranges belonging to the tiles whose rows are current straight into per-tile buffers. The
+region buffer used to be as large as the tile union, so even the one-ring allocated 494 MiB at 0.2
+and a nine-grid would have allocated 3.4 GiB — the failure mode the task forbids. Peak decoder memory
+is now one scanline plus the tiles a plan actually needs, at every magnification.
+
 **What is not solved.** Tiles live in memory only, so revisiting a far region costs another pass
 (≈10 s here, more under memory pressure); the backend serves PNG that is 8-bit and not interlaced
 (other formats keep the proxy path and their level upgrades); and the tile window is the visible

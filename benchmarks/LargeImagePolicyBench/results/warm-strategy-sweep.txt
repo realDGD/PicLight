@@ -4,11 +4,6 @@ scale 0.2: starting pass for plan warm margin 1.00 decodeRect (5632.0, 3584.0, 3
 scale 0.2: pass returned
 scale 0.5: starting pass for plan warm margin 1.00 decodeRect (16384.0, 10752.0, 14848.0, 10240.0)
 scale 0.5: pass returned
-scale 1.0: starting pass for plan warm margin 1.00 decodeRect (19968.0, 13312.0, 7680.0, 5120.0)
-scale 1.0: pass returned
-scale 2.0: starting pass for plan warm margin 1.00 decodeRect (22016.0, 14336.0, 4096.0, 3072.0)
-scale 2.0: pass returned
-scales done; GPU section
 warmbench: 万萝图.png 48000x32000, viewport 2400x1600 backing px, tile 512
 
 === physicalScale 0.2 — visible source 12000x8000 ===
@@ -18,11 +13,23 @@ warmbench: 万萝图.png 48000x32000, viewport 2400x1600 backing px, tile 512
   warm margin 0.25          864     864.0 MiB    864.0 MiB      0.84 GiB
   warm margin 0.50          1536    1536.0 MiB   1536.0 MiB     1.50 GiB
   warm margin 1.00          3456    3456.0 MiB   3456.0 MiB     3.38 GiB
-  pass: 3456 tiles, 3456.0 MiB, 20643 ms, first visible tile 10036 ms, peak footprint 3544.6 MiB, peak RSS 3.46 GiB
-  pan (+x)      visible   warm hits  time-to-sharp
-  0.5           425       100.0%     0 ms (GPU upload only)
-  1.0           425       100.0%     0 ms (GPU upload only)
-  2.0           204       8.3%       20643 ms (one pass)
+  pass: 3456 tiles, 3456.0 MiB, 20113 ms, first visible tile 9875 ms, peak footprint 3544.6 MiB, peak RSS 3.47 GiB
+  pan (+x)  strategy                  visible   warm hits  time-to-sharp
+  0.5       visible only              425       52.0%      20113 ms (one pass)
+  0.5       visible+1ring (current)   425       56.0%      20113 ms (one pass)
+  0.5       warm margin 0.25          425       76.0%      20113 ms (one pass)
+  0.5       warm margin 0.50          425       100.0%     0 ms (GPU upload only)
+  0.5       warm margin 1.00          425       100.0%     0 ms (GPU upload only)
+  1.0       visible only              425       4.0%       20113 ms (one pass)
+  1.0       visible+1ring (current)   425       8.0%       20113 ms (one pass)
+  1.0       warm margin 0.25          425       28.0%      20113 ms (one pass)
+  1.0       warm margin 0.50          425       52.0%      20113 ms (one pass)
+  1.0       warm margin 1.00          425       100.0%     0 ms (GPU upload only)
+  2.0       visible only              204       0.0%       20113 ms (one pass)
+  2.0       visible+1ring (current)   204       0.0%       20113 ms (one pass)
+  2.0       warm margin 0.25          204       0.0%       20113 ms (one pass)
+  2.0       warm margin 0.50          204       0.0%       20113 ms (one pass)
+  2.0       warm margin 1.00          204       8.3%       20113 ms (one pass)
 
 === physicalScale 0.5 — visible source 4800x3200 ===
   strategy                  tiles   tile bytes   region bytes   region
@@ -31,24 +38,53 @@ warmbench: 万萝图.png 48000x32000, viewport 2400x1600 backing px, tile 512
   warm margin 0.25          150     150.0 MiB    150.0 MiB      0.15 GiB
   warm margin 0.50          260     260.0 MiB    260.0 MiB      0.25 GiB
   warm margin 1.00          580     580.0 MiB    580.0 MiB      0.57 GiB
-  pass: 580 tiles, 580.0 MiB, 12282 ms, first visible tile 9133 ms, peak footprint 530.1 MiB, peak RSS 3.46 GiB
-  pan (+x)      visible   warm hits  time-to-sharp
-  0.5           77        100.0%     0 ms (GPU upload only)
-  1.0           70        100.0%     0 ms (GPU upload only)
-  2.0           77        9.1%       12282 ms (one pass)
+  pass: 580 tiles, 580.0 MiB, 12271 ms, first visible tile 9122 ms, peak footprint 529.2 MiB, peak RSS 3.47 GiB
+  pan (+x)  strategy                  visible   warm hits  time-to-sharp
+  0.5       visible only              77        54.5%      12271 ms (one pass)
+  0.5       visible+1ring (current)   77        63.6%      12271 ms (one pass)
+  0.5       warm margin 0.25          77        72.7%      12271 ms (one pass)
+  0.5       warm margin 0.50          77        100.0%     0 ms (GPU upload only)
+  0.5       warm margin 1.00          77        100.0%     0 ms (GPU upload only)
+  1.0       visible only              70        10.0%      12271 ms (one pass)
+  1.0       visible+1ring (current)   70        20.0%      12271 ms (one pass)
+  1.0       warm margin 0.25          70        30.0%      12271 ms (one pass)
+  1.0       warm margin 0.50          70        60.0%      12271 ms (one pass)
+  1.0       warm margin 1.00          70        100.0%     0 ms (GPU upload only)
+  2.0       visible only              77        0.0%       12271 ms (one pass)
+  2.0       visible+1ring (current)   77        0.0%       12271 ms (one pass)
+  2.0       warm margin 0.25          77        0.0%       12271 ms (one pass)
+  2.0       warm margin 0.50          77        0.0%       12271 ms (one pass)
+  2.0       warm margin 1.00          77        9.1%       12271 ms (one pass)
 
 === physicalScale 1.0 — visible source 2400x1600 ===
   strategy                  tiles   tile bytes   region bytes   region
   visible only              24      24.0 MiB     24.0 MiB       0.02 GiB
-  visible+1ring (current)   48      48.0 MiB     48.0 MiB       0.05 GiB
+  visible+1ring (current)   48      48.0 MiB     48.0 MiB       0.05 GiBscale 1.0: starting pass for plan warm margin 1.00 decodeRect (19968.0, 13312.0, 7680.0, 5120.0)
+scale 1.0: pass returned
+scale 2.0: starting pass for plan warm margin 1.00 decodeRect (22016.0, 14336.0, 4096.0, 3072.0)
+scale 2.0: pass returned
+scales done; GPU section
+
   warm margin 0.25          48      48.0 MiB     48.0 MiB       0.05 GiB
   warm margin 0.50          70      70.0 MiB     70.0 MiB       0.07 GiB
   warm margin 1.00          150     150.0 MiB    150.0 MiB      0.15 GiB
-  pass: 150 tiles, 150.0 MiB, 10305 ms, first visible tile 9020 ms, peak footprint 530.3 MiB, peak RSS 3.32 GiB
-  pan (+x)      visible   warm hits  time-to-sharp
-  0.5           24        100.0%     0 ms (GPU upload only)
-  1.0           20        100.0%     0 ms (GPU upload only)
-  2.0           24        16.7%      10305 ms (one pass)
+  pass: 150 tiles, 150.0 MiB, 10345 ms, first visible tile 9048 ms, peak footprint 529.3 MiB, peak RSS 3.47 GiB
+  pan (+x)  strategy                  visible   warm hits  time-to-sharp
+  0.5       visible only              24        66.7%      10345 ms (one pass)
+  0.5       visible+1ring (current)   24        83.3%      10345 ms (one pass)
+  0.5       warm margin 0.25          24        83.3%      10345 ms (one pass)
+  0.5       warm margin 0.50          24        100.0%     0 ms (GPU upload only)
+  0.5       warm margin 1.00          24        100.0%     0 ms (GPU upload only)
+  1.0       visible only              20        20.0%      10345 ms (one pass)
+  1.0       visible+1ring (current)   20        40.0%      10345 ms (one pass)
+  1.0       warm margin 0.25          20        40.0%      10345 ms (one pass)
+  1.0       warm margin 0.50          20        60.0%      10345 ms (one pass)
+  1.0       warm margin 1.00          20        100.0%     0 ms (GPU upload only)
+  2.0       visible only              24        0.0%       10345 ms (one pass)
+  2.0       visible+1ring (current)   24        0.0%       10345 ms (one pass)
+  2.0       warm margin 0.25          24        0.0%       10345 ms (one pass)
+  2.0       warm margin 0.50          24        0.0%       10345 ms (one pass)
+  2.0       warm margin 1.00          24        16.7%      10345 ms (one pass)
 
 === physicalScale 2.0 — visible source 1200x800 ===
   strategy                  tiles   tile bytes   region bytes   region
@@ -57,17 +93,29 @@ warmbench: 万萝图.png 48000x32000, viewport 2400x1600 backing px, tile 512
   warm margin 0.25          12      12.0 MiB     12.0 MiB       0.01 GiB
   warm margin 0.50          24      24.0 MiB     24.0 MiB       0.02 GiB
   warm margin 1.00          48      48.0 MiB     48.0 MiB       0.05 GiB
-  pass: 48 tiles, 48.0 MiB, 9673 ms, first visible tile 9049 ms, peak footprint 533.5 MiB, peak RSS 3.31 GiB
-  pan (+x)      visible   warm hits  time-to-sharp
-  0.5           12        100.0%     0 ms (GPU upload only)
-  1.0           9         100.0%     0 ms (GPU upload only)
-  2.0           9         33.3%      9673 ms (one pass)
-  GPU upload (visible): 24 tiles, 12.1 ms on the calling thread, 24.0 MiB resident
-  GPU upload (visible+1ring): 204 tiles, 86.0 ms on the calling thread, 192.0 MiB resident
+  pass: 48 tiles, 48.0 MiB, 9642 ms, first visible tile 9019 ms, peak footprint 529.4 MiB, peak RSS 3.47 GiB
+  pan (+x)  strategy                  visible   warm hits  time-to-sharp
+  0.5       visible only              12        75.0%      9642 ms (one pass)
+  0.5       visible+1ring (current)   12        100.0%     0 ms (GPU upload only)
+  0.5       warm margin 0.25          12        75.0%      9642 ms (one pass)
+  0.5       warm margin 0.50          12        100.0%     0 ms (GPU upload only)
+  0.5       warm margin 1.00          12        100.0%     0 ms (GPU upload only)
+  1.0       visible only              9         33.3%      9642 ms (one pass)
+  1.0       visible+1ring (current)   9         66.7%      9642 ms (one pass)
+  1.0       warm margin 0.25          9         33.3%      9642 ms (one pass)
+  1.0       warm margin 0.50          9         66.7%      9642 ms (one pass)
+  1.0       warm margin 1.00          9         100.0%     0 ms (GPU upload only)
+  2.0       visible only              9         0.0%       9642 ms (one pass)
+  2.0       visible+1ring (current)   9         0.0%       9642 ms (one pass)
+  2.0       warm margin 0.25          9         0.0%       9642 ms (one pass)
+  2.0       warm margin 0.50          9         0.0%       9642 ms (one pass)
+  2.0       warm margin 1.00          9         33.3%      9642 ms (one pass)
+  GPU upload (visible): 24 tiles, 10.7 ms on the calling thread, 24.0 MiB resident
+  GPU upload (visible+1ring): 204 tiles, 79.5 ms on the calling thread, 192.0 MiB resident
 
 | strategy | scale | peak footprint | peak RSS | tile bytes | traversals | first visible tile | report |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| warm margin 1.00 | 0.2 | 3544.6 MiB | 3.46 GiB | 3456.0 MiB | 1 | 10036 ms | — |
-| warm margin 1.00 | 0.5 | 530.1 MiB | 3.46 GiB | 580.0 MiB | 1 | 9133 ms | — |
-| warm margin 1.00 | 1.0 | 530.3 MiB | 3.32 GiB | 150.0 MiB | 1 | 9020 ms | — |
-| warm margin 1.00 | 2.0 | 533.5 MiB | 3.31 GiB | 48.0 MiB | 1 | 9049 ms | — |
+| warm margin 1.00 | 0.2 | 3544.6 MiB | 3.47 GiB | 3456.0 MiB | 1 | 9875 ms | — |
+| warm margin 1.00 | 0.5 | 529.2 MiB | 3.47 GiB | 580.0 MiB | 1 | 9122 ms | — |
+| warm margin 1.00 | 1.0 | 529.3 MiB | 3.47 GiB | 150.0 MiB | 1 | 9048 ms | — |
+| warm margin 1.00 | 2.0 | 529.4 MiB | 3.47 GiB | 48.0 MiB | 1 | 9019 ms | — |

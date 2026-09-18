@@ -231,7 +231,8 @@ for scale in scales {
 
     // Pan simulation: what is already resident after moving by N viewports, and what would it
     // cost to become sharp.
-    print("  " + padded("pan (+x)", 14) + padded("visible", 10) + padded("warm hits", 11) + "time-to-sharp")
+    print("  " + padded("pan (+x)", 10) + padded("strategy", 26) + padded("visible", 10)
+          + padded("warm hits", 11) + "time-to-sharp")
     for viewports in [0.5, 1.0, 2.0] {
         let moved = visible.offsetBy(dx: visible.width * CGFloat(viewports), dy: 0)
             .intersection(CGRect(origin: .zero, size: sourceSize))
@@ -240,14 +241,20 @@ for scale in scales {
         let keys = plan.allCoordinates.map {
             NativeTileKey(sourcePath: url.path, tileSize: tileSize, x: $0.x, y: $0.y)
         }
-        let hits = keys.filter { deliveredKeys.contains($0) }.count
-        let rate = keys.isEmpty ? 0 : Double(hits) / Double(keys.count)
-        // Warm tiles need only a GPU upload; the rest need another traversal. The traversal time
-        // is the measured pass above — the same work, since PNG inflates the whole stream either
-        // way, which is the finding that makes a *wider* pass pay for itself.
-        let sharp = rate >= 1.0 ? "0 ms (GPU upload only)" : String(format: "%.0f ms (one pass)", totalMS)
-        print("  " + padded(String(format: "%.1f", viewports), 14) + padded("\(keys.count)", 10)
-              + padded(String(format: "%.1f%%", rate * 100), 11) + sharp)
+        for candidate in candidates {
+            let owned = Set(candidate.plan.allCoordinates.map {
+                NativeTileKey(sourcePath: url.path, tileSize: tileSize, x: $0.x, y: $0.y)
+            })
+            // The denominator is the *panned viewport*, not the overlap: dividing by the
+            // intersection reports 100 % for every strategy, including one that owns nothing.
+            let hits = keys.filter { owned.contains($0) && deliveredKeys.contains($0) }.count
+            let rate = keys.isEmpty ? 1 : Double(hits) / Double(keys.count)
+            let sharp = rate >= 1.0 ? "0 ms (GPU upload only)"
+                                    : String(format: "%.0f ms (one pass)", totalMS)
+            print("  " + padded(String(format: "%.1f", viewports), 10) + padded(candidate.name, 26)
+                  + padded("\(keys.count)", 10)
+                  + padded(String(format: "%.1f%%", rate * 100), 11) + sharp)
+        }
     }
     reportRows.append("| \(widest.name) | \(scale) | \(human(peak.footprint)) | "
                       + "\(gib(peak.resident)) | \(human(snapshot.bytes)) | 1 | "
