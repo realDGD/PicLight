@@ -240,6 +240,15 @@ enum BenchTrace {
                 mark("NATIVE probe: no visible viewer")
                 return
             }
+            let environment = ProcessInfo.processInfo.environment
+            if environment["PICLIGHT_BENCH_PUBLISH_BYPASS"] == "1" {
+                viewer.publicationCoalescingEnabled = false
+                mark("PUBLISH coalescing bypassed (one publication per arrival)")
+            } else if let ms = environment["PICLIGHT_BENCH_PUBLISH_MS"], let value = Double(ms) {
+                viewer.publicationCoalescingInterval = value / 1000
+                mark("PUBLISH coalescing interval \(value) ms")
+            }
+            viewer.resetPublicationDiagnostics()
             viewer.perform(.zoomActualPixels)
             mark(String(format: "NATIVE zoom to 100%% (zoom=%.4f backing=%.1f)",
                         viewer.viewerState.viewport.zoomScale, window.backingScaleFactor))
@@ -273,6 +282,53 @@ enum BenchTrace {
         }
     }
 
+    /// The drawer's current thumbnail, as laid out on screen: the reported bug is a frame that
+    /// collapses to a few points for a large image, so the numbers that matter are the image box and
+    /// the current-item border.
+    static func reportDrawerThumbnail() {
+        guard enabled,
+              ProcessInfo.processInfo.environment["PICLIGHT_BENCH_DRAWER"] == "1" else { return }
+        for delay in [24.0, 34.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard let window = NSApp.windows.first(where: { $0.isVisible }),
+                      let drawer = findView(ofType: ThumbnailDrawerView.self, in: window.contentView),
+                      let table = findView(ofType: NSTableView.self, in: drawer) else {
+                    mark("DRAWER probe: drawer or table not found")
+                    return
+                }
+                let rows = table.rows(in: table.visibleRect)
+                mark("DRAWER visible rows \(rows.location)..<\(rows.location + rows.length) "
+                     + "of \(table.numberOfRows), rowHeight "
+                     + String(format: "%.0f", table.rowHeight))
+                let range = rows.length > 0 ? rows.location..<(rows.location + rows.length) : 0..<min(3, table.numberOfRows)
+                for row in range {
+                    // makeIfNecessary: the drawer may be hidden, and the question is how the cell
+                    // lays out, not whether the sidebar is on screen.
+                    guard let cell = table.view(atColumn: 0, row: row, makeIfNecessary: true)
+                            as? ThumbnailCellView else { continue }
+                    cell.layoutSubtreeIfNeeded()
+                    let image = cell.thumbnailImageView.frame
+                    let border = cell.selectionBorderView.frame
+                    let hasImage = (cell.thumbnailImageView as? NSImageView)?.image != nil
+                    mark("DRAWER row \(row) hidden=\(drawer.isHidden) cell " + String(format: "%.0fx%.0f", cell.bounds.width, cell.bounds.height)
+                         + " image " + String(format: "%.0fx%.0f at (%.0f,%.0f)",
+                                              image.width, image.height, image.minX, image.minY)
+                         + " border " + String(format: "%.0fx%.0f", border.width, border.height)
+                         + " current=\(!cell.selectionBorderView.isHidden) hasImage=\(hasImage)")
+                }
+            }
+        }
+    }
+
+    static func findView<T: NSView>(ofType: T.Type, in view: NSView?) -> T? {
+        guard let view else { return nil }
+        if let match = view as? T { return match }
+        for sub in view.subviews {
+            if let found = findView(ofType: ofType, in: sub) { return found }
+        }
+        return nil
+    }
+
     /// The production residency diagnostics, printed as a mark so the run's own trace carries them.
     private static func reportResidency(viewer: ViewerViewController, label: String) {
         let d = viewer.nativeDetailDiagnostics()
@@ -283,6 +339,15 @@ enum BenchTrace {
              + "sync=\(d.gpuSynchronousUploads)")
         // The dedup and variant invariants, on the real image: textures actually created, entries
         // discarded as stale, warm requests skipped as duplicates, and the LRU's own consistency.
+        let p = viewer.publicationDiagnostics()
+        mark("PUBLICATION \(label): arrivals=\(p.tileArrivals) requests=\(p.publicationRequests) "
+             + "runs=\(p.publicationRuns) coalesced=\(p.publicationCoalesced) "
+             + "visibleMat=\(p.visibleTilesMaterialized) warmMat=\(p.warmTilesMaterialized) "
+             + "warmSubmitted=\(p.warmSubmissionCount) maxPending=\(p.maxPendingPublications) "
+             + "duration=\(String(format: "%.0f", p.publicationDurationMS))ms "
+             + "mainThread=\(String(format: "%.0f", p.mainThreadPublicationMS))ms")
+        mark("STALEPLAN \(label): skip=\(d.gpuStalePlanSkipped) discard=\(d.gpuStalePlanDiscarded) "
+             + "insertions=\(d.gpuResidentInsertions) duplicates=\(d.gpuDuplicateDiscarded)")
         mark("INVARIANTS \(label): creations=\(d.gpuTextureCreations) stale=\(d.gpuStaleDiscarded) "
              + "dupWarm=\(d.gpuDuplicateWarmSkips) inFlight=\(d.gpuInFlight) "
              + "bgHits=\(d.gpuBackgroundHits) protected=\(d.gpuProtectedTiles) "

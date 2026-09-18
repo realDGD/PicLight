@@ -88,6 +88,16 @@ public final class ImageCanvasView: NSView {
         addSubview(surface)
         metalSurface = surface
         metalRenderer = renderer
+        // A background upload that finishes for a tile the draw path missed has to repaint: nothing
+        // else will ask again until the next user event, and the screen would keep showing the proxy
+        // for a tile that is ready. The main-queue hop coalesces a burst of completions into frames.
+        renderer.setTextureBecameReadyHandler { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.metalSurface != nil else { return }
+                self.pushToMetal()
+                self.needsDisplay = true
+            }
+        }
         pushToMetal()
         needsDisplay = true
     }
@@ -421,6 +431,9 @@ public final class ImageCanvasView: NSView {
     }
 
     private var tileVariant: MetalImageRenderer.TileTextureVariant = .baseOnly
+
+    /// The renderer, for tests that drive the draw path directly.
+    var metalRendererForTesting: MetalImageRenderer? { metalRenderer }
 
     /// Texture cache diagnostics, for tests and the acceptance runner.
     public func tileTextureDiagnostics() -> MetalImageRenderer.TileTextureDiagnostics {

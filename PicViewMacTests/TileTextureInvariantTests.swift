@@ -146,14 +146,14 @@ final class TileTextureInvariantTests: XCTestCase {
         let fixed = try switchVariantDuringUpload(subject, key: mipKey)
         XCTAssertFalse(fixed.residentAfterDrop, "the stale texture never enters the cache")
         XCTAssertEqual(fixed.bytesAfterDrop, 0, "and is never billed")
-        XCTAssertEqual(fixed.staleDiscarded, 1, "it is reported as discarded")
+        XCTAssertEqual(fixed.staleVariantDiscarded, 1, "it is reported as discarded")
         XCTAssertTrue(fixed.lruConsistent)
     }
 
     private struct VariantSwitchOutcome {
         var residentAfterDrop: Bool
         var bytesAfterDrop: Int
-        var staleDiscarded: Int
+        var staleVariantDiscarded: Int
         var lruConsistent: Bool
     }
 
@@ -179,7 +179,7 @@ final class TileTextureInvariantTests: XCTestCase {
         let diagnostics = renderer.tileTextureDiagnostics()
         return VariantSwitchOutcome(residentAfterDrop: renderer.debugHasTexture(mipKey),
                                     bytesAfterDrop: diagnostics.bytes,
-                                    staleDiscarded: diagnostics.staleDiscarded,
+                                    staleVariantDiscarded: diagnostics.staleVariantDiscarded,
                                     lruConsistent: diagnostics.lruIsConsistent)
     }
 

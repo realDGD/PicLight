@@ -114,7 +114,9 @@ public final class MetalImageRenderer {
     private var tileTextureStats = (foregroundUploads: 0, backgroundUploads: 0,
                                     foregroundHits: 0, backgroundHits: 0,
                                     inFlightSkips: 0, staleDiscarded: 0, duplicateWarmSkips: 0,
-                                    textureCreations: 0)
+                                    textureCreations: 0, stalePlanSkipped: 0,
+                                    stalePlanDiscarded: 0, duplicateDiscarded: 0,
+                                    residentInsertions: 0)
     /// Bytes of tile texture storage. Real `MTLTexture.allocatedSize` where the driver reports it,
     /// the base-plus-mip estimate otherwise.
     public private(set) var tileTextureBytes = 0
@@ -133,6 +135,19 @@ public final class MetalImageRenderer {
     /// them.
     private var debugLegacyDuplicateUpload = false
     private var debugDisableGenerationCheck = false
+    /// Test-only: restores the pre-fix behaviour for the resident-plan check.
+    private var debugDisablePlanCheck = false
+    /// The resident set the viewer last published: visible plus warm for the current plan. An
+    /// upload that completes for a key outside it belongs to a plan that is no longer on screen.
+    private var residentTileKeys: Set<NativeTileKey> = []
+    /// Whether a plan has ever been published. An empty set before the first publication means
+    /// "not yet known", and callers outside the viewer (tests) must not be constrained by it.
+    private var hasResidentPlan = false
+    /// Foreground requests that missed because the key was already uploading. When such an upload
+    /// completes, the screen is showing the proxy for a tile that is now ready, and nothing else
+    /// will ask for it until the next user event, so completion has to report back.
+    private var missedForegroundKeys: Set<TileTextureKey> = []
+    private var textureBecameReady: ((NativeTileKey) -> Void)?
 
     public func setBeforeUploadHook(_ hook: (() -> Void)?) {
         tileTextureLock.lock(); beforeUploadHook = hook; tileTextureLock.unlock()
@@ -144,6 +159,16 @@ public final class MetalImageRenderer {
 
     public func setDebugDisableGenerationCheck(_ enabled: Bool) {
         tileTextureLock.lock(); debugDisableGenerationCheck = enabled; tileTextureLock.unlock()
+    }
+
+    public func setDebugDisablePlanCheck(_ enabled: Bool) {
+        tileTextureLock.lock(); debugDisablePlanCheck = enabled; tileTextureLock.unlock()
+    }
+
+    /// Called when a tile that a foreground draw missed becomes ready, so the canvas can repaint
+    /// without waiting for the next user event. Coalescing is the canvas business.
+    public func setTextureBecameReadyHandler(_ handler: ((NativeTileKey) -> Void)?) {
+        tileTextureLock.lock(); textureBecameReady = handler; tileTextureLock.unlock()
     }
 
     /// Test-only: the billed cost of every resident entry, which must sum to `tileTextureBytes`.
@@ -299,6 +324,11 @@ public final class MetalImageRenderer {
         }
         if tileTextureInFlight.contains(key) && !debugLegacyDuplicateUpload {
             tileTextureStats.inFlightSkips += 1
+            if !fromBackground {
+                // The draw path wanted this tile and is drawing the proxy instead. Whoever finishes
+                // the upload has to say so, or the proxy stays until the next user event.
+                missedForegroundKeys.insert(key)
+            }
             tileTextureLock.unlock()
             return nil
         }
@@ -318,30 +348,51 @@ public final class MetalImageRenderer {
 
         tileTextureLock.lock()
         tileTextureInFlight.remove(key)
+        // Counted the moment the driver handed back a texture, before any decision about what to do
+        // with it: otherwise `creations` silently means "insertions" and its equality with `uploads`
+        // reads as "nothing was ever thrown away".
+        if uploaded != nil { tileTextureStats.textureCreations += 1 }
+        // Whatever happens now, this key is no longer in flight, so a foreground miss must be
+        // answered: either the tile is resident and can be drawn, or the upload is gone and the
+        // proxy is the correct picture.
+        let pendingNotification = missedForegroundKeys.remove(key) != nil ? textureBecameReady : nil
+
         guard generation == textureGeneration || debugDisableGenerationCheck else {
             // The policy changed while this upload ran: the texture is already the wrong flavour, so
             // it never enters the cache and never counts towards the budget.
             tileTextureStats.staleDiscarded += 1
             tileTextureLock.unlock()
+            pendingNotification?(key.tile)
             return nil
         }
         guard let uploaded else {
             tileTextureLock.unlock()
+            pendingNotification?(key.tile)
             return nil
         }
-        tileTextureStats.textureCreations += 1
+        // A tile whose plan is gone: the user panned away while this upload ran, the cache has
+        // already trimmed, and letting it in would spend the budget on tiles nothing draws.
+        if hasResidentPlan && !residentTileKeys.contains(key.tile) && !debugDisablePlanCheck {
+            tileTextureStats.stalePlanDiscarded += 1
+            tileTextureLock.unlock()
+            pendingNotification?(key.tile)
+            return nil
+        }
         // A racing caller may have completed the same key first; keep one entry, not two.
         if let existing = tileTextures[key], !debugLegacyDuplicateUpload {
+            tileTextureStats.duplicateDiscarded += 1
             tileTextureLock.unlock()
             return existing
         }
         tileTextures[key] = uploaded
         tileTextureOrder.append(key)
         tileTextureBytes += Self.byteCost(of: uploaded)
+        tileTextureStats.residentInsertions += 1
         if fromBackground { tileTextureStats.backgroundUploads += 1 }
         else { tileTextureStats.foregroundUploads += 1 }
         evictTileTexturesIfNeededLocked()
         tileTextureLock.unlock()
+        pendingNotification?(key.tile)
         return uploaded
     }
 
@@ -386,10 +437,15 @@ public final class MetalImageRenderer {
             guard let self else { return }
             for key in wanted {
                 guard let tile = byKey[key] else { continue }
-                _ = self.prepareTexture(for: tile, variant: variant, fromBackground: true)
+                // Drop entries whose plan is gone before creating a texture for them, rather than
+                // creating one and discarding it a moment later.
                 self.tileTextureLock.lock()
                 self.warmQueue.remove(TileTextureKey(tile: key, variant: variant))
+                let wantedStill = !self.hasResidentPlan || self.residentTileKeys.contains(key)
+                if !wantedStill { self.tileTextureStats.stalePlanSkipped += 1 }
                 self.tileTextureLock.unlock()
+                guard wantedStill else { continue }
+                _ = self.prepareTexture(for: tile, variant: variant, fromBackground: true)
             }
         }
     }
@@ -433,7 +489,16 @@ public final class MetalImageRenderer {
         public var foregroundHits = 0
         public var backgroundHits = 0
         public var inFlightSkips = 0
-        public var staleDiscarded = 0
+        public var staleVariantDiscarded = 0
+        /// Warm-queue entries dropped before upload because their tile left the current plan.
+        public var stalePlanSkipped = 0
+        /// Uploads discarded on completion because their tile left the current plan. Distinct from
+        /// a variant switch, so the cost of an abandoned plan is measurable on its own.
+        public var stalePlanDiscarded = 0
+        /// Textures created and then dropped because another caller had completed the same key.
+        public var duplicateDiscarded = 0
+        /// Entries inserted into the cache, as opposed to textures physically created.
+        public var residentInsertions = 0
         public var duplicateWarmSkips = 0
         /// Textures actually created, counted at creation rather than at insertion: the two differ
         /// exactly when a duplicate upload was made and then thrown away, which is the failure the
@@ -457,7 +522,11 @@ public final class MetalImageRenderer {
         report.foregroundHits = tileTextureStats.foregroundHits
         report.backgroundHits = tileTextureStats.backgroundHits
         report.inFlightSkips = tileTextureStats.inFlightSkips
-        report.staleDiscarded = tileTextureStats.staleDiscarded
+        report.staleVariantDiscarded = tileTextureStats.staleDiscarded
+        report.stalePlanSkipped = tileTextureStats.stalePlanSkipped
+        report.stalePlanDiscarded = tileTextureStats.stalePlanDiscarded
+        report.duplicateDiscarded = tileTextureStats.duplicateDiscarded
+        report.residentInsertions = tileTextureStats.residentInsertions
         report.duplicateWarmSkips = tileTextureStats.duplicateWarmSkips
         report.textureCreations = tileTextureStats.textureCreations
         report.protectedTiles = protectedTileKeys.count
@@ -471,6 +540,12 @@ public final class MetalImageRenderer {
     public var tileVariantForEncoding: TileTextureVariant = .baseOnly
 
     public func trimTileTextures(keeping keys: Set<NativeTileKey>) {
+        // Record the plan first: an upload that is in flight while the plan changes has to be
+        // discarded when it completes, and until this call it belongs to the previous plan.
+        tileTextureLock.lock()
+        residentTileKeys = keys
+        hasResidentPlan = true
+        tileTextureLock.unlock()
         tileTextureLock.lock(); defer { tileTextureLock.unlock() }
         let doomed = tileTextures.keys.filter { !keys.contains($0.tile) }
         for key in doomed {

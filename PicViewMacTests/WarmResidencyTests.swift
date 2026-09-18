@@ -154,6 +154,86 @@ final class WarmResidencyTests: XCTestCase {
         XCTAssertGreaterThan(after.gpuUploads, 0)
     }
 
+    /// Every decoded tile asks for a publication, and a publication walks the whole warm set. The
+    /// burst test pins the contract: a hundred arrivals inside one run-loop turn must produce far
+    /// fewer than a hundred publications, without delaying the progressive display.
+    func testBurstOfTileArrivalsProducesFarFewerPublications() throws {
+        let (viewer, controller, _, _) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }))
+        viewer.perform(.zoomActualPixels)
+        XCTAssertTrue(pump(until: { viewer.detailPlanForTesting != nil }))
+        viewer.resetPublicationDiagnostics()
+
+        // A burst: the provider decodes tiles as fast as it can, and each arrival lands here.
+        for _ in 0..<100 { viewer.nativeTileArrived() }
+        XCTAssertTrue(pump(until: { viewer.publicationDiagnostics().publicationRuns > 0 }, timeout: 5))
+        _ = pump(until: { false }, timeout: 0.2)
+        let diagnostics = viewer.publicationDiagnostics()
+        let mainMS = String(format: "%.1f", diagnostics.mainThreadPublicationMS)
+        let parts = ["PUBDIAG",
+                     "arrivals=" + String(diagnostics.tileArrivals),
+                     "requests=" + String(diagnostics.publicationRequests),
+                     "runs=" + String(diagnostics.publicationRuns),
+                     "coalesced=" + String(diagnostics.publicationCoalesced),
+                     "visibleMaterialized=" + String(diagnostics.visibleTilesMaterialized),
+                     "warmMaterialized=" + String(diagnostics.warmTilesMaterialized),
+                     "warmSubmitted=" + String(diagnostics.warmSubmissionCount),
+                     "maxPending=" + String(diagnostics.maxPendingPublications),
+                     "mainMS=" + mainMS]
+        FileHandle.standardError.write(Data((parts.joined(separator: " ") + "\n").utf8))
+        // The live pass also delivers arrivals of its own, so this is a lower bound.
+        XCTAssertGreaterThanOrEqual(diagnostics.tileArrivals, 100)
+        XCTAssertLessThanOrEqual(diagnostics.publicationRuns, 12,
+                                 "a burst must coalesce, not publish 100 times "
+                                 + "(runs \(diagnostics.publicationRuns))")
+        XCTAssertGreaterThan(diagnostics.publicationCoalesced, 0,
+                             "arrivals absorbed by a pending publication are counted")
+        XCTAssertLessThanOrEqual(diagnostics.maxPendingPublications, 1,
+                                 "never more than one publication in flight")
+    }
+
+    /// Progressive display: the first tiles must reach the screen while the pass is still running,
+    /// not after it finishes.
+    func testPublicationsHappenDuringThePassNotAfterIt() throws {
+        let (viewer, controller, _, _) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }))
+        viewer.perform(.zoomActualPixels)
+        XCTAssertTrue(pump(until: { viewer.detailPlanForTesting != nil }))
+        XCTAssertTrue(pump(until: { viewer.publicationDiagnostics().publicationRuns >= 2 }, timeout: 20),
+                      "the pass must publish more than once while tiles arrive")
+        XCTAssertTrue(pump(until: { viewer.canvasNativeTilesForTesting.count > 0 }, timeout: 20),
+                      "visible tiles must be published progressively")
+        let diagnostics = viewer.publicationDiagnostics()
+        XCTAssertGreaterThan(diagnostics.visibleTilesMaterialized, 0)
+        XCTAssertGreaterThan(diagnostics.warmSubmissionCount, 0, "warm tiles are handed over")
+        // Coalescing must stay well inside a frame budget.
+        XCTAssertLessThanOrEqual(viewer.publicationCoalescingInterval, 0.02,
+                                 "the interval may not become a debounce")
+    }
+
+    /// Publication hands the uploader only the tiles that are newly warm: re-submitting the whole
+    /// warm set on every publication is what made the work quadratic.
+    func testPublicationSubmitsOnlyNewlyWarmTiles() throws {
+        let (viewer, controller, _, _) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }))
+        viewer.perform(.zoomActualPixels)
+        XCTAssertTrue(pump(until: { viewer.publicationDiagnostics().warmSubmissionCount > 0 },
+                           timeout: 20))
+        // Let the pass settle, then publish again with an unchanged warm set.
+        _ = pump(until: { false }, timeout: 1.0)
+        let before = viewer.publicationDiagnostics()
+        viewer.nativeTileArrived()
+        XCTAssertTrue(pump(until: {
+            viewer.publicationDiagnostics().publicationRuns > before.publicationRuns
+        }, timeout: 5))
+        let after = viewer.publicationDiagnostics()
+        XCTAssertEqual(after.warmSubmissionCount, before.warmSubmissionCount,
+                       "a publication whose warm set did not change submits nothing")
+    }
+
     /// The cache count is the cache count: the old property reported the *drawn* tile count, so a
     /// warm plan looked like it had no cached tiles at all.
     func testCacheCountForTestingIsTheCacheNotTheDrawList() throws {

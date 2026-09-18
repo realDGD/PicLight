@@ -658,17 +658,34 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// difference against that same list, which made it empty and left the background uploader
     /// with nothing to do.
     private func refreshPublishedSets(for plan: NativeTilePlan, source: URL) async {
+        let started = Date()
         let visible = await nativeDetail.cachedVisibleTiles(for: plan, source: source)
         let warm = await nativeDetail.cachedWarmTiles(for: plan, source: source)
         let residentKeys = await nativeDetail.residentKeys(for: plan, source: source)
         await MainActor.run {
+            self.publicationStats.publicationRuns += 1
+            self.publicationStats.visibleTilesMaterialized += visible.count
+            self.publicationStats.warmTilesMaterialized += warm.count
+            let mainStarted = Date()
             self.publishNativeTiles(visible, residentKeys: residentKeys)
-            self.canvas.warmTileTextures(warm)
+            // Only the tiles that became warm since the last publication: re-offering the whole warm
+            // set every time is what made the pass quadratic, and the uploader is the only consumer.
+            let newWarm = warm.filter { !self.submittedWarmKeys.contains($0.key) }
+            if !newWarm.isEmpty {
+                self.canvas.warmTileTextures(newWarm)
+                self.publicationStats.warmSubmissionCount += newWarm.count
+            }
+            self.submittedWarmKeys = Set(warm.map { $0.key })
             self.warmTileCount = warm.count
+            self.publicationStats.mainThreadPublicationMS +=
+                Date().timeIntervalSince(mainStarted) * 1000
+            self.publicationStats.publicationDurationMS +=
+                Date().timeIntervalSince(started) * 1000
         }
     }
 
     private func publishNativeTiles(_ tiles: [NativeTile], residentKeys: Set<NativeTileKey>) {
+        if tiles.isEmpty { submittedWarmKeys = [] }
         canvas.nativeTiles = tiles
         // Trim against what is *resident*, not against what is drawn: trimming to the draw set
         // deleted the warm textures the background uploader had just created.
@@ -743,6 +760,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         var gpuSynchronousUploads = 0
         var gpuInFlight = 0
         var gpuStaleDiscarded = 0
+        /// Uploads thrown away because their tile left the plan, and queue entries dropped before
+        /// they became textures.
+        var gpuStalePlanDiscarded = 0
+        var gpuStalePlanSkipped = 0
+        /// Textures physically created, entries inserted, and creations dropped as duplicates.
+        var gpuPhysicalCreations = 0
+        var gpuResidentInsertions = 0
+        var gpuDuplicateDiscarded = 0
         var gpuDuplicateWarmSkips = 0
         /// Textures created, counted at creation: the dedup metric that cannot be hidden by a
         /// discarded duplicate.
@@ -754,6 +779,44 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private(set) var warmTileCount = 0
+
+    /// What one publication costs. The counters exist because "one publication per decoded tile"
+    /// makes the pass quadratic: every arrival walks the whole warm set again, and every arrival
+    /// retains a fresh copy of the tile arrays while it waits for the main thread.
+    struct PublicationDiagnostics: Equatable {
+        var tileArrivals = 0
+        var publicationRequests = 0
+        var publicationRuns = 0
+        var publicationCoalesced = 0
+        var visibleTilesMaterialized = 0
+        var warmTilesMaterialized = 0
+        var warmSubmissionCount = 0
+        var pendingPublications = 0
+        var maxPendingPublications = 0
+        var publicationDurationMS = 0.0
+        var mainThreadPublicationMS = 0.0
+    }
+
+    private(set) var publicationStats = PublicationDiagnostics()
+    /// Warm tiles already handed to the uploader, so the next publication submits only the delta.
+    private var submittedWarmKeys: Set<NativeTileKey> = []
+    private var publicationScheduled = false
+    private var publicationDirty = false
+
+    /// How long arrivals are collected before one publication runs. Zero means one run-loop turn:
+    /// the progressive display must not be delayed by a debounce.
+    var publicationCoalescingInterval: TimeInterval = 0
+
+    /// Measurement switch: with coalescing off, every arrival publishes on its own, which is the
+    /// behaviour the coalescing exists to replace. The benchmark turns it off to measure both paths
+    /// on one binary.
+    var publicationCoalescingEnabled = true
+
+    func publicationDiagnostics() -> PublicationDiagnostics { publicationStats }
+
+    func resetPublicationDiagnostics() {
+        publicationStats = PublicationDiagnostics()
+    }
 
     /// Tiles in the backend's CPU cache, as opposed to tiles currently drawn.
     var nativeDetailCacheCountForTesting: Int { nativeDetail.cache.count }
@@ -779,7 +842,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         report.gpuBackgroundUploads = gpu.backgroundUploads
         report.gpuSynchronousUploads = gpu.foregroundUploads
         report.gpuInFlight = gpu.inFlight
-        report.gpuStaleDiscarded = gpu.staleDiscarded
+        report.gpuStaleDiscarded = gpu.staleVariantDiscarded
+        report.gpuStalePlanDiscarded = gpu.stalePlanDiscarded
+        report.gpuStalePlanSkipped = gpu.stalePlanSkipped
+        report.gpuPhysicalCreations = gpu.textureCreations
+        report.gpuResidentInsertions = gpu.residentInsertions
+        report.gpuDuplicateDiscarded = gpu.duplicateDiscarded
         report.gpuDuplicateWarmSkips = gpu.duplicateWarmSkips
         report.gpuTextureCreations = gpu.textureCreations
         report.gpuProtectedTiles = gpu.protectedTiles
@@ -904,12 +972,65 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     /// Called by the backend when a tile is decoded.
+    ///
+    /// One publication per arrival is quadratic: a publication walks the whole warm set, so a pass
+    /// of N tiles does about N²/2 tile visits. Arrivals that land while a publication is already
+    /// scheduled are absorbed by it, and the state is re-read after it completes, so the display is
+    /// still progressive — the first tiles appear while the pass is running, not after it.
     func nativeTileArrived() {
-        guard let plan = detailPlan, let url = detailSource else { return }
+        guard detailPlan != nil, detailSource != nil else { return }
+        publicationStats.tileArrivals += 1
+        publicationDirty = true
+        schedulePublication()
+    }
+
+    private func schedulePublication() {
+        guard publicationCoalescingEnabled else {
+            publicationStats.publicationRequests += 1
+            publicationStats.pendingPublications += 1
+            publicationStats.maxPendingPublications = max(publicationStats.maxPendingPublications,
+                                                         publicationStats.pendingPublications)
+            publicationStats.pendingPublications -= 1
+            runScheduledPublication()
+            return
+        }
+        guard !publicationScheduled else {
+            publicationStats.publicationCoalesced += 1
+            return
+        }
+        publicationScheduled = true
+        publicationStats.publicationRequests += 1
+        publicationStats.pendingPublications += 1
+        publicationStats.maxPendingPublications = max(publicationStats.maxPendingPublications,
+                                                     publicationStats.pendingPublications)
+        let interval = publicationCoalescingInterval
+        let run: () -> Void = { [weak self] in self?.runScheduledPublication() }
+        if interval > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: run)
+        } else {
+            DispatchQueue.main.async(execute: run)
+        }
+    }
+
+    private func runScheduledPublication() {
+        guard let plan = detailPlan, let url = detailSource else {
+            finishPublication()
+            return
+        }
+        publicationDirty = false
         Task { [weak self] in
             guard let self else { return }
             await self.refreshPublishedSets(for: plan, source: url)
+            self.finishPublication()
         }
+    }
+
+    private func finishPublication() {
+        guard publicationCoalescingEnabled else { return }
+        publicationScheduled = false
+        publicationStats.pendingPublications = max(0, publicationStats.pendingPublications - 1)
+        // Arrivals that landed while this publication ran are published now, in one more pass.
+        if publicationDirty { schedulePublication() }
     }
 
     private func setEmptyState(visible: Bool) {

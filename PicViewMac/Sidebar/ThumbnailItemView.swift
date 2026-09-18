@@ -16,6 +16,13 @@ final class ThumbnailCellView: NSTableCellView {
     private let selectionBorder = PassthroughView()
     private var trackingArea: NSTrackingArea?
     private var isHovering = false
+    /// The image box aspect. Installed for both the placeholder and a real thumbnail: the width must
+    /// never depend on whether an image happens to be set, which is what let the box collapse to
+    /// zero width (and the current-item frame to 8 pt) before the asynchronous thumbnail arrived.
+    private var imageAspectConstraint: NSLayoutConstraint?
+    /// Aspect of the empty box, chosen to fill the default drawer width rather than to match any
+    /// particular shape.
+    private static let placeholderAspect: CGFloat = 1.45
 
     var filenameMode: ThumbnailFilenameMode = .hover {
         didSet { updateFilenameVisibility() }
@@ -57,7 +64,7 @@ final class ThumbnailCellView: NSTableCellView {
 
             imageView2.centerXAnchor.constraint(equalTo: centerXAnchor),
             imageView2.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            imageView2.heightAnchor.constraint(equalToConstant: Self.thumbnailHeight),
+            imageView2.heightAnchor.constraint(lessThanOrEqualToConstant: Self.thumbnailHeight),
             imageView2.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -20),
 
             selectionBorder.centerXAnchor.constraint(equalTo: imageView2.centerXAnchor),
@@ -69,6 +76,14 @@ final class ThumbnailCellView: NSTableCellView {
             nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
         ])
+        // The box wants to be as large as the two caps allow; the aspect constraint below decides
+        // how the size is split between width and height. The priority has to beat NSImageView's own
+        // content-size hugging (250): at equal priority the engine satisfied the hug and the empty
+        // box measured 0 pt wide, which is the collapsed frame the user saw.
+        let fill = imageView2.heightAnchor.constraint(equalToConstant: Self.thumbnailHeight)
+        fill.priority = NSLayoutConstraint.Priority(500)
+        fill.isActive = true
+        setThumbnailAspect(Self.placeholderAspect)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -78,12 +93,32 @@ final class ThumbnailCellView: NSTableCellView {
         self.filenameMode = filenameMode
         nameLabel.stringValue = item.displayName
         imageView2.image = image.map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
+        setThumbnailAspect(image.map(Self.aspect(of:)) ?? Self.placeholderAspect)
         setCurrent(isCurrent)
         updateFilenameVisibility()
     }
 
     func setThumbnail(_ image: CGImage) {
         imageView2.image = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        setThumbnailAspect(Self.aspect(of: image))
+    }
+
+    private static func aspect(of image: CGImage) -> CGFloat {
+        image.height > 0 ? CGFloat(image.width) / CGFloat(image.height) : placeholderAspect
+    }
+
+    /// The one constraint that makes the box size unique: width == height × aspect. With the two
+    /// required caps (height ≤ 132, width ≤ cell − 20) and the weak fill above, the solver has
+    /// exactly one answer for any aspect — wide images are limited by the width, tall ones by the
+    /// height — and it never falls back on NSImageView's intrinsic size.
+    private func setThumbnailAspect(_ aspect: CGFloat) {
+        imageAspectConstraint?.isActive = false
+        let constraint = imageView2.widthAnchor.constraint(equalTo: imageView2.heightAnchor,
+                                                          multiplier: max(0.01, aspect))
+        constraint.priority = NSLayoutConstraint.Priority(999)
+        constraint.isActive = true
+        imageAspectConstraint = constraint
+        needsLayout = true
     }
 
     func setCurrent(_ isCurrent: Bool) {
