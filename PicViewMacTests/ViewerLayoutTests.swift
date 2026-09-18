@@ -115,7 +115,8 @@ final class ViewerLayoutTests: XCTestCase {
         // Group separators, drawn as arranged subviews that are not buttons.
         let separators = dock.subviews.compactMap { $0 as? NSStackView }
             .flatMap { $0.arrangedSubviews.filter { $0 is NSBox } }
-        XCTAssertEqual(separators.count, 2, "one separator before the pair, one before the zoom group")
+        XCTAssertEqual(separators.count, 3,
+                       "one before the pair, one before the zoom group, one before the pin")
         _ = centre
     }
 
@@ -127,7 +128,8 @@ final class ViewerLayoutTests: XCTestCase {
         dock.layoutSubtreeIfNeeded()
 
         let buttons = dockButtonsForTesting(dock)
-        XCTAssertEqual(buttons.count, dock.commands.count + 1)
+        XCTAssertEqual(buttons.count, dock.commands.count + 2,
+                       "the tool buttons, the playback button and the pin")
 
         for button in buttons where !button.isHidden {
             let image = try XCTUnwrap(button.symbolImage,
@@ -137,10 +139,11 @@ final class ViewerLayoutTests: XCTestCase {
         }
 
         // The playback button only appears for animated content, and then it must
-        // carry an icon too.
+        // carry an icon too. It sits after the tool buttons and before the pin.
         dock.setAnimated(true, isPlaying: false)
-        XCTAssertEqual(dockButtonsForTesting(dock).last?.isHidden, false)
-        XCTAssertNotNil(dockButtonsForTesting(dock).last?.symbolImage)
+        let playback = dockButtonsForTesting(dock)[dock.commands.count]
+        XCTAssertEqual(playback.isHidden, false)
+        XCTAssertNotNil(playback.symbolImage)
     }
 
     /// Fit width binds the image to the view's width and lets the height overflow.
@@ -167,15 +170,18 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertEqual(visible.width, 1, accuracy: 0.01)
     }
 
-    func testToolDockIsFixedChromeCentredOnTheCanvas() throws {
+    func testToolDockIsCentredOnTheCanvasWhenRevealed() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         loadImage(viewer)
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
         let canvas = try XCTUnwrap(viewer.chromeViewsForTesting["canvas"])
 
-        XCTAssertFalse(dock.isHidden, "the dock is fixed chrome once an image is shown")
-        settle()
+        // The dock auto-hides, so it is brought back the way the user brings it
+        // back: by moving the pointer into the strip above the bottom edge.
+        revealToolDock(viewer, dock)
+        XCTAssertFalse(dock.isHidden, "the dock is on screen over its reveal strip")
+
         let dockCenter = dock.superview!.convert(CGPoint(x: dock.frame.midX, y: dock.frame.midY),
                                                 to: viewer.view)
         let canvasCenterX = canvas.frame.midX
@@ -192,7 +198,7 @@ final class ViewerLayoutTests: XCTestCase {
         dock.frame = NSRect(x: 0, y: 0, width: 300, height: 38)
         dock.layoutSubtreeIfNeeded()
         let buttons = dockButtonsForTesting(dock)
-        XCTAssertEqual(buttons.count, dock.commands.count + 1)
+        XCTAssertEqual(buttons.count, dock.commands.count + 2)
         let framesBefore = buttons.map(\.frame)
         let positionsBefore = buttons.map { $0.layer?.position }
         let anchorsBefore = buttons.map { $0.layer?.anchorPoint }
@@ -549,6 +555,35 @@ func dockButtonsForTesting(_ dock: ViewerToolDockView) -> [DockButton] {
         .flatMap { $0.arrangedSubviews.compactMap { $0 as? DockButton } }
 }
 
+/// Brings the auto-hidden dock back the way the user does: the pointer moves into
+/// the invisible strip over the pill, and the show delay is allowed to elapse
+/// before visibility is re-evaluated.
+@MainActor
+func revealToolDock(_ viewer: ViewerViewController, _ dock: ViewerToolDockView) {
+    func movePointer(onto point: CGPoint) {
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(point, to: nil))
+    }
+    let inside = CGPoint(x: dock.frame.midX, y: dock.frame.midY)
+    movePointer(onto: inside)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+    // A second event, one show delay later, is what flips the model to visible —
+    // exactly what a moving pointer does in the app.
+    movePointer(onto: CGPoint(x: inside.x + 1, y: inside.y))
+    RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+}
+
+/// Moves the pointer far away from the dock and waits out the hide delay.
+@MainActor
+func idleAwayFromToolDock(_ viewer: ViewerViewController) {
+    let canvasPoint = CGPoint(x: viewer.view.bounds.midX,
+                              y: viewer.view.bounds.midY + 120)
+    viewer.simulatePointer(atWindowPoint: viewer.view.convert(canvasPoint, to: nil))
+    RunLoop.current.run(until: Date().addingTimeInterval(0.95))
+    viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+        CGPoint(x: canvasPoint.x + 1, y: canvasPoint.y), to: nil))
+    RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+}
+
 /// The dock's surface and icon treatment.
 @MainActor
 final class ToolDockAppearanceTests: XCTestCase {
@@ -579,7 +614,7 @@ final class ToolDockAppearanceTests: XCTestCase {
     func testDockIconsAreTemplateImagesWithADynamicTint() {
         let dock = ViewerToolDockView()
         let buttons = dockButtons(dock)
-        XCTAssertEqual(buttons.count, dock.commands.count + 1)
+        XCTAssertEqual(buttons.count, dock.commands.count + 2)
 
         for button in buttons where !button.isHidden {
             XCTAssertNotNil(button.symbolImage, "every visible dock button has an icon")

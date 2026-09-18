@@ -657,13 +657,81 @@ enum SelfTest {
         check("drawer lists the whole folder", before.drawerRows == viewer.session.items.count,
               "\(before.drawerRows) rows")
 
-        // The tool dock is fixed chrome: it must already be visible with an image
-        // on screen, with no hover required.
+        // The bottom info bar is fixed chrome; the tool dock auto-hides and comes
+        // back through the invisible strip along the bottom of the image area.
         var snapshot = viewer.chromeSnapshot
-        check("tool dock is fixed chrome, not hover-revealed",
-              !viewer.chromeViewsForTesting["toolDock"]!.isHidden)
         check("bottom info bar is fixed chrome, not hover-revealed",
               !viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
+
+        guard let dock = viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView else {
+            check("the tool dock exists", false)
+            return
+        }
+        func pointInView(_ point: CGPoint) -> NSPoint { viewer.view.convert(point, to: nil) }
+        func pointerAway() {
+            viewer.simulatePointer(atWindowPoint: pointInView(
+                CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY + 120)))
+        }
+        func pointerAtDock() {
+            viewer.simulatePointer(atWindowPoint: pointInView(
+                CGPoint(x: dock.frame.midX, y: dock.frame.midY)))
+        }
+
+        // The dock's state is driven by wall-clock delays, and this machine may stall
+        // the main thread for seconds on the first Metal use. The checks therefore poll
+        // for the transition with a deadline instead of assuming a fixed drain covers
+        // it — the verdict is "it gets there", not "it gets there in 300 ms".
+        func waitForDock(_ condition: () -> Bool, nudge: () -> Void,
+                         timeout: TimeInterval = 3) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !condition(), Date() < deadline {
+                // Nudge the state machine: every pointer event re-evaluates it, and the
+                // real pointer is not moving during an unattended run.
+                nudge()
+                drainRunLoop(0.1)
+            }
+            return condition()
+        }
+
+        // Into the strip, and the dock returns.
+        check("the reveal strip brings the tool dock back",
+              waitForDock({ !dock.isHidden }, nudge: pointerAtDock))
+
+        // Away from the strip it leaves again. The pointer has to move once more after
+        // the hide delay for the state machine to be re-evaluated.
+        check("the tool dock hides once the pointer is away",
+              waitForDock({ dock.isHidden }, nudge: pointerAway))
+        let dockState = viewer.toolDockVisibilityForTesting
+        let zone = viewer.toolDockRevealZone
+        let centre = CGPoint(x: dock.bounds.midX, y: dock.bounds.midY)
+        let inRoot = dock.convert(centre, to: viewer.view)
+        reporter.note("dock frame \(dock.frame) zone \(zone) root \(viewer.view.bounds)")
+        reporter.note("pointer \(inRoot) visible=\(dockState.visible) inZone=\(dockState.pointerInZone)")
+        reporter.note("pinned=\(dockState.pinned) hasImage=\(dockState.hasImage) "
+            + "hidden=\(dock.isHidden) alpha=\(dock.alphaValue)")
+        check("the pin is the last control in the dock, behind its own separator",
+              (dock.pinControl.superview as? NSStackView)?.arrangedSubviews.last === dock.pinControl
+                && !dock.isPinned && dock.pinControl.toolTip == ViewerToolDockView.pinTooltip,
+              "tooltip \(dock.pinControl.toolTip ?? "nil")")
+
+        // Pinning holds it open; the pin reads as engaged.
+        check("the dock is back before the pin is tested",
+              waitForDock({ !dock.isHidden }, nudge: pointerAtDock))
+        viewer.setToolDockPinned(true)
+        drainRunLoop(0.3)
+        check("the pin renders as engaged",
+              dock.isPinned && dock.pinControl.iconTint == .systemBlue
+                && dock.pinControl.toolTip == ViewerToolDockView.unpinTooltip,
+              "tint \(String(describing: dock.pinControl.iconTint))")
+        pointerAway()
+        drainRunLoop(1.2)
+        pointerAway()
+        drainRunLoop(0.4)
+        check("a pinned tool dock stays on screen", !dock.isHidden)
+
+        viewer.setToolDockPinned(false)
+        check("unpinning hands the dock back to auto-hide",
+              waitForDock({ dock.isHidden }, nudge: pointerAway))
 
         // Pointer into the left-edge hot zone.
         let leftEdge = NSPoint(x: 3, y: viewer.view.bounds.midY)
@@ -722,7 +790,7 @@ enum SelfTest {
               "frame \(String(describing: viewer.view.window?.frame.size))")
         viewer.simulateImmersive(false)
         drainRunLoop(0.4)
-        check("leaving immersive restores the fixed chrome",
+        check("leaving immersive restores the tool dock",
               !viewer.chromeViewsForTesting["toolDock"]!.isHidden)
         viewer.perform(.zoomToFit)
     }

@@ -255,6 +255,13 @@ public final class NativeTileCache: @unchecked Sendable {
         return pinned
     }
 
+    /// Every resident key, for invariant tests that must check the whole cache rather
+    /// than a single lookup.
+    public var keysForTesting: Set<NativeTileKey> {
+        lock.lock(); defer { lock.unlock() }
+        return Set(entries.keys)
+    }
+
     public func tile(for key: NativeTileKey) -> NativeTile? {
         lock.lock(); defer { lock.unlock() }
         guard var entry = entries[key] else { return nil }

@@ -60,11 +60,14 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
 
 - Standard `NSWindow` (visually titleless, **not** borderless) with native tabs
   disabled, so Mission Control, tiling and Stage Manager keep working.
-- Hover-revealed top bar with the real traffic-light buttons, middle-truncated
-  filename and the rotate / mirror / Fit / 100 % / Trash / More tools.
-- Left-edge hover drawer with large single-column thumbnails, configurable
-  filename display and current-item highlighting; it overlays the image and
-  never reflows it.
+- Bottom-centre tool dock (rotate / mirror / Fit / Fit width / previous / next /
+  100 % / Trash / Info) that auto-hides. It returns when the pointer enters the
+  invisible strip along the bottom of the image area, and stays put when pinned
+  with the pin control at its right-hand end. Hovering enlarges a button and lifts
+  its neighbours, pressing dips it, and neither moves the image by a pixel.
+- Left-edge hover drawer with large single-column thumbnails, always-visible
+  filenames and current-item highlighting; it overlays the image and never
+  reflows it.
 - Zoom navigator minimap that only exists while `zoom > Fit`.
 - Pointer-centered wheel zoom, pinch always zooms, drag pan, and a smart
   trackpad swipe that pans first and switches images at the edge.
@@ -88,8 +91,8 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   "正在解码…" while the first frame of a big file is still being decoded.
 - Folder watching with debounced rescans that preserve the current file by
   identity, and Move to Trash with smart next/previous selection.
-- Configurable settings and customizable viewer shortcuts with conflict
-  rejection.
+- Settings in a fixed 560×560 window, with customizable viewer shortcuts and
+  conflict rejection.
 
 ## Architecture
 

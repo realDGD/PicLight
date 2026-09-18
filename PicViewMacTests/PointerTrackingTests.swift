@@ -127,14 +127,15 @@ final class ViewerHitTestingTests: XCTestCase {
         defer { controller.close() }
         guard let content = controller.window?.contentView else { return XCTFail("no content view") }
 
-        // The tool dock is fixed chrome: visible and interactive as soon as there
-        // is an image, with no hover required to reveal it.
+        // The tool dock auto-hides: bring it back through its reveal strip, then it
+        // must be genuinely interactive rather than merely drawn.
         viewer.open(url: Fixtures.url("static.png"))
         let dockDeadline = Date().addingTimeInterval(10)
         while viewer.viewerState.currentImage == nil, Date() < dockDeadline { settle(0.05) }
         settle(0.5)
-        let dock = viewer.chromeViewsForTesting["toolDock"]!
-        XCTAssertFalse(dock.isHidden, "the tool dock is fixed chrome")
+        let dock = viewer.chromeViewsForTesting["toolDock"] as! ViewerToolDockView
+        revealToolDock(viewer, dock)
+        XCTAssertFalse(dock.isHidden, "the revealed dock is on screen")
         let dockPoint = dock.convert(CGPoint(x: dock.bounds.midX, y: dock.bounds.midY), to: content)
         let dockHit = content.hitTest(dockPoint)
         XCTAssertTrue(dockHit === dock || dockHit?.isDescendant(of: dock) == true,

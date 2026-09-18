@@ -158,6 +158,29 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         toggleDrawerPinned()
     }
 
+    /// Pins the tool dock open, or hands it back to the auto-hide rules.
+    ///
+    /// Pinning is per window and deliberately not persisted: it is a momentary
+    /// statement about the pointer, not an app setting.
+    public func setToolDockPinned(_ pinned: Bool) {
+        let now = Date().timeIntervalSinceReferenceDate
+        hover.toolDock.setPinned(pinned, at: now)
+        toolDock.setPinned(pinned)
+        hover.update(at: now)
+        applyChromeVisibility()
+    }
+
+    public func toggleToolDockPinned() {
+        setToolDockPinned(!hover.toolDock.pinned)
+    }
+
+    /// Whether the tool dock is currently held open.
+    public var isToolDockPinned: Bool { hover.toolDock.pinned }
+
+    func toggleToolDockPinForTesting() {
+        toggleToolDockPinned()
+    }
+
     public override func loadView() {
         rootView.frame = NSRect(x: 0, y: 0, width: 960, height: 680)
         rootView.wantsLayer = true
@@ -284,6 +307,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
             self.hover.pointerExitedDrawer(at: now)
+            self.hover.toolDock.setPointer(inZone: false, at: now)
             self.hover.update(at: now)
             self.applyChromeVisibility()
         }
@@ -342,6 +366,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         toolDock.onCommand = { [weak self] command in
             self?.perform(command)
         }
+        // The dock reports the click; the visibility model owns the state, so the
+        // pin cannot disagree with the hover and immersive rules.
+        toolDock.onPinChanged = { [weak self] pinned in
+            self?.setToolDockPinned(pinned)
+        }
         infoCard.onClose = { [weak self] in
             self?.setInfoCardVisible(false)
         }
@@ -375,7 +404,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.swipeMode = settings.swipeMode
         canvas.doubleClickMode = settings.doubleClickMode
         canvas.backgroundColor = settings.appearance.canvasBackground
-        drawer.filenameMode = settings.thumbnailFilenames
+        // Filenames are always shown in the drawer. The preference was removed from
+        // Settings; the stored key is left alone so an old value cannot resurface.
+        drawer.filenameMode = .always
         applyAppearance()
         refreshBottomBar()
     }
@@ -1449,17 +1480,26 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func tickChrome() {
         guard isViewLoaded else { return }
+        syncToolDockPresence()
         if hover.update(at: Date().timeIntervalSinceReferenceDate) {
             applyChromeVisibility()
         }
     }
 
+    /// The dock's state machine needs to know whether there is an image; every entry
+    /// point that reads a dock decision tells it first.
+    private func syncToolDockPresence() {
+        hover.toolDock.setHasImage(viewerState.currentImage != nil,
+                                   at: Date().timeIntervalSinceReferenceDate)
+    }
+
     private func applyChromeVisibility() {
+        syncToolDockPresence()
         let snapshot = hover.snapshot
         let immersive = hover.immersive
-        // The tool dock is fixed chrome while a viewer is usable; immersive mode
-        // takes the overlay chrome away.
-        setChrome(toolDock, visible: !immersive && viewerState.currentImage != nil)
+        // The tool dock auto-hides: it follows its own model, which already folds in
+        // the pin, the pointer and the immersive state.
+        setDockChrome(visible: !immersive && snapshot.toolDock)
         setChrome(bottomBar, visible: !immersive && viewerState.currentImage != nil)
         setChrome(drawer, visible: snapshot.drawer && !immersive)
         setChrome(minimap, visible: snapshot.minimap && !immersive)
@@ -1551,6 +1591,55 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
+    /// The dock's own transition: it slides a few points towards the bottom edge
+    /// while it fades, and leaves the hierarchy once it is out.
+    ///
+    /// The slide is a layer transform, so the dock's frame never changes and the
+    /// canvas keeps exactly the geometry it had while the dock was hidden. Reduce
+    /// Motion collapses both the fade and the slide to nothing.
+    private func setDockChrome(visible: Bool) {
+        let reduceMotion = AccessibilityAppearance.reduceMotion
+        let duration = AccessibilityAppearance.chromeAnimationDuration(reduceMotion: reduceMotion)
+        let offset = ViewerToolDockView.hiddenOffset(reduceMotion: reduceMotion)
+        if visible {
+            toolDock.isHidden = false
+            guard duration > 0 else {
+                toolDock.alphaValue = 1
+                toolDock.setSlideOffset(0, duration: 0)
+                return
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                toolDock.animator().alphaValue = 1
+            }
+            toolDock.setSlideOffset(0, duration: duration)
+        } else {
+            guard duration > 0, toolDock.alphaValue > 0 else {
+                toolDock.alphaValue = 0
+                toolDock.setSlideOffset(offset, duration: 0)
+                toolDock.isHidden = true
+                return
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                toolDock.animator().alphaValue = 0
+            }
+            toolDock.setSlideOffset(offset, duration: duration)
+            // Leaving the hierarchy must not depend on the animation callback: it does
+            // not run when the window is off screen, which would leave an invisible
+            // but interactive dock over the image.
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, !self.hover.toolDock.visible,
+                          self.toolDock.alphaValue < 0.01 else { return }
+                    self.toolDock.isHidden = true
+                }
+            }
+        }
+    }
+
     // MARK: - Pointer zones
 
     /// Geometry of the hover regions, derived from the live layout so tests and
@@ -1571,6 +1660,20 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         drawerWidthConstraint?.constant ?? ThumbnailDrawerView.minimumWidth
     }
 
+    /// The invisible strip that reveals the unpinned dock, in root coordinates.
+    /// Derived from the live dock frame, so it follows the pill when the drawer is
+    /// pinned and the canvas moves.
+    var toolDockRevealZone: CGRect {
+        ViewerToolDockView.revealZone(dockFrame: toolDock.frame, in: rootView.bounds)
+    }
+
+    /// The dock's state, for diagnostics and tests.
+    var toolDockVisibilityForTesting: (visible: Bool, pointerInZone: Bool, pinned: Bool,
+                                       hasImage: Bool) {
+        (hover.toolDock.visible, hover.toolDock.pointerInZone, hover.toolDock.pinned,
+         hover.toolDock.hasImage)
+    }
+
     func zone(forRootPoint point: CGPoint) -> ViewerPointerZone {
         zoneGeometry.zone(for: point, in: rootView.bounds,
                           drawerVisible: hover.drawerVisible || hover.drawerPinned,
@@ -1582,6 +1685,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     func handlePointer(atRootPoint point: CGPoint) {
         let now = Date().timeIntervalSinceReferenceDate
         hover.pointerMoved(at: now)
+        syncToolDockPresence()
+        hover.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
 
         switch zone(forRootPoint: point) {
         case .topChrome, .leftEdgeHotZone:

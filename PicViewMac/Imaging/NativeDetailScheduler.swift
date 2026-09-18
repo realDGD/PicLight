@@ -96,10 +96,18 @@ public actor NativeDetailScheduler {
 
     /// Size and modification date together: a fast replacement changes the size or the date, and
     /// neither alone is reliable.
+    ///
+    /// Read with `attributesOfItem` rather than `URL.resourceValues(forKeys:)`. The URL accessor
+    /// answers from a per-URL cache that a replacement does not invalidate — measured, it still
+    /// reported the old size and date ten seconds after the file at that path had been rewritten,
+    /// which is exactly the case this identity exists to catch. `attributesOfItem` stats the file
+    /// every time.
     static func sourceVersion(of url: URL) -> String {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        let size = values?.fileSize ?? -1
-        let date = values?.contentModificationDate?.timeIntervalSince1970 ?? -1
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return "missing"
+        }
+        let size = (attributes[.size] as? NSNumber)?.intValue ?? -1
+        let date = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
         return "\(size)-\(date)"
     }
 

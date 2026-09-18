@@ -4,16 +4,30 @@ import AppKit
 /// customization. Conflicting shortcuts are rejected, never silently overridden.
 @MainActor
 public final class SettingsWindowController: NSWindowController {
+    /// The settings window is a fixed 560×560. The four tabs are laid out for that
+    /// size; letting the user resize it only produced clipped rows and a shortcut
+    /// list that scrolled out of its box.
+    public static let contentSize = NSSize(width: 560, height: 560)
+
     public convenience init() {
         let controller = SettingsViewController()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
-                              styleMask: [.titled, .closable, .resizable],
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.contentSize),
+                              styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
         window.title = "设置"
+        controller.preferredContentSize = Self.contentSize
         window.contentViewController = controller
         window.isReleasedWhenClosed = false
+        window.contentMinSize = Self.contentSize
+        window.contentMaxSize = Self.contentSize
+        window.setContentSize(Self.contentSize)
         window.center()
         self.init(window: window)
+    }
+
+    /// The size the window contents actually occupy, for the fixed-size test.
+    public var contentSizeForTesting: NSSize {
+        window?.contentView?.bounds.size ?? .zero
     }
 }
 
@@ -21,7 +35,6 @@ final class SettingsViewController: NSViewController {
     private let settings = AppSettings.shared
     private let shortcuts = ShortcutStore.shared
 
-    private var thumbnailPopup = NSPopUpButton()
     private var sortPopup = NSPopUpButton()
     private var sortDirectionPopup = NSPopUpButton()
     private var openBehaviorPopup = NSPopUpButton()
@@ -37,10 +50,32 @@ final class SettingsViewController: NSViewController {
     private var fieldCheckboxes: [BottomInfoField: NSButton] = [:]
     private var conflictLabel = NSTextField(labelWithString: "")
     private var shortcutButtons: [ViewerCommand: NSButton] = [:]
+    private let tabView = NSTabView()
+    /// One entry per tab, in tab order: the vertical stack that holds its rows.
+    private var tabStacks: [NSStackView] = []
+
+    /// Tab labels with the height their rows need and the height the tab gives them,
+    /// for the fixed-size check. `content > available` means a row is clipped.
+    func tabContentHeightsForTesting() -> [(title: String, content: CGFloat, available: CGFloat)] {
+        loadViewIfNeeded()
+        view.layoutSubtreeIfNeeded()
+        let previous = tabView.selectedTabViewItem
+        var heights: [(title: String, content: CGFloat, available: CGFloat)] = []
+        for (index, item) in tabView.tabViewItems.enumerated() {
+            guard let container = item.view else { continue }
+            tabView.selectTabViewItem(item)
+            container.layoutSubtreeIfNeeded()
+            let stack = tabStacks.indices.contains(index) ? tabStacks[index] : nil
+            heights.append((item.label, stack?.fittingSize.height ?? 0, container.bounds.height))
+        }
+        if let previous { tabView.selectTabViewItem(previous) }
+        return heights
+    }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 560))
-        let tabView = NSTabView()
+        let size = SettingsWindowController.contentSize
+        let root = NSView(frame: NSRect(origin: .zero, size: size))
+        tabStacks.removeAll()
         tabView.translatesAutoresizingMaskIntoConstraints = false
         tabView.addTabViewItem(tab(title: "浏览", content: browseTab()))
         tabView.addTabViewItem(tab(title: "交互", content: interactionTab()))
@@ -67,10 +102,8 @@ final class SettingsViewController: NSViewController {
 
     private func browseTab() -> NSView {
         let stack = verticalStack()
-        thumbnailPopup = popup(ThumbnailFilenameMode.allCases, title: { $0.localizedName },
-                               selected: settings.thumbnailFilenames) { [weak self] value in
-            self?.settings.thumbnailFilenames = value
-        }
+        // There is no filename preference any more: the drawer always shows names,
+        // so a control that could hide them was only a way to lose them.
         sortPopup = popup(ImageSortKey.allCases, title: { $0.localizedName },
                           selected: settings.sortKey) { [weak self] value in
             self?.settings.sortKey = value
@@ -91,7 +124,6 @@ final class SettingsViewController: NSViewController {
                             selected: settings.deleteFollowUp) { [weak self] value in
             self?.settings.deleteFollowUp = value
         }
-        stack.addArrangedSubview(row("缩略图文件名", thumbnailPopup))
         stack.addArrangedSubview(row("排序方式", sortPopup))
         stack.addArrangedSubview(row("排序方向", sortDirectionPopup))
         stack.addArrangedSubview(row("打开文件", openBehaviorPopup))
@@ -311,6 +343,7 @@ final class SettingsViewController: NSViewController {
     }
 
     private func wrap(_ stack: NSStackView) -> NSView {
+        tabStacks.append(stack)
         let container = NSView()
         container.addSubview(stack)
         NSLayoutConstraint.activate([
