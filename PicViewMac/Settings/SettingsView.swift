@@ -39,6 +39,7 @@ final class SettingsViewController: NSViewController {
     private var sortDirectionPopup = NSPopUpButton()
     private var openBehaviorPopup = NSPopUpButton()
     private var sizingPopup = NSPopUpButton()
+    private var titlebarPopup = NSPopUpButton()
     private var wheelPopup = NSPopUpButton()
     private var swipePopup = NSPopUpButton()
     private var doubleClickPopup = NSPopUpButton()
@@ -120,6 +121,10 @@ final class SettingsViewController: NSViewController {
                             selected: settings.windowSizing) { [weak self] value in
             self?.settings.windowSizing = value
         }
+        titlebarPopup = popup(TitlebarBehavior.allCases, title: { $0.localizedName },
+                              selected: settings.titlebar) { [weak self] value in
+            self?.settings.titlebar = value
+        }
         deletePopup = popup(DeleteFollowUp.allCases, title: { $0.localizedName },
                             selected: settings.deleteFollowUp) { [weak self] value in
             self?.settings.deleteFollowUp = value
@@ -128,6 +133,7 @@ final class SettingsViewController: NSViewController {
         stack.addArrangedSubview(row("排序方向", sortDirectionPopup))
         stack.addArrangedSubview(row("打开文件", openBehaviorPopup))
         stack.addArrangedSubview(row("窗口大小", sizingPopup))
+        stack.addArrangedSubview(row("标题栏", titlebarPopup))
         stack.addArrangedSubview(row("删除后", deletePopup))
         stack.addArrangedSubview(separator())
         stack.addArrangedSubview(sectionTitle("底部信息字段"))

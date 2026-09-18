@@ -233,14 +233,34 @@ enum SelfTest {
         drainRunLoop(0.4)
         let viewer = controller.viewerViewController
 
-        // 2a. The window management strip is the standard AppKit titlebar.
+        // 2a. The titlebar auto-hides by default, and it is still a real NSWindow titlebar: the
+        //     content reaches the top edge, and the controls are the standard ones.
         let window = controller.window
-        check("viewer uses the standard visible titlebar",
-              window?.titleVisibility == .visible
-                && window?.titlebarAppearsTransparent == false
-                && window?.styleMask.contains(.fullSizeContentView) == false,
+        let viewerWindow = window as? ViewerWindow
+        check("viewer window is auto-hiding its titlebar by default",
+              viewerWindow?.titlebarMode == .autoHide,
+              "\(String(describing: viewerWindow?.titlebarMode))")
+        check("auto-hide lets the content reach the top of the window",
+              window?.styleMask.contains(.fullSizeContentView) == true)
+        check("the hidden titlebar is transparent, not an opaque bar with no title",
+              window?.titlebarAppearsTransparent == true
+                && window?.titleVisibility == .hidden,
               "titleVisibility=\(String(describing: window?.titleVisibility)) "
                 + "transparent=\(String(describing: window?.titlebarAppearsTransparent))")
+        check("the traffic lights are the real standard controls",
+              [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
+                  window?.standardWindowButton($0) != nil
+              })
+        check("the traffic lights start hidden with the titlebar",
+              [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
+                  window?.standardWindowButton($0)?.isHidden == true
+              })
+        let titlebarZones = viewer.titlebarRevealZones
+        check("zone A sits over the traffic lights and zone B beside it",
+              titlebarZones.a.maxX <= titlebarZones.b.maxX
+                && titlebarZones.a.height == TitlebarZoneGeometry.zoneHeight
+                && titlebarZones.b.maxX == viewer.view.bounds.width,
+              "A=\(titlebarZones.a) B=\(titlebarZones.b)")
         check("viewer has no viewer-owned top bar",
               viewer.chromeViewsForTesting["topBar"] == nil,
               "top bar views: \(viewer.chromeViewsForTesting.keys.filter { $0.contains("top") })")

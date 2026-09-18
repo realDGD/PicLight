@@ -1,5 +1,19 @@
 import Foundation
 
+/// What the titlebar does. Auto-hide is the default for a new install and for anyone who has never
+/// chosen: the key is new, so an existing install has no value for it and reads the default.
+public enum TitlebarBehavior: String, CaseIterable, Codable, Sendable {
+    case autoHide
+    case alwaysVisible
+
+    public var localizedName: String {
+        switch self {
+        case .autoHide: return "自动隐藏"
+        case .alwaysVisible: return "始终显示"
+        }
+    }
+}
+
 public enum OpenBehavior: String, CaseIterable, Codable, Sendable {
     case newWindow
     case reuseCurrent
@@ -89,6 +103,7 @@ public final class AppSettings {
     private func registerDefaults() {
         defaults.register(defaults: [
             Key.sortKey: ImageSortKey.filename.rawValue,
+            Key.titlebar: TitlebarBehavior.autoHide.rawValue,
             Key.sortDirection: SortDirection.ascending.rawValue,
             Key.openBehavior: OpenBehavior.newWindow.rawValue,
             Key.showTopFilename: true,
@@ -108,6 +123,7 @@ public final class AppSettings {
 
     private enum Key {
         static let sortKey = "sortKey"
+        static let titlebar = "titlebar"
         static let sortDirection = "sortDirection"
         static let openBehavior = "openBehavior"
         static let showTopFilename = "showTopFilename"
@@ -133,6 +149,13 @@ public final class AppSettings {
     // There is deliberately no thumbnail-filename preference. Drawer filenames are always
     // shown; the old `thumbnailFilenames` key is not read here, so a value left in the
     // defaults by an older build ("never", "hover") cannot change what the drawer does.
+
+    /// The titlebar behaviour. Auto-hide by default: `register(defaults:)` supplies it, so an
+    /// install that has never written the key reads "auto-hide" and one that has keeps its choice.
+    public var titlebar: TitlebarBehavior {
+        get { TitlebarBehavior(rawValue: defaults.string(forKey: Key.titlebar) ?? "") ?? .autoHide }
+        set { defaults.set(newValue.rawValue, forKey: Key.titlebar); notify() }
+    }
 
     public var sortKey: ImageSortKey {
         get { ImageSortKey(rawValue: defaults.string(forKey: Key.sortKey) ?? "") ?? .filename }

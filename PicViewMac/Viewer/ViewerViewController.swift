@@ -475,6 +475,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public func applySettings() {
         let settings = AppSettings.shared
         self.settings = settings
+        applyTitlebarMode()
         canvas.wheelMode = settings.wheelMode
         canvas.swipeMode = settings.swipeMode
         canvas.doubleClickMode = settings.doubleClickMode
@@ -1589,6 +1590,114 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                         next: chrome.navigation.next.available)
     }
 
+    /// The two strips that reveal the titlebar, in root coordinates. Zone A sits over the real
+    /// traffic-light controls, zone B is the rest of the top strip.
+    var titlebarRevealZones: (a: CGRect, b: CGRect) {
+        let lights = (view.window as? ViewerWindow)?.trafficLightsFrame
+            .map { rootView.convert($0, from: nil) }
+        return TitlebarZoneGeometry.zones(in: rootView.bounds, trafficLights: lights)
+    }
+
+    /// Fired when the window needs the titlebar mode applied to it (the window does not exist yet
+    /// when the view loads).
+    public var onTitlebarModeNeeded: (() -> Void)?
+
+    /// Applies the settings' titlebar mode to the window this view is in. Public because the window
+    /// controller calls it once the window exists.
+    public func applyTitlebarModeForWindow() { applyTitlebarMode() }
+
+    /// The window's own state changed in a way that affects the titlebar: re-apply the mode and the
+    /// current state, and re-evaluate the reasons not to hide.
+    func windowTitlebarContextChanged() {
+        guard let window = view.window as? ViewerWindow else { return }
+        window.applyTitlebarMode(ViewerWindow.TitlebarMode(settings.titlebar))
+        appliedTitlebarState = nil
+        refreshTitlebarBlocks()
+        applyTitlebarVisibility()
+        _ = window.titlebarState
+    }
+
+    /// Recomputes the reasons the titlebar must stay: a drag in progress, a sheet, native full
+    /// screen. Called on every window event that can change one of them.
+    func refreshTitlebarBlocks() {
+        guard let window = view.window else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        chrome.titlebar.setBlocked(.sheet, window.attachedSheet != nil, at: now)
+        chrome.titlebar.setBlocked(.fullScreen, window.styleMask.contains(.fullScreen), at: now)
+        if window.styleMask.contains(.fullScreen), let viewerWindow = window as? ViewerWindow {
+            // The system owns the top strip in full screen.
+            viewerWindow.restoreSystemTitlebarControl()
+        }
+    }
+
+    func setTitlebarBlocked(_ reason: TitlebarVisibilityModel.BlockReason, _ blocked: Bool) {
+        chrome.titlebar.setBlocked(reason, blocked, at: Date().timeIntervalSinceReferenceDate)
+        if !blocked { chrome.titlebar.update(at: Date().timeIntervalSinceReferenceDate) }
+        applyTitlebarVisibility()
+    }
+
+    /// The window moved again; the drag is still going. The block lifts a beat after the last move,
+    /// which is the closest AppKit offers to "the drag ended" without swallowing the mouse.
+    func titlebarDragDidContinue() {
+        titlebarDragEndWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.setTitlebarBlocked(.windowDrag, false)
+            }
+        }
+        titlebarDragEndWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    private var titlebarDragEndWorkItem: DispatchWorkItem?
+
+    /// Applies the titlebar mode from the settings. Switching modes relayouts the window (the
+    /// content stops or starts reaching the top edge), so the viewport is re-fitted around the new
+    /// area exactly as a drawer pin does — Fit stays Fit, a manual zoom keeps its level.
+    private func applyTitlebarMode() {
+        guard let window = view.window as? ViewerWindow else { return }
+        let mode = ViewerWindow.TitlebarMode(settings.titlebar)
+        guard window.titlebarMode != mode else { return }
+        let previousCenter = canvas.viewport.normalizedCenter
+        let wasAtFit = canvas.viewport.isAtFit
+        window.applyTitlebarMode(mode)
+        chrome.titlebar.setAutoHiding(mode == .autoHide,
+                                    at: Date().timeIntervalSinceReferenceDate)
+        chrome.titlebar.update(at: Date().timeIntervalSinceReferenceDate)
+        appliedTitlebarState = nil
+        view.layoutSubtreeIfNeeded()
+        var viewport = canvas.viewport
+        viewport.fitScale = ViewportState.fitScale(imagePixels: canvas.imagePixelSize,
+                                                  viewPoints: canvas.bounds.size)
+        if wasAtFit {
+            viewport.zoomScale = viewport.fitScale
+            viewport.normalizedCenter = CGPoint(x: 0.5, y: 0.5)
+        } else {
+            viewport.normalizedCenter = previousCenter
+            viewport.clampCenter(imagePixels: canvas.imagePixelSize,
+                                 viewPoints: canvas.bounds.size, backingScale: canvas.backingScale)
+        }
+        canvas.viewport = viewport
+        applyTitlebarVisibility()
+    }
+
+    /// The titlebar state the window is currently presenting.
+    private var appliedTitlebarState: TitlebarVisibilityModel.State?
+    /// Transitions the window actually applied. The acceptance evidence that a pointer sweep does
+    /// not re-issue the titlebar's transition is this number not moving.
+    var titlebarTransitionCount: Int { (view.window as? ViewerWindow)?.titlebarTransitionCount ?? 0 }
+
+
+
+    /// Target-state idempotent, like the dock's: this runs on every pointer move.
+    private func applyTitlebarVisibility() {
+        guard let window = view.window as? ViewerWindow else { return }
+        let state = chrome.titlebar.state
+        guard appliedTitlebarState != state else { return }
+        appliedTitlebarState = state
+        window.applyTitlebarState(state)
+    }
+
     /// The two canvas-edge strips that reveal the navigation controls, in root coordinates.
     var floatingNavigationRevealZones: (previous: CGRect, next: CGRect) {
         FloatingNavigationView.revealZones(canvasFrame: canvas.frame)
@@ -1619,6 +1728,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var appliedDockVisible: Bool?
 
     private func applyChromeVisibility() {
+        applyTitlebarVisibility()
         let snapshot = chrome.snapshot
         appliedChromeSnapshot = snapshot
         let immersive = chrome.immersive
@@ -1830,6 +1940,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let zones = floatingNavigationRevealZones
         chrome.navigation.setPointer(previousSide: zones.previous.contains(point),
                                      nextSide: zones.next.contains(point), at: now)
+        let titlebarZones = titlebarRevealZones
+        chrome.titlebar.setPointer(inTrafficLightsZone: titlebarZones.a.contains(point),
+                                   inTitlebarZone: titlebarZones.b.contains(point), at: now)
         chrome.navigation.pointerOnPrevious = floatingNavigation.previousControl.frame
             .insetBy(dx: -6, dy: -6)
             .contains(rootView.convert(point, to: floatingNavigation))
@@ -2065,6 +2178,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         /// Whether each floating navigation control is being shown.
         var previousNavigation: Bool
         var nextNavigation: Bool
+        /// The auto-hiding titlebar's state, three-valued.
+        var titlebar: TitlebarVisibilityModel.State
         var drawer: Bool
         var minimap: Bool
         var drawerRows: Int
@@ -2092,6 +2207,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             top: false, bottom: !bottomBar.isHidden,
             previousNavigation: chrome.snapshot.previousNavigation,
             nextNavigation: chrome.snapshot.nextNavigation,
+            titlebar: chrome.snapshot.titlebar,
             drawer: chrome.snapshot.drawer, minimap: chrome.snapshot.minimap,
             drawerRows: drawer.visibleRowCount,
             drawerReservedWidth: isDrawerReservingSpace ? currentDrawerWidth : 0,

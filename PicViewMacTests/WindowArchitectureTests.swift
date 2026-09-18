@@ -136,13 +136,18 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.closable))
         XCTAssertTrue(window.styleMask.contains(.miniaturizable))
         XCTAssertTrue(window.styleMask.contains(.resizable))
-        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView))
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView),
+                      "auto-hide is the default, so the content reaches the top edge")
         XCTAssertNotEqual(window.styleMask, .borderless)
         XCTAssertTrue(window.isVisible)
         XCTAssertTrue(window.canBecomeKey)
         XCTAssertTrue(window.canBecomeMain)
     }
 
+    /// The contract this file used to assert was "the standard titlebar is always visible". The
+    /// redesign changes that — the bar auto-hides by default — but everything the old contract was
+    /// protecting is still checked: the window is standard and titled, and the controls are AppKit's
+    /// own `standardWindowButton`s rather than anything drawn.
     func testRealTrafficLightButtonsExistAndAreUsed() {
         let controller = makeViewer()
         guard let window = controller.window else { return XCTFail("no window") }
@@ -150,12 +155,14 @@ final class WindowArchitectureTests: XCTestCase {
             XCTAssertNotNil(window.standardWindowButton(button),
                             "\(button) must be the real standard window button")
         }
-        XCTAssertEqual(window.titleVisibility, .visible,
-                       "the window management strip is the standard titlebar")
-        XCTAssertFalse(window.titlebarAppearsTransparent,
-                       "the titlebar is a normal, opaque AppKit bar")
-        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
-                       "content starts below the titlebar instead of underneath it")
+        XCTAssertTrue(window.styleMask.contains(.titled),
+                      "the window management strip is still the standard titlebar")
+        XCTAssertFalse(window is NSPanel)
+        // Auto-hide's hidden state is a *transparent* titlebar, not a second hand-drawn one.
+        XCTAssertTrue(window.titlebarAppearsTransparent)
+        XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertFalse(window.isMovableByWindowBackground,
+                       "the window is dragged by its real titlebar, never by the image")
     }
 
     func testNativeTabbingIsDisabledOnTheWindowAndAppWide() {

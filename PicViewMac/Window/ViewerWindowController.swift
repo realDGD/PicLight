@@ -35,6 +35,11 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onDrawerOpenChanged = { [weak self] open in
             self?.updateDrawerButton(open: open)
         }
+        // The titlebar mode is a window property, so the window applies it as soon as it exists.
+        viewerViewController.onTitlebarModeNeeded = { [weak self] in
+            self?.viewerViewController.applyTitlebarModeForWindow()
+        }
+        viewerViewController.applyTitlebarModeForWindow()
         installDrawerTitlebarButton()
         window.setFrame(contentRect, display: false)
         window.center()
@@ -65,6 +70,10 @@ public final class ViewerWindowController: NSWindowController {
         window?.addTitlebarAccessoryViewController(accessory)
         drawerAccessory = accessory
         updateDrawerButton(open: viewerViewController.isDrawerOpen)
+        // The accessory was added after the window applied its titlebar state, so it has to be
+        // brought into line with it now: an accessory that appears after the bar has hidden would
+        // otherwise sit over the image on its own.
+        (window as? ViewerWindow)?.refreshTrafficLights()
     }
 
     /// Size of the titlebar drawer control.
@@ -128,9 +137,39 @@ extension ViewerWindowController: NSWindowDelegate {
 
     public func windowDidExitFullScreen(_ notification: Notification) {
         rememberContentSize()
+        // The system has handed the top strip back: re-apply the user's titlebar mode and state.
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    public func windowDidEnterFullScreen(_ notification: Notification) {
+        viewerViewController.windowTitlebarContextChanged()
     }
 
     public func windowDidResize(_ notification: Notification) {
         rememberContentSize()
+        // AppKit re-lays out the titlebar on a resize, which can bring the controls back.
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    public func windowDidBecomeKey(_ notification: Notification) {
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    public func windowDidResignKey(_ notification: Notification) {
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    /// A window drag must not hide the bar the user is dragging by. `windowWillMove` is the start;
+    /// the end is the last `windowDidMove`, and a run loop turn after it the block is lifted.
+    public func windowWillMove(_ notification: Notification) {
+        viewerViewController.setTitlebarBlocked(.windowDrag, true)
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        viewerViewController.titlebarDragDidContinue()
+    }
+
+    public func windowDidChangeOcclusionState(_ notification: Notification) {
+        viewerViewController.refreshTitlebarBlocks()
     }
 }

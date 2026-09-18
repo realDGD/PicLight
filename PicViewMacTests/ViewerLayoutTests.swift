@@ -35,18 +35,22 @@ final class ViewerLayoutTests: XCTestCase {
 
     // MARK: - Titlebar
 
-    func testViewerUsesTheStandardVisibleTitlebar() throws {
+    /// The default is the auto-hiding titlebar: still a standard titled window with the real
+    /// controls, with the content reaching the top edge and the bar itself away.
+    func testViewerUsesTheStandardTitlebarInItsDefaultAutoHideMode() throws {
         let (controller, _) = try makeViewer()
         defer { controller.close() }
-        guard let window = controller.window else { return XCTFail("no window") }
+        guard let window = controller.window as? ViewerWindow else { return XCTFail("no window") }
 
         XCTAssertTrue(window.styleMask.contains(.titled))
-        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
-                       "content must start below the titlebar")
-        XCTAssertEqual(window.titleVisibility, .visible)
-        XCTAssertFalse(window.titlebarAppearsTransparent)
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView),
+                      "auto-hide lets the content reach the top edge")
+        XCTAssertEqual(window.titlebarMode, .autoHide)
+        XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertTrue(window.titlebarAppearsTransparent)
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            XCTAssertNotNil(window.standardWindowButton(button))
+            XCTAssertNotNil(window.standardWindowButton(button),
+                            "the real controls, not a drawn replacement")
         }
         XCTAssertEqual(window.title, "PicLight", "no image: the app name is the title")
     }
@@ -63,12 +67,15 @@ final class ViewerLayoutTests: XCTestCase {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         XCTAssertFalse(viewer.chromeViewsForTesting.keys.contains("topBar"),
-                       "there is no viewer-owned top bar any more")
-        // The viewer's own chrome never reaches into the titlebar band: the content
-        // view starts below it.
+                       "there is no viewer-owned top bar")
+        // In auto-hide mode the content reaches the top of the window, so there is no titlebar band
+        // for the viewer's chrome to stay out of — and no fake titlebar view among the chrome.
         guard let content = controller.window?.contentView else { return XCTFail("no content") }
         let titlebarHeight = controller.window!.frame.height - content.frame.height
-        XCTAssertGreaterThan(titlebarHeight, 0, "the standard titlebar occupies real space")
+        XCTAssertEqual(titlebarHeight, 0, accuracy: 0.5,
+                       "the content view spans the whole window in auto-hide mode")
+        XCTAssertFalse(viewer.chromeViewsForTesting.values.contains { $0 is NSTitlebarAccessoryViewController },
+                       "no viewer-owned titlebar accessory")
     }
 
     // MARK: - Tool dock
@@ -780,12 +787,26 @@ final class DrawerTitlebarButtonTests: XCTestCase {
     /// The first version put the button inside a container view with no intrinsic
     /// size: the titlebar laid that container out zero-width and clipped the button
     /// away, so it existed but could not be seen.
+    ///
+    /// It now also hides with the titlebar — a hidden bar must not leave a lone control
+    /// floating over the image — so the size check is made with the bar revealed, which
+    /// is the state in which the button is meant to be clickable.
     func testTitlebarDrawerButtonHasARealOnScreenSize() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         controller.window?.layoutIfNeeded()
         let accessory = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first)
         let accessoryView = accessory.view
+        XCTAssertTrue(accessory.isHidden,
+                      "the accessory hides with the titlebar it belongs to")
+
+        // Reveal the bar, which is where the button is meant to be used.
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        controller.window?.layoutIfNeeded()
+
         XCTAssertGreaterThan(accessoryView.frame.width, 0,
                              "a zero-width accessory is invisible in the titlebar")
         XCTAssertGreaterThan(accessoryView.frame.height, 0)

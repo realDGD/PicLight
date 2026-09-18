@@ -356,6 +356,9 @@ public struct ViewerChromeModel: Sendable {
     public var toolDock = ToolDockVisibilityModel()
     public var infoHUD = InfoHUDVisibilityModel()
     public var navigation = FloatingNavigationVisibilityModel()
+    /// The auto-hiding titlebar. Its own machine: the pointer's position over the image cannot move
+    /// it, and its two zones are its own.
+    public var titlebar = TitlebarVisibilityModel()
 
     /// Whether the thumbnail drawer is open. Explicitly controlled — see `setDrawerOpen`.
     ///
@@ -414,6 +417,9 @@ public struct ViewerChromeModel: Sendable {
         toolDock.setImmersive(value, at: time)
         infoHUD.setImmersive(value, at: time)
         navigation.setImmersive(value, at: time)
+        // Immersive mode blocks the titlebar's own hiding through the same mechanism a window drag
+        // and a sheet use, so there is one rule about when the bar may go away.
+        titlebar.setBlocked(.fullScreen, value, at: time)
         // Immersive suppresses the drawer's *appearance* without forgetting the user's choice, so
         // leaving immersive mode restores exactly the state they left.
         if value { minimapVisible = false }
@@ -441,6 +447,7 @@ public struct ViewerChromeModel: Sendable {
         toolDock.update(at: time)
         infoHUD.update(at: time)
         navigation.update(at: time)
+        titlebar.update(at: time)
 
         return snapshot != before
     }
@@ -452,7 +459,8 @@ public struct ViewerChromeModel: Sendable {
         Snapshot(drawer: drawerVisible, minimap: minimapVisible, toolDock: toolDock.visible,
                  infoHUD: infoHUD.visible,
                  previousNavigation: navigation.previous.visible,
-                 nextNavigation: navigation.next.visible)
+                 nextNavigation: navigation.next.visible,
+                 titlebar: titlebar.state)
     }
 
     public struct Snapshot: Equatable, Sendable {
@@ -462,6 +470,9 @@ public struct ViewerChromeModel: Sendable {
         public let infoHUD: Bool
         public let previousNavigation: Bool
         public let nextNavigation: Bool
+        /// The auto-hiding titlebar's state. Not a Bool: there are three states, and two of them
+        /// look the same from the image's point of view.
+        public let titlebar: TitlebarVisibilityModel.State
     }
 
     /// Keyboard navigation must always work, even with all overlay chrome hidden.
