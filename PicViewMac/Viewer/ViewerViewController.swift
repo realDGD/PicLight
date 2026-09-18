@@ -615,7 +615,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let url = item.url
         Task { [weak self] in
             guard let self else { return }
-            await self.nativeDetail.request(plan: plan, source: url)
+            await self.nativeDetail.request(plan: plan, source: url,
+                                            colorSpace: self.viewerState.currentImage?.colorSpace)
             await self.publishCachedTiles(for: plan, source: url)
         }
     }

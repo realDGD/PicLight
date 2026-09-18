@@ -178,7 +178,7 @@ final class NativeDetailTests: XCTestCase {
                                                         tileSize: 256))
         let collector = TileCollector()
         let provider = PNGNativeTileProvider()
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
                              shouldCancel: { false },
                              onTile: { collector.append($0) })
         let delivered = collector.tiles
@@ -195,7 +195,7 @@ final class NativeDetailTests: XCTestCase {
         }
         // Determinism: the same plan twice produces the same tiles in the same order.
         let second = TileCollector()
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
                              shouldCancel: { false }, onTile: { second.append($0) })
         XCTAssertEqual(delivered.map(\.key), second.tiles.map(\.key))
     }
@@ -212,7 +212,7 @@ final class NativeDetailTests: XCTestCase {
             sourcePixelSize: source, tileSize: 64))
         let counter = TileCounter()
         let provider = PNGNativeTileProvider()
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
                              shouldCancel: { counter.value > 0 },
                              onTile: { _ in counter.increment() })
         let delivered = counter.value
@@ -229,6 +229,7 @@ final class NativeDetailTests: XCTestCase {
                                                         tileSize: 64))
         let provider = PNGNativeTileProvider()
         XCTAssertThrowsError(try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
+                                                  colorSpace: nil,
                                                   shouldCancel: { false }, onTile: { _ in })) { error in
             let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             XCTAssertTrue(message.contains("16"), "the refusal must say why: \(message)")

@@ -47,6 +47,7 @@ public protocol NativeTileProviding: Sendable {
                  source: URL,
                  pageIndex: Int,
                  gutter: Int,
+                 colorSpace: CGColorSpace?,
                  shouldCancel: @Sendable () -> Bool,
                  onTile: @Sendable (NativeTile) -> Void) throws
 }
@@ -65,6 +66,7 @@ public struct PNGNativeTileProvider: NativeTileProviding {
                         source: URL,
                         pageIndex: Int,
                         gutter: Int,
+                        colorSpace: CGColorSpace?,
                         shouldCancel: @Sendable () -> Bool,
                         onTile: @Sendable (NativeTile) -> Void) throws {
         var info = ps_info()
@@ -110,7 +112,8 @@ public struct PNGNativeTileProvider: NativeTileProviding {
                 guard decodedRows >= Int(candidate.sourceRect.maxY) else { return }
                 nextToDeliver += 1
                 if let tile = Self.slice(candidate: candidate, wanted: wanted,
-                                         regionStride: regionStride, decoder: decoder) {
+                                         regionStride: regionStride, decoder: decoder,
+                                         colorSpace: colorSpace) {
                     onTile(tile)
                 }
             }
@@ -136,7 +139,8 @@ public struct PNGNativeTileProvider: NativeTileProviding {
     private static func slice(candidate: PendingTile,
                              wanted: CGRect,
                              regionStride: Int,
-                             decoder: OpaquePointer) -> NativeTile? {
+                             decoder: OpaquePointer,
+                             colorSpace: CGColorSpace?) -> NativeTile? {
         guard let base = ps_region_pixels(decoder) else { return nil }
         let rect = candidate.sourceRect
         guard rect.width >= 1, rect.height >= 1 else { return nil }
@@ -156,10 +160,17 @@ public struct PNGNativeTileProvider: NativeTileProviding {
             }
         }
 
+        // The pixels are the file's own bytes, so they must carry the file's colour space.
+        // Tagging them sRGB made a profiled source render with shifted colour next to the
+        // proxy, which ImageIO had colour-managed — visible on the investigation image as a
+        // measurable difference from the source pixels. The proxy's space is the same
+        // interpretation ImageIO arrived at, so taking it from there keeps the base layer
+        // and the tiles consistent.
+        let space = colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
         guard let provider = CGDataProvider(data: Data(pixels) as CFData),
               let image = CGImage(
                 width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-                bytesPerRow: storedStride, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bytesPerRow: storedStride, space: space,
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
               ) else { return nil }

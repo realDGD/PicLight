@@ -250,12 +250,19 @@ enum BenchTrace {
         let nativeStride = Int(visibleSource.width) * 4
 
         // How far the proxy is from that rectangle, for the control distance.
+        // Read the proxy through a context in a layout we choose; assuming the decode's own
+        // byte order produced a meaningless control distance in the first run of this probe.
         let proxyWidth = proxy.width, proxyHeight = proxy.height
-        let proxyStride = proxy.bytesPerRow
-        let proxyData = proxy.dataProvider?.data
-        // flatMap, not map: CFDataGetBytePtr is itself optional, and `map` would leave an
-        // optional-of-optional that `if let` only half unwraps.
-        let proxyBytes = proxyData.flatMap { CFDataGetBytePtr($0) }
+        var proxyPixels = [UInt8](repeating: 0, count: proxyWidth * proxyHeight * 4)
+        proxyPixels.withUnsafeMutableBytes { bytes in
+            if let context = CGContext(data: bytes.baseAddress, width: proxyWidth, height: proxyHeight,
+                                       bitsPerComponent: 8, bytesPerRow: proxyWidth * 4,
+                                       space: proxy.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
+                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                context.draw(proxy, in: CGRect(x: 0, y: 0, width: proxyWidth, height: proxyHeight))
+            }
+        }
+        let proxyStride = proxyWidth * 4
 
         var samples = 0
         var renderedVsNative = 0.0
@@ -277,13 +284,12 @@ enum BenchTrace {
                 let n = native + ny * nativeStride + nx * 4
                 let nativeRed = Double(n[0]), nativeGreen = Double(n[1]), nativeBlue = Double(n[2])
 
+                let bx = min(proxyWidth - 1, max(0, Int(Double(nx) / Double(visibleSource.width) * Double(proxyWidth))))
+                let by = min(proxyHeight - 1, max(0, Int(Double(ny) / Double(visibleSource.height) * Double(proxyHeight))))
                 var proxyRed = 0.0, proxyGreen = 0.0, proxyBlue = 0.0
-                if let proxyBytes {
-                    let bx = min(proxyWidth - 1, max(0, Int(Double(nx) / Double(visibleSource.width) * Double(proxyWidth))))
-                    let by = min(proxyHeight - 1, max(0, Int(Double(ny) / Double(visibleSource.height) * Double(proxyHeight))))
-                    let p = proxyBytes + by * proxyStride + bx * 4
-                    // The proxy is uploaded as BGRA premultiplied; only the ordering matters here.
-                    proxyBlue = Double(p[0]); proxyGreen = Double(p[1]); proxyRed = Double(p[2])
+                proxyPixels.withUnsafeBufferPointer { buffer in
+                    let p = by * proxyStride + bx * 4
+                    proxyRed = Double(buffer[p]); proxyGreen = Double(buffer[p + 1]); proxyBlue = Double(buffer[p + 2])
                 }
                 let renderedRed = Double(rendered.redComponent) * 255
                 let renderedGreen = Double(rendered.greenComponent) * 255
