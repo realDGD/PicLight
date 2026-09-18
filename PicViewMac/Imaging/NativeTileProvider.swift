@@ -48,6 +48,7 @@ public protocol NativeTileProviding: Sendable {
                  pageIndex: Int,
                  gutter: Int,
                  colorSpace: CGColorSpace?,
+                 orientation: SourceOrientation,
                  shouldCancel: @Sendable () -> Bool,
                  onTile: @Sendable (NativeTile) -> Void) throws
 }
@@ -55,7 +56,10 @@ public protocol NativeTileProviding: Sendable {
 private struct PendingTile {
     let key: NativeTileKey
     let coordinate: TileCoordinate
-    let sourceRect: CGRect      // clipped to the decoded region
+    /// In canonical oriented space: what the plan asked for and what the renderer places.
+    let canonicalRect: CGRect
+    /// In raw PNG space, clipped to the decoded region: what the buffer holds.
+    let sourceRect: CGRect
 }
 
 /// The PNG implementation, over the streaming decoder.
@@ -67,6 +71,7 @@ public struct PNGNativeTileProvider: NativeTileProviding {
                         pageIndex: Int,
                         gutter: Int,
                         colorSpace: CGColorSpace?,
+                        orientation: SourceOrientation,
                         shouldCancel: @Sendable () -> Bool,
                         onTile: @Sendable (NativeTile) -> Void) throws {
         var info = ps_info()
@@ -79,11 +84,18 @@ public struct PNGNativeTileProvider: NativeTileProviding {
         }
         defer { ps_close(decoder) }
 
-        let imageBounds = CGRect(x: 0, y: 0, width: CGFloat(info.width), height: CGFloat(info.height))
+        // Two spaces are in play. The plan is expressed in *canonical oriented* source space —
+        // the same space `RenderImage.sourcePixelSize` describes, and the space the proxy is
+        // drawn in — while the decoder reads raw PNG rows. The conversion happens here and
+        // nowhere else.
+        let rawPixelSize = CGSize(width: CGFloat(info.width), height: CGFloat(info.height))
+        let canonicalPixelSize = orientation.canonicalPixelSize(rawPixelSize: rawPixelSize)
+        let imageBounds = CGRect(origin: .zero, size: canonicalPixelSize)
         // Grow by the gutter so even the outermost plan tiles have real neighbour pixels to
         // sample at their edges, and clip so we never ask for pixels that do not exist.
-        let wanted = plan.decodeRect.insetBy(dx: -CGFloat(gutter), dy: -CGFloat(gutter))
+        let wantedCanonical = plan.decodeRect.insetBy(dx: -CGFloat(gutter), dy: -CGFloat(gutter))
             .intersection(imageBounds)
+        let wanted = orientation.rawRect(forCanonicalRect: wantedCanonical, rawPixelSize: rawPixelSize)
         guard wanted.width >= 1, wanted.height >= 1 else {
             throw NativeTileProviderError.decodeFailed("empty plan")
         }
@@ -95,12 +107,20 @@ public struct PNGNativeTileProvider: NativeTileProviding {
         }
 
         let pending: [PendingTile] = plan.allCoordinates.map { coordinate in
-            let rect = NativeTilePlanner.sourceRect(for: coordinate, tileSize: plan.tileSize,
-                                                    sourcePixelSize: imageBounds.size)
+            // The tile's canonical rectangle is what the plan and the renderer speak; the raw
+            // rectangle is what the region buffer holds.
+            let canonicalRect = NativeTilePlanner.sourceRect(for: coordinate, tileSize: plan.tileSize,
+                                                             sourcePixelSize: canonicalPixelSize)
+                .intersection(wantedCanonical)
+            let rawRect = orientation.rawRect(forCanonicalRect: canonicalRect,
+                                              rawPixelSize: rawPixelSize)
+                .intersection(wanted)
             return PendingTile(key: NativeTileKey(sourcePath: source.path, pageIndex: pageIndex,
+                                                  tileSize: plan.tileSize,
                                                   x: coordinate.x, y: coordinate.y),
                                coordinate: coordinate,
-                               sourceRect: rect.intersection(wanted))
+                               canonicalRect: canonicalRect,
+                               sourceRect: rawRect)
         }
 
         var nextToDeliver = 0
@@ -109,11 +129,13 @@ public struct PNGNativeTileProvider: NativeTileProviding {
         func deliverReadyTiles(decodedRows: Int) {
             while nextToDeliver < pending.count {
                 let candidate = pending[nextToDeliver]
+                // Rows arrive in raw order, so readiness is a raw-space question.
                 guard decodedRows >= Int(candidate.sourceRect.maxY) else { return }
                 nextToDeliver += 1
                 if let tile = Self.slice(candidate: candidate, wanted: wanted,
                                          regionStride: regionStride, decoder: decoder,
-                                         colorSpace: colorSpace) {
+                                         colorSpace: colorSpace, orientation: orientation,
+                                         rawPixelSize: rawPixelSize) {
                     onTile(tile)
                 }
             }
@@ -140,7 +162,9 @@ public struct PNGNativeTileProvider: NativeTileProviding {
                              wanted: CGRect,
                              regionStride: Int,
                              decoder: OpaquePointer,
-                             colorSpace: CGColorSpace?) -> NativeTile? {
+                             colorSpace: CGColorSpace?,
+                             orientation: SourceOrientation,
+                             rawPixelSize: CGSize) -> NativeTile? {
         guard let base = ps_region_pixels(decoder) else { return nil }
         let rect = candidate.sourceRect
         guard rect.width >= 1, rect.height >= 1 else { return nil }
@@ -167,14 +191,19 @@ public struct PNGNativeTileProvider: NativeTileProviding {
         // interpretation ImageIO arrived at, so taking it from there keeps the base layer
         // and the tiles consistent.
         let space = colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+        // Raw order → canonical order. For an `.up` source this is a no-op, which is why the
+        // whole orientation path stayed untested until a file with metadata met it.
+        let canonical = orientation.canonicalPixels(fromRawBuffer: pixels, rawRect: rect,
+                                                    rawPixelSize: rawPixelSize)
+        guard let provider = CGDataProvider(data: Data(canonical.pixels) as CFData),
               let image = CGImage(
-                width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-                bytesPerRow: storedStride, space: space,
+                width: Int(canonical.size.width), height: Int(canonical.size.height),
+                bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: Int(canonical.size.width) * 4, space: space,
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
               ) else { return nil }
 
-        return NativeTile(key: candidate.key, sourceRect: rect, image: image)
+        return NativeTile(key: candidate.key, sourceRect: candidate.canonicalRect, image: image)
     }
 }

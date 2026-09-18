@@ -74,8 +74,11 @@ public final class MetalImageRenderer {
     var commandQueue: MTLCommandQueue? { queue }
     private let pipeline: MTLRenderPipelineState
     private let sampler: MTLSamplerState
-    private var texture: MTLTexture?
-    private var textureKey: CGImage?
+    /// The proxy's texture, separately from the tiles': one shared "current texture" field let
+    /// a tile's texture be the one bound for the proxy and vice versa, and made the proxy
+    /// re-upload whenever a tile had been drawn.
+    private var proxyTexture: MTLTexture?
+    private var proxyTextureKey: CGImage?
     /// Tile textures, keyed by tile identity rather than by image pointer: the same tile
     /// arrives again after a pan and must not be uploaded twice.
     private var tileTextures: [NativeTileKey: MTLTexture] = [:]
@@ -131,13 +134,22 @@ public final class MetalImageRenderer {
     @discardableResult
     public func prepareTexture(for image: CGImage) -> Bool {
         guard let layout = Self.textureLayout(for: image), image.width > 0, image.height > 0 else { return false }
-        if textureKey === image, texture != nil { return true }
+        if proxyTextureKey === image, proxyTexture != nil { return true }
 
+        guard let texture = uploadTexture(for: image) else { return false }
+        self.proxyTexture = texture
+        proxyTextureKey = image
+        return true
+    }
+
+    /// Uploads any CGImage as the canonical BGRA texture the shader samples.
+    private func uploadTexture(for image: CGImage) -> MTLTexture? {
+        guard let layout = Self.textureLayout(for: image), image.width > 0, image.height > 0 else { return nil }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: layout.pixelFormat, width: image.width, height: image.height, mipmapped: true)
         descriptor.usage = [.shaderRead]
         descriptor.storageMode = .shared
-        guard let texture = device.makeTexture(descriptor: descriptor) else { return false }
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
 
         // Draw into the canonical BGRA context. No flip transform: a CGContext's first
         // memory row *is* the image's top row when the image is drawn without one, which is
@@ -153,40 +165,32 @@ public final class MetalImageRenderer {
             | CGImageAlphaInfo.premultipliedFirst.rawValue
         guard let context = CGContext(data: nil, width: image.width, height: image.height,
                                       bitsPerComponent: 8, bytesPerRow: image.width * layout.bytesPerPixel,
-                                      space: colorSpace, bitmapInfo: bitmapInfo) else { return false }
+                                      space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        guard let data = context.data else { return false }
+        guard let data = context.data else { return nil }
         texture.replace(region: MTLRegionMake2D(0, 0, image.width, image.height), mipmapLevel: 0,
                         withBytes: data, bytesPerRow: context.bytesPerRow)
 
         guard let commandBuffer = queue.makeCommandBuffer(),
-              let blit = commandBuffer.makeBlitCommandEncoder() else { return false }
+              let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
         blit.generateMipmaps(for: texture)
         blit.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-
-        self.texture = texture
-        textureKey = image
-        return true
+        return texture
     }
 
-    /// Uploads one tile, reusing its texture if it is already resident.
+    /// Uploads one tile, reusing its texture if it is already resident, and returns it. The
+    /// caller binds exactly this texture, so no shared mutable "current texture" can be stale.
     @discardableResult
-    public func prepareTexture(for tile: NativeTile) -> Bool {
-        if let existing = tileTextures[tile.key] {
-            texture = existing
-            textureKey = nil
-            return true
-        }
-        guard prepareTexture(for: tile.image) else { return false }
-        guard let uploaded = texture else { return false }
+    public func prepareTexture(for tile: NativeTile) -> MTLTexture? {
+        if let existing = tileTextures[tile.key] { return existing }
+        guard let uploaded = uploadTexture(for: tile.image) else { return nil }
         tileTextures[tile.key] = uploaded
         tileTextureOrder.append(tile.key)
         tileTextureBytes += uploaded.width * uploaded.height * 4 * 4 / 3
         evictTileTexturesIfNeeded()
-        texture = uploaded
-        return true
+        return uploaded
     }
 
     /// Drops tile textures whose tiles are no longer cached, so GPU memory follows the tile
@@ -212,11 +216,11 @@ public final class MetalImageRenderer {
 
     /// Texture storage in bytes, including the mip chain (4/3 of the base level).
     public var textureBytes: Int {
-        guard let texture else { return 0 }
-        return texture.width * texture.height * 4 * 4 / 3
+        guard let proxyTexture else { return 0 }
+        return proxyTexture.width * proxyTexture.height * 4 * 4 / 3
     }
 
-    public var hasMipmaps: Bool { (texture?.mipmapLevelCount ?? 1) > 1 }
+    public var hasMipmaps: Bool { (proxyTexture?.mipmapLevelCount ?? 1) > 1 }
 
     /// Renders one frame into an offscreen texture. Used by the parity tests, which
     /// compare this against the Quartz renderer pixel for pixel.
@@ -273,9 +277,9 @@ public final class MetalImageRenderer {
     public func encode(image: CGImage, sourcePixelSize: CGSize, viewport: ViewportState,
                        viewSize: CGSize, contentsScale: CGFloat,
                        into encoder: MTLRenderCommandEncoder) {
-        guard prepareTexture(for: image) else { return }
+        guard prepareTexture(for: image), let proxyTexture else { return }
         encodeQuad(sourceRect: CGRect(origin: .zero, size: sourcePixelSize),
-                   sourcePixelSize: sourcePixelSize, viewport: viewport,
+                   texture: proxyTexture, sourcePixelSize: sourcePixelSize, viewport: viewport,
                    viewSize: viewSize, contentsScale: contentsScale, into: encoder)
     }
 
@@ -286,14 +290,14 @@ public final class MetalImageRenderer {
     public func encode(tile: NativeTile, sourcePixelSize: CGSize, viewport: ViewportState,
                        viewSize: CGSize, contentsScale: CGFloat,
                        into encoder: MTLRenderCommandEncoder) {
-        guard prepareTexture(for: tile) else { return }
-        encodeQuad(sourceRect: tile.sourceRect, sourcePixelSize: sourcePixelSize,
-                   viewport: viewport, viewSize: viewSize, contentsScale: contentsScale,
-                   into: encoder)
+        guard let texture = prepareTexture(for: tile) else { return }
+        encodeQuad(sourceRect: tile.sourceRect, texture: texture,
+                   sourcePixelSize: sourcePixelSize, viewport: viewport, viewSize: viewSize,
+                   contentsScale: contentsScale, into: encoder)
     }
 
-    private func encodeQuad(sourceRect: CGRect, sourcePixelSize: CGSize, viewport: ViewportState,
-                            viewSize: CGSize, contentsScale: CGFloat,
+    private func encodeQuad(sourceRect: CGRect, texture: MTLTexture, sourcePixelSize: CGSize,
+                            viewport: ViewportState, viewSize: CGSize, contentsScale: CGFloat,
                             into encoder: MTLRenderCommandEncoder) {
         let drawableSize = CGSize(width: viewSize.width * contentsScale, height: viewSize.height * contentsScale)
         corners = Self.quadCorners(sourceRect: sourceRect, sourcePixelSize: sourcePixelSize,

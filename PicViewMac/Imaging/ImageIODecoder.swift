@@ -281,40 +281,26 @@ public struct ImageIODecoder: ImageDecoding {
     }
 
     /// Orientation is applied to pixels on the fly; the file on disk is never rewritten.
+    ///
+    /// The transform comes from `SourceOrientation`, the same table the tile backend uses. The
+    /// hand-written transforms that lived here clipped a column for `.left` and `.leftMirrored`
+    /// — `translationX: height` on an image whose canonical width *is* the raw height lands the
+    /// last column outside the bitmap — which only a test against ImageIO's own oriented decode
+    /// could see.
     static func apply(orientation: CGImagePropertyOrientation, to image: CGImage) -> CGImage? {
-        let width = image.width
-        let height = image.height
-        let swapsDimensions: Bool
-        switch orientation {
-        case .left, .leftMirrored, .right, .rightMirrored: swapsDimensions = true
-        default: swapsDimensions = false
-        }
-        let outputWidth = swapsDimensions ? height : width
-        let outputHeight = swapsDimensions ? width : height
-
-        var transform = CGAffineTransform.identity
-        switch orientation {
-        case .up: transform = .identity
-        case .upMirrored: transform = CGAffineTransform(translationX: CGFloat(width), y: 0).scaledBy(x: -1, y: 1)
-        case .down: transform = CGAffineTransform(translationX: CGFloat(width), y: CGFloat(height)).rotated(by: .pi)
-        case .downMirrored: transform = CGAffineTransform(translationX: 0, y: CGFloat(height)).scaledBy(x: 1, y: -1)
-        case .left: transform = CGAffineTransform(translationX: CGFloat(height), y: 0).rotated(by: .pi / 2)
-        case .leftMirrored: transform = CGAffineTransform(translationX: CGFloat(height), y: 0)
-            .rotated(by: .pi / 2).scaledBy(x: -1, y: 1)
-        case .right: transform = CGAffineTransform(translationX: 0, y: CGFloat(width)).rotated(by: -.pi / 2)
-        case .rightMirrored: transform = CGAffineTransform(translationX: 0, y: CGFloat(width))
-            .rotated(by: -.pi / 2).scaledBy(x: -1, y: 1)
-        }
-
+        guard orientation != .up else { return image }
+        let source = SourceOrientation(orientation)
+        let rawSize = CGSize(width: image.width, height: image.height)
+        let canonicalSize = source.canonicalPixelSize(rawPixelSize: rawSize)
         guard let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(
-                data: nil, width: outputWidth, height: outputHeight,
+                data: nil, width: Int(canonicalSize.width), height: Int(canonicalSize.height),
                 bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
               ) else { return nil }
-        context.concatenate(transform)
         context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        context.concatenate(source.rawToCanonicalTransform(rawPixelSize: rawSize))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: rawSize.width, height: rawSize.height))
         return context.makeImage()
     }
 }

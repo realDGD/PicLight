@@ -27,6 +27,8 @@ public actor NativeDetailScheduler {
     private var pendingPlan: NativeTilePlan?
     /// Colour space of the source as ImageIO interpreted it, applied to every tile.
     private var colorSpace: CGColorSpace?
+    /// How the file's pixels relate to canonical source space.
+    private var orientation: SourceOrientation = .up
     private var runningSource: URL?
     private var inFlightKeys: Set<NativeTileKey> = []
     private var stats = NativeDetailStats()
@@ -47,8 +49,10 @@ public actor NativeDetailScheduler {
 
     /// Asks for the tiles a viewport needs. Safe to call on every geometry change.
     public func request(plan: NativeTilePlan, source: URL, pageIndex: Int = 0,
-                        colorSpace: CGColorSpace? = nil) {
+                        colorSpace: CGColorSpace? = nil,
+                        orientation: SourceOrientation = .up) {
         self.colorSpace = colorSpace
+        self.orientation = orientation
         let visibleKeys = Set(plan.visible.map { key($0, source: source, pageIndex: pageIndex) })
         cache.pin(visibleKeys)
 
@@ -106,7 +110,7 @@ public actor NativeDetailScheduler {
 
     private func key(_ coordinate: TileCoordinate, source: URL, pageIndex: Int) -> NativeTileKey {
         NativeTileKey(sourcePath: source.path, pageIndex: pageIndex,
-                      x: coordinate.x, y: coordinate.y)
+                      tileSize: tileSize, x: coordinate.x, y: coordinate.y)
     }
 
     private func start(plan: NativeTilePlan, source: URL, pageIndex: Int) {
@@ -130,8 +134,9 @@ public actor NativeDetailScheduler {
             var failure: String?
             do {
                 let space = await self?.currentColorSpace() ?? nil
+                let orientation = await self?.currentOrientation() ?? .up
                 try provider.produce(plan: plan, source: source, pageIndex: pageIndex,
-                                     gutter: gutter, colorSpace: space,
+                                     gutter: gutter, colorSpace: space, orientation: orientation,
                                      shouldCancel: { cancelFlag.isSet || Task.isCancelled },
                                      onTile: { tile in
                                          // Called on the pass's thread, once per tile: the
@@ -151,6 +156,8 @@ public actor NativeDetailScheduler {
 
     /// Actor-isolated read so the pass's thread gets a Sendable value.
     private func currentColorSpace() -> CGColorSpace? { colorSpace }
+
+    private func currentOrientation() -> SourceOrientation { orientation }
 
     private func deliver(_ tile: NativeTile, token: Int) {
         guard token == generation else { return }

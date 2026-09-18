@@ -15,11 +15,18 @@ public struct NativeTileKey: Hashable, Sendable {
     public let level: Int
     public let x: Int
     public let y: Int
+    /// The grid the coordinates belong to. Without it a 64-pixel tile and a 128-pixel tile at
+    /// the same cell share a key, and a cached texture from the finer grid gets stretched over
+    /// the coarser tile's quad — measured as a registration error of 55/255 on a probe that
+    /// renders the same scene through both renderers.
+    public let tileSize: Int
 
-    public init(sourcePath: String, pageIndex: Int = 0, level: Int = 0, x: Int, y: Int) {
+    public init(sourcePath: String, pageIndex: Int = 0, level: Int = 0,
+                tileSize: Int, x: Int, y: Int) {
         self.sourcePath = sourcePath
         self.pageIndex = pageIndex
         self.level = level
+        self.tileSize = tileSize
         self.x = x
         self.y = y
     }

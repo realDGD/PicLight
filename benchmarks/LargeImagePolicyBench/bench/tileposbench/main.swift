@@ -440,9 +440,25 @@ func metalVsQuartz(renderer: MetalImageRenderer, device: MTLDevice, tileSize: In
         if delta > 2 { differing += 1 }
         worst = max(worst, delta)
     }
-    print(String(format: "  tile %d view %dx%d centre (%.2f,%.2f): tiles=%d differing=%d/%d worst=%d -> %@",
+    // Is a mismatch a *shift* or just filtering? Compare its size with the fixture's own
+    // horizontal gradient: a half-texel blend costs about half a gradient step, a registration
+    // error costs a full step or the whole swing of the pattern.
+    var totalDiff = 0.0, totalGradient = 0.0
+    for y in 1..<(height - 1) {
+        for x in 1..<(width - 2) {
+            let m = (y * width + x) * 4, q = (y * width + x) * 4, qn = (y * width + x + 1) * 4
+            totalDiff += Double(abs(Int(metal[m + 1]) - Int(quartz[q + 1])))
+            totalGradient += Double(abs(Int(quartz[qn + 1]) - Int(quartz[q + 1])))
+        }
+    }
+    let samples = Double((height - 2) * (width - 3))
+    let meanDiff = totalDiff / samples, meanGradient = totalGradient / samples
+    let verdict = differing == 0 ? "IDENTICAL" : "MISMATCH"
+    let kind = meanDiff < meanGradient * 0.75 ? "filtering" : "registration"
+    print(String(format: "  tile %d view %dx%d centre (%.2f,%.2f): tiles=%d differing=%d/%d worst=%d -> %@"
+                 + " (mean|diff G|=%.2f vs local gradient %.2f -> %@)",
                  tileSize, width, height, centre.x, centre.y, tiles.count, differing, width * height,
-                 worst, differing == 0 ? "IDENTICAL" : "MISMATCH"))
+                 worst, verdict, meanDiff, meanGradient, kind))
 }
 
 print("\nMETAL vs QUARTZ, same scene with tiles (Quartz is the reference)")

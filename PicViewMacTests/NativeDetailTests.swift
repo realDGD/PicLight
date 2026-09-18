@@ -164,7 +164,7 @@ final class NativeDetailTests: XCTestCase {
     func testCacheEvictsByBytesAndNeverWhatIsOnScreen() {
         let cache = NativeTileCache(totalCostLimit: 4096)
         func tile(_ x: Int) -> NativeTile {
-            NativeTile(key: NativeTileKey(sourcePath: "/a.png", x: x, y: 0),
+            NativeTile(key: NativeTileKey(sourcePath: "/a.png", tileSize: 16, x: x, y: 0),
                        sourceRect: CGRect(x: x * 16, y: 0, width: 16, height: 16),
                        image: makeImage(width: 16, height: 16))
         }
@@ -173,12 +173,12 @@ final class NativeDetailTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(cache.byteCount, 4096, "the budget is enforced in bytes")
         XCTAssertGreaterThan(cache.evictionCount, 0, "something had to go")
-        let survivors = (0..<8).filter { cache.tile(for: NativeTileKey(sourcePath: "/a.png", x: $0, y: 0)) != nil }
+        let survivors = (0..<8).filter { cache.tile(for: NativeTileKey(sourcePath: "/a.png", tileSize: 16, x: $0, y: 0)) != nil }
         XCTAssertEqual(survivors, [4, 5, 6, 7], "1 KiB tiles in a 4 KiB budget: the four oldest went")
 
         // Pinning the viewport protects it from the same pressure.
         cache.removeAll()
-        let pinned = NativeTileKey(sourcePath: "/a.png", x: 0, y: 0)
+        let pinned = NativeTileKey(sourcePath: "/a.png", tileSize: 16, x: 0, y: 0)
         cache.store(tile(0))
         cache.pin([pinned])
         for x in 1..<8 {
@@ -210,7 +210,7 @@ final class NativeDetailTests: XCTestCase {
                                                         tileSize: 256))
         let collector = TileCollector()
         let provider = PNGNativeTileProvider()
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil, orientation: SourceOrientation(.up),
                              shouldCancel: { false },
                              onTile: { collector.append($0) })
         let delivered = collector.tiles
@@ -218,7 +218,7 @@ final class NativeDetailTests: XCTestCase {
         XCTAssertEqual(delivered.count, plan.allCoordinates.count,
                        "every planned tile must arrive from a single pass")
         XCTAssertEqual(Set(delivered.map(\.key)), Set(plan.allCoordinates.map {
-            NativeTileKey(sourcePath: url.path, x: $0.x, y: $0.y)
+            NativeTileKey(sourcePath: url.path, tileSize: plan.tileSize, x: $0.x, y: $0.y)
         }))
         for tile in delivered {
             XCTAssertGreaterThanOrEqual(tile.image.width, 1)
@@ -227,7 +227,7 @@ final class NativeDetailTests: XCTestCase {
         }
         // Determinism: the same plan twice produces the same tiles in the same order.
         let second = TileCollector()
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil, orientation: SourceOrientation(.up),
                              shouldCancel: { false }, onTile: { second.append($0) })
         XCTAssertEqual(delivered.map(\.key), second.tiles.map(\.key))
     }
@@ -244,7 +244,7 @@ final class NativeDetailTests: XCTestCase {
             sourcePixelSize: source, tileSize: 64))
         let counter = TileCounter()
         let provider = PNGNativeTileProvider()
-        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil,
+        try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1, colorSpace: nil, orientation: SourceOrientation(.up),
                              shouldCancel: { counter.value > 0 },
                              onTile: { _ in counter.increment() })
         let delivered = counter.value
@@ -261,7 +261,7 @@ final class NativeDetailTests: XCTestCase {
                                                         tileSize: 64))
         let provider = PNGNativeTileProvider()
         XCTAssertThrowsError(try provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
-                                                  colorSpace: nil,
+                                                  colorSpace: nil, orientation: SourceOrientation(.up),
                                                   shouldCancel: { false }, onTile: { _ in })) { error in
             let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             XCTAssertTrue(message.contains("16"), "the refusal must say why: \(message)")

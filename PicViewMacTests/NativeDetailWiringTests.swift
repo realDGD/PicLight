@@ -358,7 +358,7 @@ final class NativeDetailRenderTests: XCTestCase {
                                                         sourcePixelSize: sourceSize, tileSize: 512))
         let collector = TileCollector()
         try PNGNativeTileProvider().produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
-                                            colorSpace: proxy.colorSpace,
+                                            colorSpace: proxy.colorSpace, orientation: .up,
                                             shouldCancel: { false },
                                             onTile: { collector.append($0) })
         let tiles = collector.tiles
