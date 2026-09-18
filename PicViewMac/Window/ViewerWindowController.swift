@@ -32,8 +32,8 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onTitleChanged = { [weak self] name in
             self?.window?.title = name ?? "PicLight"
         }
-        viewerViewController.onDrawerPinnedChanged = { [weak self] pinned in
-            self?.updateDrawerButton(pinned: pinned)
+        viewerViewController.onDrawerOpenChanged = { [weak self] open in
+            self?.updateDrawerButton(open: open)
         }
         installDrawerTitlebarButton()
         window.setFrame(contentRect, display: false)
@@ -64,25 +64,25 @@ public final class ViewerWindowController: NSWindowController {
         accessory.view = button
         window?.addTitlebarAccessoryViewController(accessory)
         drawerAccessory = accessory
-        updateDrawerButton(pinned: viewerViewController.isDrawerPinned)
+        updateDrawerButton(open: viewerViewController.isDrawerOpen)
     }
 
     /// Size of the titlebar drawer control.
     static let drawerButtonSize = NSSize(width: 30, height: 22)
 
-    fileprivate func updateDrawerButton(pinned: Bool) {
+    fileprivate func updateDrawerButton(open: Bool) {
         let symbol = NSImage(
-            systemSymbolName: pinned ? "rectangle.lefthalf.inset.filled" : "sidebar.left",
-            accessibilityDescription: pinned ? "关闭左栏" : "打开左栏"
+            systemSymbolName: open ? "rectangle.lefthalf.inset.filled" : "sidebar.left",
+            accessibilityDescription: open ? "关闭左栏" : "打开左栏"
         )?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .regular))
         drawerButton?.image = symbol
-        drawerButton?.toolTip = pinned ? "关闭左栏" : "打开左栏"
-        drawerButton?.setAccessibilityLabel(pinned ? "关闭左栏" : "打开左栏")
-        drawerButton?.contentTintColor = pinned ? .controlAccentColor : nil
+        drawerButton?.toolTip = open ? "关闭左栏" : "打开左栏"
+        drawerButton?.setAccessibilityLabel(open ? "关闭左栏" : "打开左栏")
+        drawerButton?.contentTintColor = open ? .controlAccentColor : nil
     }
 
     @objc private func toggleDrawerFromTitlebar() {
-        viewerViewController.toggleDrawerPinned()
+        viewerViewController.toggleDrawer()
     }
 
     /// The titlebar drawer button, for tests.

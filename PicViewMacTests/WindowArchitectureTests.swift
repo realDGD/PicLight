@@ -180,9 +180,9 @@ final class WindowArchitectureTests: XCTestCase {
         let numberBefore = window.windowNumber
         let maskBefore = window.styleMask
 
-        // Reveal overlay chrome first, otherwise "immersive hides it" is not
-        // observable. The left edge is the drawer's trigger now.
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: 5, y: viewer.view.bounds.midY))
+        // Open overlay chrome first, otherwise "immersive hides it" is not observable. The
+        // drawer's own control is the explicit toggle — the pointer cannot open it.
+        viewer.toggleDrawerForTesting()
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertTrue(viewer.chromeSnapshot.drawer,
                       "the drawer must be visible before immersive")
@@ -205,31 +205,39 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertEqual(window.windowNumber, numberBefore)
     }
 
-    func testImmersiveStartsHiddenAndStillAllowsTemporaryHoverReveal() {
+    func testImmersiveStartsHiddenAndThePointerCannotBringChromeBack() {
         let controller = makeViewer()
         let viewer = controller.viewerViewController
         _ = viewer.view
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: 5, y: viewer.view.bounds.midY))
+        viewer.toggleDrawerForTesting()
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertTrue(viewer.chromeSnapshot.drawer, "the drawer is revealed by the left edge")
+        XCTAssertTrue(viewer.chromeSnapshot.drawer, "the explicit control opens the drawer")
 
         viewer.simulateImmersive(true)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertFalse(viewer.chromeSnapshot.drawer, "immersive starts with overlay chrome hidden")
         XCTAssertFalse(viewer.chromeSnapshot.minimap)
 
-        // A stationary pointer must not bring chrome back on its own: the chrome
-        // timer keeps ticking here without any new pointer event.
+        // A stationary pointer must not bring chrome back on its own: the chrome timer keeps
+        // ticking here without any new pointer event.
         for _ in 0..<6 { RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
         XCTAssertFalse(viewer.chromeSnapshot.drawer,
                        "a parked pointer must not re-reveal chrome in immersive mode")
 
-        // Moving into the left edge does reveal it temporarily.
-        viewer.simulatePointer(atWindowPoint: NSPoint(x: 5, y: viewer.view.bounds.midY))
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertTrue(viewer.chromeSnapshot.drawer)
+        // Nor does moving the pointer anywhere, the left edge included: the drawer's state is the
+        // user's choice, so nothing the pointer does can undo immersive mode's suppression.
+        for x in [0, 5, 23, 200] as [CGFloat] {
+            viewer.simulatePointer(atWindowPoint: NSPoint(x: x, y: viewer.view.bounds.midY))
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            XCTAssertFalse(viewer.chromeSnapshot.drawer,
+                           "the pointer at x=\(x) must not reveal chrome in immersive mode")
+        }
 
+        // Leaving immersive mode restores the choice the user made.
         viewer.simulateImmersive(false)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertTrue(viewer.chromeSnapshot.drawer,
+                      "the drawer the user opened comes back when immersive mode ends")
     }
 
     func testFullScreenUsesTheStandardCommandAndIsNotEmulatedByResizing() {
@@ -272,11 +280,15 @@ final class WindowArchitectureTests: XCTestCase {
     }
 }
 
-/// The drawer must be a pure overlay: opening and closing it may never move the
-/// canvas or change zoom. This is the deterministic form of the acceptance
-/// runner's equivalent check, which can only sample the live window afterwards.
+/// The drawer reserves canvas width, and that reservation is reversible: closing it
+/// puts the canvas back exactly where it was, and the user's view of the image — Fit
+/// or a manual zoom — survives the cycle. The drawer used to be a hover-revealed
+/// overlay that could not touch the canvas at all; it is now an explicitly opened pane,
+/// which is what makes reserving width acceptable (spec §13 allows exactly this case).
+/// This is the deterministic form of the acceptance runner's equivalent check, which can
+/// only sample the live window afterwards.
 @MainActor
-final class DrawerOverlayInvarianceTests: XCTestCase {
+final class DrawerReservationInvarianceTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
@@ -295,7 +307,12 @@ final class DrawerOverlayInvarianceTests: XCTestCase {
         return viewer.viewerState.currentImage != nil
     }
 
-    func testDrawerOpenAndCloseCyclesNeverChangeCanvasGeometry() throws {
+    /// The drawer is a reserving pane, not an overlay: opening it takes its width from the
+    /// canvas, which is the one chrome-driven geometry change the spec allows (and requires an
+    /// explicit user action to happen at all). What must hold is that the user's *view* of the
+    /// image survives the cycle — Fit stays Fit, a manual zoom stays put — and that closing the
+    /// drawer puts the canvas back exactly where it was, however many times it is done.
+    func testDrawerOpenAndCloseCyclesReserveWidthAndRestoreTheCanvasExactly() throws {
         let directory = try Fixtures.makeScratchDirectory("drawer")
         defer { try? FileManager.default.removeItem(at: directory) }
         for name in ["a.png", "b.png", "c.png"] {
@@ -313,25 +330,29 @@ final class DrawerOverlayInvarianceTests: XCTestCase {
         XCTAssertTrue(waitForImage(viewer), "the fixture image must load")
 
         let baseline = viewer.chromeSnapshot
+        XCTAssertEqual(baseline.drawerReservedWidth, 0, "nothing is reserved while it is closed")
         var sawDrawerOpen = false
 
-        for _ in 0..<5 {
-            // Pointer into the ~12 px left-edge hot zone.
-            viewer.simulatePointer(atWindowPoint: NSPoint(x: 2, y: viewer.view.bounds.midY))
+        for round in 0..<5 {
+            viewer.toggleDrawerForTesting()
             settle(0.4)
-            if viewer.chromeSnapshot.drawer { sawDrawerOpen = true }
-            XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
-                           "opening the drawer must not move the canvas")
-            XCTAssertEqual(viewer.chromeSnapshot.zoomScale, baseline.zoomScale, accuracy: 0.0001,
-                           "opening the drawer must not change zoom")
+            let open = viewer.chromeSnapshot
+            if open.drawer { sawDrawerOpen = true }
+            XCTAssertEqual(open.drawerReservedWidth, open.drawerWidth,
+                           "round \(round): an open drawer reserves exactly its own width")
+            XCTAssertLessThan(open.canvasFrame.width, baseline.canvasFrame.width,
+                              "round \(round): and the canvas gives up that width")
+            XCTAssertEqual(open.zoomScale, open.fitScale, accuracy: 0.0001,
+                           "round \(round): Fit is still Fit, measured against the smaller canvas")
 
-            // Pointer away from the hot zone closes it again.
-            viewer.simulatePointer(atWindowPoint: NSPoint(x: viewer.view.bounds.midX,
-                                                         y: viewer.view.bounds.midY))
+            viewer.toggleDrawerForTesting()
             settle(0.5)
-            XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
-                           "closing the drawer must not move the canvas")
-            XCTAssertEqual(viewer.chromeSnapshot.zoomScale, baseline.zoomScale, accuracy: 0.0001)
+            let closed = viewer.chromeSnapshot
+            XCTAssertEqual(closed.canvasFrame, baseline.canvasFrame,
+                           "round \(round): closing it returns the canvas to exactly where it was")
+            XCTAssertEqual(closed.zoomScale, baseline.zoomScale, accuracy: 0.0001,
+                           "round \(round): and to exactly the zoom it had")
+            XCTAssertEqual(closed.drawerReservedWidth, 0)
         }
 
         XCTAssertTrue(sawDrawerOpen,

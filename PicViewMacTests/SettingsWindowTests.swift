@@ -74,9 +74,11 @@ final class SettingsWindowTests: XCTestCase {
         let content = try XCTUnwrap(controller.window?.contentView)
         let titles = allViews(in: content).compactMap { $0 as? NSPopUpButton }
             .flatMap { $0.itemTitles }
-        for mode in ThumbnailFilenameMode.allCases {
-            XCTAssertFalse(titles.contains(mode.localizedName),
-                           "“\(mode.localizedName)” must not be offered any more")
+        // The enum is gone from the production code, so the old labels are spelled out here:
+        // this is the check that a future change cannot quietly reintroduce the preference.
+        for stale in ["从不", "始终", "悬停时"] {
+            XCTAssertFalse(titles.contains(stale),
+                           "“\(stale)” must not be offered any more")
         }
         // Sanity: the tab really was inspected — its other preferences are still there.
         XCTAssertTrue(titles.contains(ImageSortKey.allCases[0].localizedName),

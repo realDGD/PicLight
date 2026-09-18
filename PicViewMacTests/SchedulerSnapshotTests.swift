@@ -279,7 +279,7 @@ final class ThumbnailLongFilenameTests: XCTestCase {
             for (width, height) in shapes {
                 let subject = cell()
                 subject.configure(item: FolderItem(url: URL(fileURLWithPath: "/tmp/" + name + ".png")),
-                                  image: nil, isCurrent: true, filenameMode: .always)
+                                  image: nil, isCurrent: true)
                 subject.layoutSubtreeIfNeeded()
                 subject.setThumbnail(picture(width: width, height: height))
                 subject.layoutSubtreeIfNeeded()

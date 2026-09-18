@@ -279,7 +279,7 @@ final class ToolDockVisibilityTests: XCTestCase {
         let unpinnedZone = viewer.toolDockRevealZone
         XCTAssertEqual(unpinnedZone.midX, canvas.frame.midX, accuracy: 2)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.6)
 
         let pinnedZone = viewer.toolDockRevealZone

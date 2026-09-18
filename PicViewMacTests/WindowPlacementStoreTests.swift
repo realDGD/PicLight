@@ -83,31 +83,56 @@ final class WindowPlacementStoreTests: XCTestCase {
 }
 
 final class HoverVisibilityTests: XCTestCase {
-    func testDrawerOpensAfterTheDelayAndClosesAfterTheLeaveDelay() {
+    /// The drawer is explicit. There is no delay to wait out and no timer to run down: the state
+    /// is exactly what `setDrawerOpen` was last told, and time passing changes nothing.
+    func testTheDrawerOpensAndClosesOnlyWhenTold() {
         var model = HoverVisibilityModel()
-        model.pointerEnteredLeftEdge(at: 0)
-        XCTAssertFalse(model.update(at: 0.05), "150 ms reveal delay")
-        XCTAssertFalse(model.drawerVisible)
-        XCTAssertTrue(model.update(at: 0.2))
-        XCTAssertTrue(model.drawerVisible)
+        XCTAssertFalse(model.drawerVisible, "closed until the user opens it")
+        for time in [0.05, 0.2, 1.0, 60.0] {
+            model.pointerMoved(at: time)
+            XCTAssertFalse(model.update(at: time), "the pointer alone cannot open the drawer")
+            XCTAssertFalse(model.drawerVisible)
+        }
 
-        model.pointerExitedDrawer(at: 1.0)
-        XCTAssertFalse(model.update(at: 1.1), "250 ms close delay")
-        XCTAssertTrue(model.drawerVisible)
-        XCTAssertTrue(model.update(at: 1.3))
+        model.setDrawerOpen(true, at: 100)
+        XCTAssertTrue(model.drawerVisible, "and it is open the instant it is asked to be")
+        XCTAssertFalse(model.update(at: 100.05), "with no pending transition to run")
+
+        model.setDrawerOpen(false, at: 101)
         XCTAssertFalse(model.drawerVisible)
+        XCTAssertFalse(model.update(at: 101.05))
     }
 
-    func testPointerInsideTheDrawerKeepsItOpen() {
+    /// Toggling is the control the titlebar button and the command use.
+    func testTogglingTheDrawerFlipsItAndNothingElseDoes() {
         var model = HoverVisibilityModel()
-        model.pointerEnteredDrawer(at: 0)
-        _ = model.update(at: 0.2)
+        model.toggleDrawer(at: 0)
         XCTAssertTrue(model.drawerVisible)
+        model.setImmersive(true, at: 0.1)
+        XCTAssertFalse(model.drawerVisible, "immersive suppresses it without forgetting the choice")
+        model.toggleDrawer(at: 0.2)
+        XCTAssertFalse(model.drawerOpen, "the toggle still flips the underlying state")
+        model.setImmersive(false, at: 0.3)
+        XCTAssertFalse(model.drawerVisible, "and leaving immersive restores that state, not the old one")
+    }
+
+    /// The pointer over the drawer surface is activity and nothing more. It must not be able to
+    /// close a drawer the user opened, and it must not be able to open one they closed.
+    func testPointerOverTheDrawerSurfaceCannotChangeIt() {
+        var model = HoverVisibilityModel()
+        model.setDrawerOpen(true, at: 0)
         for step in 1...20 {
-            model.pointerEnteredDrawer(at: Double(step))
+            model.pointerOverDrawer(at: Double(step))
             _ = model.update(at: Double(step))
         }
-        XCTAssertTrue(model.drawerVisible)
+        XCTAssertTrue(model.drawerVisible, "the pointer inside cannot close it")
+
+        model.setDrawerOpen(false, at: 21)
+        for step in 22...40 {
+            model.pointerOverDrawer(at: Double(step))
+            _ = model.update(at: Double(step))
+        }
+        XCTAssertFalse(model.drawerVisible, "and it cannot reopen it either")
     }
 
     func testPointerActivityKeepsTheMinimapAliveAndFitHidesIt() {
@@ -128,16 +153,16 @@ final class HoverVisibilityTests: XCTestCase {
         XCTAssertFalse(model.minimapVisible, "the minimap never shows at Fit")
     }
 
-    func testImmersiveModeHidesOverlayChromeButKeepsThePin() {
+    func testImmersiveModeHidesOverlayChromeButKeepsTheChoice() {
         var model = HoverVisibilityModel()
-        model.setDrawerPinned(true, at: 0)
+        model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.1)
         XCTAssertTrue(model.drawerVisible)
 
         model.setImmersive(true, at: 1)
         _ = model.update(at: 1.1)
         XCTAssertFalse(model.drawerVisible, "immersive hides overlay chrome")
-        XCTAssertTrue(model.drawerPinned)
+        XCTAssertTrue(model.drawerOpen)
 
         model.setImmersive(false, at: 2)
         _ = model.update(at: 2.1)

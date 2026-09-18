@@ -267,15 +267,15 @@ enum SelfTest {
         check("chrome starts genuinely hidden, not just transparent",
               notHidden.isEmpty, notHidden.joined(separator: ", "))
 
-        // 3. The left edge is a narrow band and a hidden drawer is not clickable.
+        // 3. The left edge is not a trigger: the drawer opens only from an explicit control, and a
+        //    hidden drawer is not clickable.
         let bounds = viewer.view.bounds
-        check("left hot zone is 24 px",
-              ThumbnailDrawerView.hotZoneWidth == 24,
-              "\(ThumbnailDrawerView.hotZoneWidth) px")
-        check("25 px in is not the drawer trigger",
-              viewer.zone(forRootPoint: CGPoint(x: 25, y: bounds.midY)) != .leftEdgeHotZone)
-        check("23 px in is still the drawer trigger",
-              viewer.zone(forRootPoint: CGPoint(x: 23, y: bounds.midY)) == .leftEdgeHotZone)
+        check("the left edge does not open the drawer",
+              viewer.zone(forRootPoint: CGPoint(x: 0, y: bounds.midY)) == .canvas)
+        check("nor 23 px in",
+              viewer.zone(forRootPoint: CGPoint(x: 23, y: bounds.midY)) == .canvas)
+        check("nor the top-left corner",
+              viewer.zone(forRootPoint: CGPoint(x: 2, y: bounds.maxY - 2)) == .canvas)
         check("drawer width stays in the 180-220 px range",
               ThumbnailDrawerView.minimumWidth >= 180 && ThumbnailDrawerView.maximumWidth <= 220)
         if let content = controller.window?.contentView {
@@ -302,7 +302,7 @@ enum SelfTest {
             reporter.check(name, condition, detail)
         }
         let baseline = viewer.chromeSnapshot
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.5)
         let pinned = viewer.chromeSnapshot
         check("pinning opens the drawer", pinned.drawer)
@@ -317,7 +317,7 @@ enum SelfTest {
         drainRunLoop(0.8)
         check("a pinned drawer survives the pointer leaving", viewer.chromeSnapshot.drawer)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.8)
         check("unpinning restores hover auto-close", viewer.chromeSnapshot.drawer == false)
         check("unpinning gives the full width back to the canvas",
@@ -547,7 +547,7 @@ enum SelfTest {
               "dock \(dock.frame.midX) canvas \(canvas.frame.midX)")
 
         // Pinning reserves space, and every canvas-anchored panel follows.
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.6)
         let pinnedCanvas = canvas.frame
         check("pinned drawer shrinks the canvas by exactly its width",
@@ -566,7 +566,7 @@ enum SelfTest {
               abs(viewer.viewerState.viewport.fitScale - expectedFit) < 0.35,
               "fit \(viewer.viewerState.viewport.fitScale) vs canvas fit \(expectedFit) "
                 + "for \(currentPixels) in \(pinnedCanvas.size)")
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.6)
         check("unpinning restores the canvas width",
               abs(canvas.frame.width - unpinnedCanvas.width) <= 1,

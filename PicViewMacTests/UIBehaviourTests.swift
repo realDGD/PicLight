@@ -161,48 +161,45 @@ final class DrawerPinTests: XCTestCase {
         try await super.setUp()
         TestAppKit.ensureApplication()
     }
-    func testPinnedDrawerStaysOpenAfterPointerLeaves() {
+    func testAnOpenDrawerStaysOpenWithThePointerAnywhere() {
         var model = HoverVisibilityModel()
-        model.pointerEnteredDrawer(at: 0)
+        model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.2)
         XCTAssertTrue(model.drawerVisible)
 
-        model.setDrawerPinned(true, at: 1.0)
-        _ = model.update(at: 1.1)
-        XCTAssertTrue(model.drawerVisible)
-
-        // Pointer leaves and stays away; a pinned drawer must not close.
-        model.pointerExitedDrawer(at: 1.2)
-        for step in 0..<30 { _ = model.update(at: 1.2 + Double(step) * 0.1) }
-        XCTAssertTrue(model.drawerVisible, "a pinned drawer ignores the hover close delay")
-        XCTAssertTrue(model.drawerPinned)
+        // The pointer leaves and stays away. Nothing the pointer does may close a drawer the user
+        // opened, and no timer runs down behind them either.
+        model.pointerMoved(at: 0.3)
+        for step in 0..<30 { _ = model.update(at: 0.3 + Double(step) * 0.1) }
+        XCTAssertTrue(model.drawerVisible, "an open drawer ignores the pointer entirely")
+        XCTAssertTrue(model.drawerOpen)
     }
 
-    func testUnpinningRestoresHoverClose() {
+    func testClosingTheDrawerIsExplicitToo() {
         var model = HoverVisibilityModel()
-        model.setDrawerPinned(true, at: 0)
+        model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.1)
         XCTAssertTrue(model.drawerVisible)
 
-        model.setDrawerPinned(false, at: 1.0)
+        model.toggleDrawer(at: 1.0)
         _ = model.update(at: 1.4)
-        XCTAssertFalse(model.drawerVisible, "unpinning returns the drawer to hover rules")
+        XCTAssertFalse(model.drawerVisible, "the toggle is what closes it")
     }
 
-    func testPinnedDrawerIsTemporarilyHiddenInImmersiveModeAndComesBack() {
+    func testAnOpenDrawerIsTemporarilyHiddenInImmersiveModeAndComesBack() {
         var model = HoverVisibilityModel()
-        model.setDrawerPinned(true, at: 0)
+        model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.1)
         XCTAssertTrue(model.drawerVisible)
 
         model.setImmersive(true, at: 1)
         _ = model.update(at: 1.1)
-        XCTAssertFalse(model.drawerVisible, "immersive hides chrome, including a pinned drawer")
-        XCTAssertTrue(model.drawerPinned, "the pin itself survives immersive mode")
+        XCTAssertFalse(model.drawerVisible, "immersive hides chrome, including the drawer")
+        XCTAssertTrue(model.drawerOpen, "the user's choice survives immersive mode")
 
         model.setImmersive(false, at: 2)
         _ = model.update(at: 2.1)
-        XCTAssertTrue(model.drawerVisible, "leaving immersive mode restores the pinned drawer")
+        XCTAssertTrue(model.drawerVisible, "leaving immersive mode restores the open drawer")
     }
 
     /// Waits for a condition instead of assuming the chrome timer ticked in time.
@@ -234,7 +231,7 @@ final class DrawerPinTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let baseline = viewer.chromeSnapshot
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         XCTAssertTrue(waitUntil { viewer.chromeSnapshot.drawer }, "pinning opens the drawer")
         let pinned = viewer.chromeSnapshot.canvasFrame
         XCTAssertLessThan(pinned.width, baseline.canvasFrame.width,
@@ -243,7 +240,7 @@ final class DrawerPinTests: XCTestCase {
                        accuracy: 1,
                        "the canvas starts where the drawer ends")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         XCTAssertTrue(waitUntil { !viewer.chromeSnapshot.drawer },
                       "unpinning closes the drawer after its hover delay")
         XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,

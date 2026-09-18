@@ -7,8 +7,6 @@ public enum ViewerPointerZone: Equatable, Sendable {
     /// titlebar lives there and is always visible. Kept so the geometry stays total
     /// and a future top surface can reuse it.
     case topChrome
-    /// The narrow invisible strip at the left edge that opens the drawer.
-    case leftEdgeHotZone
     /// Anywhere over the drawer while it is open.
     case drawerSurface
     /// Over the navigator minimap.
@@ -23,17 +21,16 @@ public struct ViewerZoneGeometry: Equatable, Sendable {
     /// Height of an optional top surface. Zero in the current layout, where the
     /// window management strip is the standard titlebar rather than viewer chrome.
     public var topBarHeight: CGFloat
-    public var hotZoneWidth: CGFloat
     public var drawerWidth: CGFloat
 
-    public init(topBarHeight: CGFloat, hotZoneWidth: CGFloat, drawerWidth: CGFloat) {
+    public init(topBarHeight: CGFloat, drawerWidth: CGFloat) {
         self.topBarHeight = topBarHeight
-        self.hotZoneWidth = hotZoneWidth
         self.drawerWidth = drawerWidth
     }
 
-    /// The left edge wins over the drawer surface: the hot zone is exactly
-    /// `hotZoneWidth`, never the drawer's full width.
+    /// There is no left-edge trigger: the drawer opens only from an explicit control. The edge
+    /// of an *open* drawer still belongs to the drawer, because its surface is only interactive
+    /// while it is on screen.
     ///
     /// The bounds test is inclusive on every edge on purpose: `CGRect.contains`
     /// excludes `maxX`/`maxY`, which would leave the window's outermost pixel row
@@ -44,7 +41,6 @@ public struct ViewerZoneGeometry: Equatable, Sendable {
               point.x >= bounds.minX, point.x <= bounds.maxX,
               point.y >= bounds.minY, point.y <= bounds.maxY else { return .canvas }
         if topBarHeight > 0, point.y >= bounds.maxY - topBarHeight { return .topChrome }
-        if point.x <= bounds.minX + hotZoneWidth { return .leftEdgeHotZone }
         if drawerVisible, point.x <= bounds.minX + drawerWidth { return .drawerSurface }
         if let minimapRect, minimapRect.width > 0, minimapRect.height > 0,
            minimapRect.insetBy(dx: -0.5, dy: -0.5).contains(point) { return .minimapSurface }

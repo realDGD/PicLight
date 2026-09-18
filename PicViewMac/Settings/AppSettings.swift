@@ -1,19 +1,5 @@
 import Foundation
 
-public enum ThumbnailFilenameMode: String, CaseIterable, Codable, Sendable {
-    case never
-    case always
-    case hover
-
-    public var localizedName: String {
-        switch self {
-        case .never: return "从不"
-        case .always: return "始终"
-        case .hover: return "悬停时"
-        }
-    }
-}
-
 public enum OpenBehavior: String, CaseIterable, Codable, Sendable {
     case newWindow
     case reuseCurrent
@@ -102,7 +88,6 @@ public final class AppSettings {
 
     private func registerDefaults() {
         defaults.register(defaults: [
-            Key.thumbnailFilenames: ThumbnailFilenameMode.hover.rawValue,
             Key.sortKey: ImageSortKey.filename.rawValue,
             Key.sortDirection: SortDirection.ascending.rawValue,
             Key.openBehavior: OpenBehavior.newWindow.rawValue,
@@ -122,7 +107,6 @@ public final class AppSettings {
     }
 
     private enum Key {
-        static let thumbnailFilenames = "thumbnailFilenames"
         static let sortKey = "sortKey"
         static let sortDirection = "sortDirection"
         static let openBehavior = "openBehavior"
@@ -144,12 +128,11 @@ public final class AppSettings {
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
 
-    // MARK: - Thumbnails and sorting
+    // MARK: - Browsing and sorting
 
-    public var thumbnailFilenames: ThumbnailFilenameMode {
-        get { ThumbnailFilenameMode(rawValue: defaults.string(forKey: Key.thumbnailFilenames) ?? "") ?? .hover }
-        set { defaults.set(newValue.rawValue, forKey: Key.thumbnailFilenames); notify() }
-    }
+    // There is deliberately no thumbnail-filename preference. Drawer filenames are always
+    // shown; the old `thumbnailFilenames` key is not read here, so a value left in the
+    // defaults by an older build ("never", "hover") cannot change what the drawer does.
 
     public var sortKey: ImageSortKey {
         get { ImageSortKey(rawValue: defaults.string(forKey: Key.sortKey) ?? "") ?? .filename }

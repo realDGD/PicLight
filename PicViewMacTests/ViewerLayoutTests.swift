@@ -276,13 +276,13 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertEqual(canvas.frame.width, rootWidth, accuracy: 1,
                        "unpinned: the canvas owns the whole content area")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(canvas.frame.width, rootWidth - drawerWidth, accuracy: 1,
                        "pinned: the canvas is the remaining area")
         XCTAssertEqual(canvas.frame.minX, drawerWidth, accuracy: 1)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(canvas.frame.width, rootWidth, accuracy: 1,
                        "unpinning restores the full width")
@@ -319,7 +319,7 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertEqual(unpinnedFit, canvas.bounds.width / canvas.imagePixelSize.width,
                        accuracy: 0.01, "width binds in this geometry")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         let pinnedFit = viewer.viewerState.viewport.fitScale
         XCTAssertEqual(canvas.bounds.width, 400 - viewer.currentDrawerWidth, accuracy: 1)
@@ -369,7 +369,7 @@ final class ViewerLayoutTests: XCTestCase {
 
         settle()
         checkAnchors("unpinned")
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.6)
         checkAnchors("pinned")
     }
@@ -380,7 +380,7 @@ final class ViewerLayoutTests: XCTestCase {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         loadImage(viewer)
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.6)
 
         guard let window = controller.window else { return XCTFail("no window") }
@@ -421,7 +421,7 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertGreaterThan(canvas.imagePixelSize.width * zoomBefore,
                              canvas.bounds.width - viewer.currentDrawerWidth)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(viewer.viewerState.viewport.zoomScale, zoomBefore, accuracy: 0.0001,
                        "pinning must not silently reset a manual zoom")
@@ -429,7 +429,7 @@ final class ViewerLayoutTests: XCTestCase {
                        "the focal point is preserved across the re-layout")
         XCTAssertEqual(viewer.viewerState.viewport.normalizedCenter.y, 0.5, accuracy: 0.02)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(viewer.viewerState.viewport.zoomScale, zoomBefore, accuracy: 0.0001,
                        "unpinning also keeps the manual zoom")
@@ -446,14 +446,14 @@ final class ViewerLayoutTests: XCTestCase {
         guard let window = controller.window else { return XCTFail("no window") }
         XCTAssertEqual(window.minSize.width, ViewerWindow.defaultMinimumSize.width, accuracy: 1)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertGreaterThan(window.minSize.width, ViewerWindow.defaultMinimumSize.width,
                              "pinned, the minimum width must still leave room for the image")
         XCTAssertGreaterThanOrEqual(window.minSize.width - viewer.currentDrawerWidth, 320,
                                     "at least 320 pt of canvas remains at the minimum size")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(window.minSize.width, ViewerWindow.defaultMinimumSize.width, accuracy: 1)
     }
@@ -825,14 +825,14 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         XCTAssertFalse(viewer.chromeSnapshot.drawer, "the drawer starts closed")
         button.performClick(nil)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertTrue(viewer.isDrawerPinned, "clicking opens the drawer and holds it")
+        XCTAssertTrue(viewer.isDrawerOpen, "clicking opens the drawer and holds it")
         XCTAssertTrue(viewer.chromeSnapshot.drawer)
         XCTAssertEqual(button.toolTip, "关闭左栏")
         XCTAssertEqual(button.contentTintColor, .controlAccentColor)
 
         button.performClick(nil)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertFalse(viewer.isDrawerPinned, "clicking again closes it")
+        XCTAssertFalse(viewer.isDrawerOpen, "clicking again closes it")
         XCTAssertEqual(button.toolTip, "打开左栏")
     }
 
@@ -854,11 +854,11 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         defer { controller.close() }
         viewer.perform(.toggleThumbnailDrawer)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertTrue(viewer.isDrawerPinned)
+        XCTAssertTrue(viewer.isDrawerOpen)
         XCTAssertEqual(controller.drawerTitlebarButton?.toolTip, "关闭左栏")
         viewer.perform(.toggleThumbnailDrawer)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertFalse(viewer.isDrawerPinned)
+        XCTAssertFalse(viewer.isDrawerOpen)
     }
 }
 

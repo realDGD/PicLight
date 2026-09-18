@@ -134,28 +134,29 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             + "bounds=\(minimap.bounds.size) canvasPixels=\(canvas.imagePixelSize)")
     }
 
-    /// Reports the drawer's pinned state so the window can reflect it.
-    public var onDrawerPinnedChanged: ((Bool) -> Void)?
+    /// Reports the drawer's state so the window can reflect it.
+    public var onDrawerOpenChanged: ((Bool) -> Void)?
 
-    /// Opens or closes the drawer: the titlebar button and the ⇧⌘T command both land
-    /// here, and the drawer itself no longer carries a pin control.
-    public func setDrawerPinned(_ pinned: Bool) {
+    /// Opens or closes the drawer. This is the drawer's only entry point: the titlebar button,
+    /// the dock's sidebar control and the `缩略图抽屉` command all land here, and no pointer
+    /// position can change it.
+    public func setDrawerOpen(_ open: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.setDrawerPinned(pinned, at: now)
+        hover.setDrawerOpen(open, at: now)
         hover.update(at: now)
         applyChromeVisibility()
-        onDrawerPinnedChanged?(hover.drawerPinned)
+        onDrawerOpenChanged?(hover.drawerOpen)
     }
 
-    public func toggleDrawerPinned() {
-        setDrawerPinned(!hover.drawerPinned)
+    public func toggleDrawer() {
+        setDrawerOpen(!hover.drawerOpen)
     }
 
-    /// Whether the drawer is currently held open.
-    public var isDrawerPinned: Bool { hover.drawerPinned }
+    /// Whether the drawer is open, immersive mode aside.
+    public var isDrawerOpen: Bool { hover.drawerOpen }
 
-    func toggleDrawerPinForTesting() {
-        toggleDrawerPinned()
+    func toggleDrawerForTesting() {
+        toggleDrawer()
     }
 
     /// Pins the tool dock open, or hands it back to the auto-hide rules.
@@ -306,7 +307,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         rootView.onPointerExited = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.hover.pointerExitedDrawer(at: now)
             self.hover.toolDock.setPointer(inZone: false, at: now)
             self.hover.update(at: now)
             self.applyChromeVisibility()
@@ -404,9 +404,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.swipeMode = settings.swipeMode
         canvas.doubleClickMode = settings.doubleClickMode
         canvas.backgroundColor = settings.appearance.canvasBackground
-        // Filenames are always shown in the drawer. The preference was removed from
-        // Settings; the stored key is left alone so an old value cannot resurface.
-        drawer.filenameMode = .always
+        // Drawer filenames are always shown, and there is no preference left to read: the
+        // setting was removed from `AppSettings` outright, so a value left in the defaults by an
+        // older build cannot reach the drawer even by accident.
         applyAppearance()
         refreshBottomBar()
     }
@@ -1515,7 +1515,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// re-fits around the new area. Because every consumer reads canvas bounds,
     /// nothing else needs to know about the drawer.
     private func applyDrawerLayout() {
-        let pinned = hover.drawerPinned
+        // An open drawer reserves canvas width; there is no hover-only overlay state left for the
+        // drawer to occupy, so the two are the same question.
+        let pinned = hover.drawerOpen
         guard pinned != isDrawerReservingSpace else { return }
         isDrawerReservingSpace = pinned
 
@@ -1646,7 +1648,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// the app agree on what "the left edge" means.
     var zoneGeometry: ViewerZoneGeometry {
         ViewerZoneGeometry(topBarHeight: 0,
-                           hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
                            drawerWidth: drawerWidthConstraint?.constant ?? ThumbnailDrawerView.minimumWidth)
     }
 
@@ -1676,7 +1677,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     func zone(forRootPoint point: CGPoint) -> ViewerPointerZone {
         zoneGeometry.zone(for: point, in: rootView.bounds,
-                          drawerVisible: hover.drawerVisible || hover.drawerPinned,
+                          drawerVisible: hover.drawerVisible,
                           minimapRect: minimap.isHidden ? nil : minimap.frame)
     }
 
@@ -1689,17 +1690,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         hover.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
 
         switch zone(forRootPoint: point) {
-        case .topChrome, .leftEdgeHotZone:
-            // No chrome lives at the top any more; the standard titlebar is
-            // AppKit's. The left edge is the drawer's trigger region.
-            hover.pointerEnteredLeftEdge(at: now)
+        case .topChrome:
+            // No chrome lives at the top any more; the standard titlebar is AppKit's.
+            break
         case .drawerSurface:
-            // Keeping the pointer inside the drawer keeps it open.
-            hover.pointerEnteredDrawer(at: now)
+            // The pointer being over the drawer is activity, nothing more: it cannot open or
+            // close anything.
+            hover.pointerOverDrawer(at: now)
         case .minimapSurface:
             hover.zoomActivity(at: now)
         case .canvas:
-            hover.pointerExitedDrawer(at: now)
+            break
         }
 
         hover.update(at: now)
@@ -1760,7 +1761,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             viewerState.toggleImmersive()
             applyChromeVisibility()
         case .toggleThumbnailDrawer:
-            toggleDrawerPinned()
+            toggleDrawer()
         case .showImageInfo:
             showImageInfo()
         case .toggleSortDirection:
@@ -1902,6 +1903,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         var drawer: Bool
         var minimap: Bool
         var drawerRows: Int
+        /// Canvas width the open drawer reserves. Zero when the canvas has the full width.
+        var drawerReservedWidth: CGFloat
+        var drawerWidth: CGFloat
         var canvasFrame: NSRect
         var zoomScale: CGFloat
         var fitScale: CGFloat
@@ -1923,6 +1927,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             top: false, bottom: !bottomBar.isHidden,
             drawer: hover.snapshot.drawer, minimap: hover.snapshot.minimap,
             drawerRows: drawer.visibleRowCount,
+            drawerReservedWidth: isDrawerReservingSpace ? currentDrawerWidth : 0,
+            drawerWidth: currentDrawerWidth,
             canvasFrame: canvas.frame,
             zoomScale: canvas.viewport.zoomScale,
             fitScale: canvas.viewport.fitScale,

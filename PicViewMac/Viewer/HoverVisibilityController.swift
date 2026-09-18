@@ -120,21 +120,30 @@ public struct ToolDockVisibilityModel: Sendable {
 /// Pure hover/idle state machine for the viewer's overlay chrome. The window
 /// management strip is the standard AppKit titlebar and is always visible, so
 /// there is no top state left to track here.
+///
+/// The three surfaces it tracks — the thumbnail drawer, the minimap and the tool dock — are
+/// independent: each has its own inputs and its own rule. They share the tick that evaluates
+/// them and nothing else, so a pointer event that concerns one cannot move another.
 public struct HoverVisibilityModel: Sendable {
     public struct Timing: Sendable {
-        public var drawerOpenDelay: TimeInterval = 0.15
-        public var drawerCloseDelay: TimeInterval = 0.25
         public var minimapIdleFadeDelay: TimeInterval = 1.5
 
         public init() {}
     }
 
     public var timing = Timing()
-    /// The dock's own state machine, driven from the same tick so the timer that
-    /// hides the drawer also hides the dock.
+    /// The dock's own state machine. Independent of the drawer's: the two share the tick that
+    /// drives them, never a flag.
     public var toolDock = ToolDockVisibilityModel()
 
-    public private(set) var drawerVisible = false
+    /// Whether the thumbnail drawer is open. Explicitly controlled — see `setDrawerOpen`.
+    ///
+    /// It used to open from a hover over the window's left edge, with its own open/close timers
+    /// running alongside a separate pinned flag. That is gone: a drawer that appears because the
+    /// pointer crossed the left edge is a drawer that appears by accident, and having two
+    /// authorities for one surface meant the timers and the flag could disagree. The state is now
+    /// exactly the user's choice, and the pointer cannot change it.
+    public private(set) var drawerOpen = false
     public private(set) var minimapVisible = false
 
     /// Immersive mode hides the viewer's overlay chrome. The standard titlebar and
@@ -142,13 +151,10 @@ public struct HoverVisibilityModel: Sendable {
     public var immersive = false
     /// Minimap is only permitted while the image is zoomed past Fit.
     public var isZoomedIn = false
-    /// A modal-ish surface keeps the drawer awake.
-    public var isInteracting = false
-    /// A pinned drawer reserves space and stays open until the user unpins it.
-    public private(set) var drawerPinned = false
 
-    private var drawerRequestedAt: TimeInterval?
-    private var drawerExitedAt: TimeInterval?
+    /// Wall-clock time of the last pointer activity. Recorded so a pointer-driven rule has one
+    /// place to read it from; no current rule keys on it, which is the point — the drawer is not
+    /// a pointer-driven surface any more.
     private var lastPointerActivity: TimeInterval = 0
     private var lastMinimapActivity: TimeInterval = 0
 
@@ -160,36 +166,21 @@ public struct HoverVisibilityModel: Sendable {
         lastPointerActivity = time
     }
 
-    /// Pins or unpins the drawer. The caller re-evaluates visibility afterwards.
-    public mutating func setDrawerPinned(_ pinned: Bool, at time: TimeInterval) {
-        drawerPinned = pinned
-        if pinned {
-            drawerVisible = true
-            drawerRequestedAt = time
-            drawerExitedAt = nil
-        } else {
-            // Fall back to the hover rules: if the pointer is elsewhere, the
-            // drawer closes after the usual delay.
-            drawerRequestedAt = nil
-            drawerExitedAt = time
-        }
+    /// The drawer's only entry point: the titlebar's sidebar button and the `缩略图抽屉` command
+    /// both land here, and nothing else may change it.
+    public mutating func setDrawerOpen(_ open: Bool, at time: TimeInterval) {
+        drawerOpen = open
         lastPointerActivity = time
     }
 
-    public mutating func pointerEnteredLeftEdge(at time: TimeInterval) {
-        drawerRequestedAt = time
-        drawerExitedAt = nil
+    public mutating func toggleDrawer(at time: TimeInterval) {
+        setDrawerOpen(!drawerOpen, at: time)
     }
 
-    /// Pointer entered the drawer itself; it stays open while the pointer is inside.
-    public mutating func pointerEnteredDrawer(at time: TimeInterval) {
-        drawerRequestedAt = time
-        drawerExitedAt = nil
-    }
-
-    public mutating func pointerExitedDrawer(at time: TimeInterval) {
-        drawerRequestedAt = nil
-        drawerExitedAt = time
+    /// The pointer is over the drawer's surface. Counts as activity — the drawer must not be
+    /// mistaken for the pointer having left the window — but cannot open or close anything.
+    public mutating func pointerOverDrawer(at time: TimeInterval) {
+        lastPointerActivity = time
     }
 
     public mutating func zoomActivity(at time: TimeInterval) {
@@ -200,17 +191,9 @@ public struct HoverVisibilityModel: Sendable {
     public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
         immersive = value
         toolDock.setImmersive(value, at: time)
-        if !value {
-            // Leaving immersive mode restores a pinned drawer.
-            if drawerPinned { drawerVisible = true }
-            return
-        }
-        drawerVisible = false
-        minimapVisible = false
-        // Entering immersive mode forgets the region the pointer was already
-        // resting in, so chrome stays hidden until the pointer moves again.
-        drawerRequestedAt = nil
-        drawerExitedAt = nil
+        // Immersive suppresses the drawer's *appearance* without forgetting the user's choice, so
+        // leaving immersive mode restores exactly the state they left.
+        if value { minimapVisible = false }
     }
 
     public mutating func setZoomedIn(_ value: Bool, at time: TimeInterval) {
@@ -226,27 +209,8 @@ public struct HoverVisibilityModel: Sendable {
     public mutating func update(at time: TimeInterval) -> Bool {
         let before = snapshot
 
-        if let requestedAt = drawerRequestedAt {
-            if time - requestedAt >= timing.drawerOpenDelay { drawerVisible = true }
-            lastPointerActivity = time
-        }
-        if drawerPinned, !immersive { drawerVisible = true }
-        if let exitedAt = drawerExitedAt, drawerRequestedAt == nil, !drawerPinned,
-           time - exitedAt >= timing.drawerCloseDelay {
-            drawerVisible = false
-            drawerExitedAt = nil
-        }
-        if drawerPinned, drawerRequestedAt == nil {
-            // A pinned drawer keeps its close timer from firing.
-            drawerExitedAt = nil
-        }
-
         if isZoomedIn {
-            if time - lastMinimapActivity <= timing.minimapIdleFadeDelay {
-                minimapVisible = true
-            } else {
-                minimapVisible = false
-            }
+            minimapVisible = time - lastMinimapActivity <= timing.minimapIdleFadeDelay
         } else {
             minimapVisible = false
         }
@@ -255,6 +219,9 @@ public struct HoverVisibilityModel: Sendable {
 
         return snapshot != before
     }
+
+    /// The drawer as the user sees it: open, and not suppressed by immersive mode.
+    public var drawerVisible: Bool { drawerOpen && !immersive }
 
     public var snapshot: Snapshot {
         Snapshot(drawer: drawerVisible, minimap: minimapVisible, toolDock: toolDock.visible)

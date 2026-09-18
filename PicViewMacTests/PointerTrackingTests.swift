@@ -12,9 +12,7 @@ final class PointerZoneTests: XCTestCase {
         TestAppKit.ensureApplication()
     }
     private var geometry: ViewerZoneGeometry {
-        ViewerZoneGeometry(topBarHeight: 0,
-                           hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
-                           drawerWidth: 200)
+        ViewerZoneGeometry(topBarHeight: 0, drawerWidth: 200)
     }
     private let bounds = CGRect(x: 0, y: 0, width: 1000, height: 700)
 
@@ -27,14 +25,15 @@ final class PointerZoneTests: XCTestCase {
                        .canvas, "the content area under the titlebar is image, not chrome")
     }
 
-    func testLeftEdgeHotZoneIsTwentyFourPoints() {
-        XCTAssertEqual(ThumbnailDrawerView.hotZoneWidth, 24)
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 0, y: 350), in: bounds, drawerVisible: false),
-                       .leftEdgeHotZone)
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 23, y: 350), in: bounds, drawerVisible: false),
-                       .leftEdgeHotZone, "23 px in is still the trigger region")
-        XCTAssertEqual(geometry.zone(for: CGPoint(x: 25, y: 350), in: bounds, drawerVisible: false),
-                       .canvas, "25 px in is already the image")
+    /// The left edge is not a trigger: the drawer opens only from an explicit control, so no
+    /// pointer position alone can summon it.
+    func testTheLeftEdgeIsNotADrawerTrigger() {
+        for x in [0, 1, 23, 24, 25, 100] as [CGFloat] {
+            XCTAssertEqual(geometry.zone(for: CGPoint(x: x, y: 350), in: bounds,
+                                         drawerVisible: false),
+                           .canvas,
+                           "\(x) px in must not reveal the drawer")
+        }
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 100, y: 350), in: bounds, drawerVisible: false),
                        .canvas, "a hidden drawer must not claim its own width")
     }
@@ -48,12 +47,13 @@ final class PointerZoneTests: XCTestCase {
                        .canvas)
     }
 
-    func testTopLeftCornerStillBelongsToTheDrawerTrigger() {
-        // With no top chrome, the left edge works all the way to the top.
+    /// The top-left corner is the corner this change is most easily got wrong: it used to be the
+    /// hot zone's strongest point, and it must now belong to the image.
+    func testTheTopLeftCornerIsImage() {
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 5, y: 690), in: bounds, drawerVisible: false),
-                       .leftEdgeHotZone)
+                       .canvas)
         XCTAssertEqual(geometry.zone(for: CGPoint(x: 5, y: 690), in: bounds, drawerVisible: true),
-                       .leftEdgeHotZone)
+                       .drawerSurface, "an *open* drawer owns its own surface, corner included")
     }
 
     func testMinimapSurfaceIsIdentifiedWhenSupplied() {
@@ -201,19 +201,19 @@ final class ViewerHitTestingTests: XCTestCase {
                        "exactly the root view may track pointer movement, found \(owners)")
     }
 
-    func testDrawerHotZoneIsNarrowAndDrawerStaysWide() throws {
+    func testDrawerWidthStaysInRangeAndTheLeftEdgeIsNotATrigger() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
-        XCTAssertEqual(ThumbnailDrawerView.hotZoneWidth, 24)
         XCTAssertGreaterThanOrEqual(ThumbnailDrawerView.minimumWidth, 180)
         XCTAssertLessThanOrEqual(ThumbnailDrawerView.maximumWidth, 220)
 
-        // 25 px in must not be part of the trigger region on the live view. Points
-        // are derived from the live bounds so the check does not depend on the
+        // Points are derived from the live bounds so the check does not depend on the
         // remembered window size.
         let midY = viewer.view.bounds.midY
-        XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 25, y: midY)), .canvas)
-        XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: 23, y: midY)), .leftEdgeHotZone)
+        for x in [0, 1, 23, 25, 100] as [CGFloat] {
+            XCTAssertEqual(viewer.zone(forRootPoint: CGPoint(x: x, y: midY)), .canvas,
+                           "the pointer alone must not reveal the drawer at x=\(x)")
+        }
     }
 }
 
@@ -253,6 +253,9 @@ final class ChromeHideGuaranteeTests: XCTestCase {
         }
     }
 
+    /// The drawer is revealed by an explicit control now, not by pointer position. This keeps the
+    /// original regression — a hidden surface must come back through the real hide/show path and
+    /// end at full opacity — while driving it the way the product does.
     func testDrawerReturnsToTheHierarchyWhenRevealed() {
         TestAppKit.ensureApplication()
         let controller = ViewerWindowController()
@@ -266,13 +269,18 @@ final class ChromeHideGuaranteeTests: XCTestCase {
         let drawer = viewer.chromeViewsForTesting["drawer"]!
         XCTAssertTrue(drawer.isHidden)
 
-        // Pointer into the left edge strip brings it back.
+        // The pointer must not: an edge hover is not a reveal trigger any more.
         viewer.handlePointer(atRootPoint: CGPoint(x: 5, y: viewer.view.bounds.midY))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertTrue(drawer.isHidden, "the pointer alone must not reveal the drawer")
+
+        // The explicit control does.
+        viewer.perform(.toggleThumbnailDrawer)
         let revealed = Date().addingTimeInterval(2)
         while Date() < revealed, drawer.isHidden {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
-        XCTAssertFalse(drawer.isHidden, "the left edge must bring the drawer back")
+        XCTAssertFalse(drawer.isHidden, "the drawer command must bring the drawer back")
         XCTAssertEqual(drawer.alphaValue, 1, accuracy: 0.01)
     }
 }

@@ -6,9 +6,6 @@ import AppKit
 public final class ThumbnailDrawerView: MaterialHostView {
     public static let minimumWidth: CGFloat = 180
     public static let maximumWidth: CGFloat = 220
-    /// Edge strip that reveals the unpinned drawer. Wide enough to hit without
-    /// aiming, narrow enough that it never feels like part of the image.
-    public static let hotZoneWidth: CGFloat = 24
 
     public var onSelect: ((Int) -> Void)?
     /// Asks the owner to produce a thumbnail for a row that just became visible.
@@ -21,10 +18,6 @@ public final class ThumbnailDrawerView: MaterialHostView {
     private var items: [FolderItem] = []
     private var currentIndex: Int?
     private var isApplyingSelectionProgrammatically = false
-
-    public var filenameMode: ThumbnailFilenameMode = .hover {
-        didSet { tableView.reloadData() }
-    }
 
     public override init(style: Style = .drawer) {
         super.init(style: style)
@@ -96,6 +89,12 @@ public final class ThumbnailDrawerView: MaterialHostView {
         return true
     }
 
+    /// The cell for a row, materialized if necessary, for tests of the cell contract as the
+    /// drawer's own data source builds it.
+    func cellForTesting(row: Int) -> ThumbnailCellView? {
+        tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ThumbnailCellView
+    }
+
     /// The image a row is showing, for tests of the delivery identity.
     func thumbnailImageForTesting(at index: Int) -> CGImage? {
         guard let cell = tableView.view(atColumn: 0, row: index, makeIfNecessary: true)
@@ -149,7 +148,7 @@ extension ThumbnailDrawerView: NSTableViewDelegate {
             as? ThumbnailCellView) ?? ThumbnailCellView(frame: .zero)
         let item = items[row]
         cell.configure(item: item, image: thumbnailProvider?(item),
-                       isCurrent: row == currentIndex, filenameMode: filenameMode)
+                       isCurrent: row == currentIndex)
         // The owner fills missing thumbnails in the background.
         if thumbnailProvider?(item) == nil { onThumbnailNeeded?(row, item) }
         return cell

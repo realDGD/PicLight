@@ -22,7 +22,6 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testDefaultsMatchTheSpecTable() {
-        XCTAssertEqual(settings.thumbnailFilenames, .hover)
         XCTAssertEqual(settings.sortKey, .filename)
         XCTAssertEqual(settings.sortDirection, .ascending)
         XCTAssertEqual(settings.openBehavior, .newWindow)
@@ -40,7 +39,6 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testValuesPersistAcrossInstances() {
-        settings.thumbnailFilenames = .always
         settings.sortKey = .fileSize
         settings.sortDirection = .descending
         settings.openBehavior = .reuseCurrent
@@ -53,7 +51,6 @@ final class AppSettingsTests: XCTestCase {
         settings.appearance = .black
 
         let reloaded = AppSettings(defaults: defaults)
-        XCTAssertEqual(reloaded.thumbnailFilenames, .always)
         XCTAssertEqual(reloaded.sortKey, .fileSize)
         XCTAssertEqual(reloaded.sortDirection, .descending)
         XCTAssertEqual(reloaded.openBehavior, .reuseCurrent)
