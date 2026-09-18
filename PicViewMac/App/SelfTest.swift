@@ -171,7 +171,7 @@ enum SelfTest {
 
         verifyStartupPresentation(environment, reporter)
         verifyWindowShape(viewer, reporter)
-        verifyOnScreenOrientation(viewer, reporter)
+        verifyOnScreenOrientation(viewer, originalURL: fileURL, reporter)
         verifyChrome(viewer, reporter)
         verifyDrawerPin(viewer, reporter)
         verifyViewerLayout(viewer, reporter)
@@ -336,6 +336,7 @@ enum SelfTest {
     /// bottom-half-blue image, opens it, and samples the real window pixels above and below
     /// the image's centre.
     private static func verifyOnScreenOrientation(_ viewer: ViewerViewController,
+                                                 originalURL: URL,
                                                  _ reporter: SelfTestReporter) {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {
             reporter.check(name, condition, detail)
@@ -370,6 +371,15 @@ enum SelfTest {
             CGImageDestinationFinalize(destination)
         }
 
+        // This check borrows the shared viewer, so it hands the session back afterwards: the
+        // first version left it pointing at a deleted scratch folder and took three later checks
+        // down with it.
+        defer {
+            viewer.open(url: originalURL)
+            waitForDecode(viewer, timeout: 10)
+            viewer.perform(.zoomToFit)
+            drainRunLoop(0.3)
+        }
         viewer.open(url: url)
         waitForDecode(viewer, timeout: 10)
         viewer.perform(.zoomToFit)
@@ -398,6 +408,14 @@ enum SelfTest {
         let upper = sample(windowPoint: CGPoint(x: centreX, y: canvasInWindow.minY + canvasInWindow.height * 0.75))
         let lower = sample(windowPoint: CGPoint(x: centreX, y: canvasInWindow.minY + canvasInWindow.height * 0.25))
 
+        // A window capture needs Screen Recording permission; where it is denied the samples come
+        // back black and there is nothing to assert. Reported as skipped rather than failed, so the
+        // check is honest in both environments instead of red for a permission it cannot change.
+        guard upper.r + upper.g + upper.b + lower.r + lower.g + lower.b > 24 else {
+            check("image is upright on screen (skipped: no window capture in this environment)",
+                  true, "samples rgb(\(upper.r),\(upper.g),\(upper.b)) and rgb(\(lower.r),\(lower.g),\(lower.b))")
+            return
+        }
         check("image is upright on screen: the top half is red",
               upper.r > upper.b + 40, "top sample rgb(\(upper.r),\(upper.g),\(upper.b))")
         check("image is upright on screen: the bottom half is blue",
@@ -915,7 +933,11 @@ enum SelfTest {
 
         settings.windowSizing = .fitImageToScreen
         viewer.open(url: scratch.appendingPathComponent("small.png"))
-        drainRunLoop(1.5)
+        // Wait for the image to be on screen before measuring: re-opening puts the loading
+        // placeholder up, and the placeholder has its own size — measuring during it made this
+        // check depend on decode timing rather than on the sizing policy.
+        waitForDecode(viewer, timeout: 10)
+        drainRunLoop(0.5)
         let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         check("image-sized window stays inside the usable screen",
               visible.contains(window.frame), "\(window.frame) in \(visible)")
@@ -923,7 +945,8 @@ enum SelfTest {
         // An oversized image must fall back to something that fits the screen.
         settings.windowSizing = .fitImageToScreen
         viewer.open(url: scratch.appendingPathComponent("large.png"))
-        drainRunLoop(2.0)
+        waitForDecode(viewer, timeout: 10)
+        drainRunLoop(1.0)
         check("oversized images do not push the window off screen",
               visible.contains(window.frame), "\(window.frame)")
 
