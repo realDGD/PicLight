@@ -495,6 +495,7 @@ enum BenchTrace {
              + "runs=\(p.publicationRuns) generation=\(p.generation)")
         mark("DIRECTSTALE \(label): requestSkips=\(viewer.staleDirectRequestSkips) "
              + "publicationDiscards=\(viewer.staleDirectPublicationDiscards)")
+        mark("PASSSTATS \(label): cpuCache=\(d.cpuCacheTiles) gpuResident=\(d.gpuResidentTiles)")
         let t = viewer.thumbnailRequestDiagnostics()
         mark("THUMBNAILS \(label): requests=\(t.requests) active=\(t.active) "
              + "retryQueued=\(t.retryQueued) maxConcurrentPerURL=\(t.maxConcurrentPerURL) "
