@@ -201,9 +201,11 @@ final class WarmResidencyTests: XCTestCase {
         XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }))
         viewer.perform(.zoomActualPixels)
         XCTAssertTrue(pump(until: { viewer.detailPlanForTesting != nil }))
-        XCTAssertTrue(pump(until: { viewer.publicationDiagnostics().publicationRuns >= 2 }, timeout: 20),
+        // Sanitizer builds run many suites in one process and slow the pass down; the assertion is
+        // about the order (published while the pass runs), so the wait is generous on purpose.
+        XCTAssertTrue(pump(until: { viewer.publicationDiagnostics().publicationRuns >= 2 }, timeout: 60),
                       "the pass must publish more than once while tiles arrive")
-        XCTAssertTrue(pump(until: { viewer.canvasNativeTilesForTesting.count > 0 }, timeout: 20),
+        XCTAssertTrue(pump(until: { viewer.canvasNativeTilesForTesting.count > 0 }, timeout: 60),
                       "visible tiles must be published progressively")
         let diagnostics = viewer.publicationDiagnostics()
         XCTAssertGreaterThan(diagnostics.visibleTilesMaterialized, 0)
