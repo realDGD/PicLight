@@ -1199,6 +1199,25 @@ PNG file ──▶ PicPNGStream (C, system zlib)          PicViewMac/Imaging
 - **Tile identity**: source path, page, level, tile x/y. View-only rotation and mirroring are
   deliberately *not* in the key — they are view transforms, and putting them in decode identity would
   cache the same pixels several times.
+- **Tile size 512, chosen by sweep** (`bench/tilebench`, `results/tile-size-sweep.txt`, a
+  12000×8000 fixture with a 2400×1600 viewport):
+
+```text
+    tile firstTile       pass    tiles  tileBytes   gutter%  textures
+     256      131 ms      300 ms      108      27.0 MiB      1.54%       108
+     512      129 ms      292 ms       42      42.0 MiB      0.78%        42
+    1024      155 ms      304 ms       20      80.0 MiB      0.39%        20
+    2048      156 ms      317 ms       12     192.0 MiB      0.20%        12
+```
+
+  The pass costs the same at every size — one traversal of the stream is one traversal — so the
+  choice is about *delivery*: 1024 and 2048 need 155 ms and a third of a gigabyte in flight before
+  the first tile appears, while 256 doubles the texture count and the gutter overhead for no
+  earlier first tile. 512 keeps first-tile latency at its minimum, the gutter at 0.8 %, and the
+  viewport's tiles at 42 MiB. Smaller tiles are also *cheaper overall* here (27 MiB at 256 against
+  192 MiB at 2048) because a tile is delivered whole, so the ring and the off-viewport parts of a
+  large tile are pixels nobody asked to see.
+
 - **Planning**: the visible source rectangle is the view rectangle mapped back through the same
   transform the renderers use, so rotation needs no second geometry implementation. Tiles are
   gathered for that rect plus a one-ring, nearest to the centre first.

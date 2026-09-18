@@ -1,0 +1,6 @@
+tilebench: tile-sweep-12000x8000.png 12000x8000, visible 2400x1600
+    tile firstTile       pass    tiles  tileBytes   gutter%  textures
+     256      131 ms      300 ms      108      27.0 MiB      1.54%       108
+     512      129 ms      292 ms       42      42.0 MiB      0.78%        42
+    1024      155 ms      304 ms       20      80.0 MiB      0.39%        20
+    2048      156 ms      317 ms       12     192.0 MiB      0.20%        12
