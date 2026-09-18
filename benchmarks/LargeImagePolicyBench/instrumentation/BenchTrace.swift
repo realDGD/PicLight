@@ -318,7 +318,8 @@ enum BenchTrace {
                    let path = ProcessInfo.processInfo.environment["PICLIGHT_TTI_BENCH"] {
                     let item = FolderItem(url: URL(fileURLWithPath: path))
                     mark("DRAWER state: canvasBitmap=\(viewer.viewerState.currentImage != nil) "
-                         + "currentItem=\(viewer.viewerState.descriptor != nil)")
+                         + "currentItem=\(viewer.viewerState.descriptor != nil) "
+                         + "requests=\(viewer.thumbnailRequestCount)")
                     Task { @MainActor in
                         let image = await viewer.thumbnailImage(for: item)
                         var line = "DRAWER preview -> "
