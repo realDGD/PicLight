@@ -317,7 +317,52 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Wiring
 
+    // MARK: - Context menu
+
+    /// The canvas's right-click menu. Built from the declared item list, with one target and one
+    /// action for every command in it.
+    func canvasContextMenu() -> NSMenu {
+        let availability = CanvasContextMenu.Availability(
+            hasImage: viewerState.currentImage != nil,
+            canGoPrevious: (session.currentIndex ?? 0) > 0,
+            canGoNext: session.currentIndex.map { $0 < session.items.count - 1 } ?? false,
+            hasMultiplePages: viewerState.isMultiPage)
+        let menu = CanvasContextMenu.build(availability, target: self,
+                                           commandAction: #selector(performContextMenuCommand(_:)),
+                                           copyAction: #selector(performContextMenuCommand(_:)))
+        // Titles that depend on the state they change say what the click will do.
+        for entry in menu.items {
+            guard let raw = entry.representedObject as? String,
+                  let command = ViewerCommand(rawValue: raw) else { continue }
+            entry.title = CanvasContextMenu.title(for: command, drawerOpen: isDrawerOpen,
+                                                  infoVisible: isInfoCardVisible)
+        }
+        return menu
+    }
+
+    /// The single action every context-menu entry routes through. The command then goes to the same
+    /// `perform` the dock, the main menu and the shortcuts use.
+    @objc func performContextMenuCommand(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let command = ViewerCommand(rawValue: raw) else { return }
+        perform(command)
+    }
+
+    /// Copy, bounded. No decode happens here: the pasteboard carries the file URL for the original
+    /// and a lazily-produced TIFF of the bitmap already on screen. See `ImagePasteboardWriter` for
+    /// why both are placed rather than one being presented as the other.
+    @discardableResult
+    func copyImageToPasteboard() -> Bool {
+        guard let item = session.currentItem, let image = viewerState.currentImage else { return false }
+        copyCount += 1
+        return ImagePasteboardWriter.write(fileURL: item.url, image: image)
+    }
+
+    /// How many times a copy was performed, for the acceptance runner.
+    private(set) var copyCount = 0
+
     private func configureCallbacks() {
+        canvas.contextMenuProvider = { [weak self] in self?.canvasContextMenu() }
         floatingNavigation.onPrevious = { [weak self] in self?.perform(.previousImage) }
         floatingNavigation.onNext = { [weak self] in self?.perform(.nextImage) }
 
@@ -1875,6 +1920,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             let settings = AppSettings.shared
             settings.sortDirection = settings.sortDirection == .ascending ? .descending : .ascending
             reloadWithCurrentSort()
+        case .copyImage:
+            copyImageToPasteboard()
+        case .browseFolder:
+            // The folder-browser mode arrives with its own commit; the command exists now so the
+            // dock and the context menu can declare it in one place.
+            break
         case .open, .close, .settings, .toggleFullScreen:
             // Handled by the app-level router.
             NSApp.sendAction(#selector(NSDocumentController.newDocument(_:)), to: nil, from: nil)

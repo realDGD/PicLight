@@ -513,6 +513,17 @@ enum SelfTest {
               "pair at \(pairIndexes)")
         check("the pin is the last control in the dock",
               dock.arrangedViewsForTesting.last === dock.pinControl)
+        let contextMenu = (chrome["canvas"] as? ImageCanvasView)?.contextMenuProvider?()
+        check("the canvas serves a context menu",
+              contextMenu?.items.count == CanvasContextMenu.items.count,
+              "\(contextMenu?.items.count ?? 0) entries")
+        check("the context menu routes every command through one action",
+              contextMenu?.items.filter { !$0.isSeparatorItem }.allSatisfy {
+                  $0.action == #selector(ViewerViewController.performContextMenuCommand(_:))
+              } == true)
+        check("the context menu can copy the image",
+              contextMenu?.items.contains { $0.representedObject as? String
+                  == ViewerCommand.copyImage.rawValue } == true)
         let navigation = chrome["floatingNavigation"] as? FloatingNavigationView
         check("the floating navigation starts hidden and offline",
               navigation?.isHidden == true)

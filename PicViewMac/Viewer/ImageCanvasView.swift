@@ -121,6 +121,9 @@ public final class ImageCanvasView: NSView {
     public var onDoubleClickAction: (() -> Void)?
     public var onPointerActivity: (() -> Void)?
     public var onZoomChanged: (() -> Void)?
+    /// Supplies the right-click menu. The canvas does not build it: the commands belong to the
+    /// viewer, and a second copy of them here is exactly the duplication the spec forbids.
+    public var contextMenuProvider: (() -> NSMenu?)?
 
     public var backingScale: CGFloat { window?.backingScaleFactor ?? 2 }
 
@@ -379,6 +382,13 @@ public final class ImageCanvasView: NSView {
         case .nextImage:
             onNavigate?(1)
         }
+    }
+
+    /// Right-click and control-click. `menu(for:)` is the hook AppKit itself uses, so the menu
+    /// appears on control-click as well as on a right-click, and it appears at the point of the
+    /// click with no extra event plumbing.
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenuProvider?() ?? super.menu(for: event)
     }
 
     public override func mouseDown(with event: NSEvent) {

@@ -5,6 +5,8 @@ import AppKit
 public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
     case open
     case close
+    case copyImage
+    case browseFolder
     case settings
     case nextImage
     case previousImage
@@ -33,6 +35,8 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
         switch self {
         case .open: return "打开…"
         case .close: return "关闭窗口"
+        case .copyImage: return "复制图像"
+        case .browseFolder: return "浏览文件夹"
         case .settings: return "设置…"
         case .nextImage: return "下一张图像"
         case .previousImage: return "上一张图像"
@@ -62,7 +66,7 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
     /// Commands that stay on the standard system shortcut and are not customizable.
     public var isFixedSystemShortcut: Bool {
         switch self {
-        case .open, .close, .settings, .toggleFullScreen: return true
+        case .open, .close, .settings, .toggleFullScreen, .copyImage: return true
         default: return false
         }
     }
