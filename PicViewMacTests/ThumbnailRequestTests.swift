@@ -35,10 +35,13 @@ final class ThumbnailRequestTests: XCTestCase {
         let height = CGFloat(rows) * ThumbnailCellView.rowHeight + 8
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: height),
                               styleMask: [.titled], backing: .buffered, defer: false)
+        // A window that releases itself on close leaves the table view dangling: closing it in the
+        // test teardown then crashes in objc_release.
+        window.isReleasedWhenClosed = false
         let drawer = ThumbnailDrawerView()
         drawer.frame = NSRect(x: 0, y: 0, width: 200, height: height)
         window.contentView = drawer
-        window.orderFront(nil)
+        window.makeKeyAndOrderFront(nil)
         drawer.layoutSubtreeIfNeeded()
         return (drawer, window)
     }
