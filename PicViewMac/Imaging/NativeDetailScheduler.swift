@@ -94,22 +94,32 @@ public actor NativeDetailScheduler {
         }
     }
 
+    /// The identity of the file a pass is decoding, read once when the pass was asked for. Every
+    /// tile that pass produces belongs to *this* file, whatever the path holds later.
+    private var runningIdentity: SourceFileIdentity?
+    /// The version token of `runningIdentity`, kept alongside it so per-tile acceptance can ask
+    /// the cache's O(1) question instead of re-statting the file for every tile.
+    private var runningVersionToken: String?
+    /// Files replaced at a path that already had a pass. A number a test can assert on.
+    private(set) var replacedSourceInvalidations = 0
+    /// Tiles the identity guard dropped at the store boundary: decoded from a file that has since
+    /// been replaced. Distinct from `staleDecodedTilesDiscarded`, which counts superseded passes.
+    private(set) var replacedSourceTilesDiscarded = 0
+
     /// Size and modification date together: a fast replacement changes the size or the date, and
     /// neither alone is reliable.
     ///
-    /// Read with `attributesOfItem` rather than `URL.resourceValues(forKeys:)`. The URL accessor
-    /// answers from a per-URL cache that a replacement does not invalidate — measured, it still
-    /// reported the old size and date ten seconds after the file at that path had been rewritten,
-    /// which is exactly the case this identity exists to catch. `attributesOfItem` stats the file
-    /// every time.
+    /// Delegates to `SourceFileIdentity`, which reads the file's metadata with `stat(2)` rather
+    /// than through `URL.resourceValues(forKeys:)`. The URL accessor answers from a per-URL cache
+    /// that a replacement does not invalidate — measured, it still reported the old size and date
+    /// ten seconds after the file at that path had been rewritten, which is exactly the case this
+    /// identity exists to catch.
     static func sourceVersion(of url: URL) -> String {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
-            return "missing"
-        }
-        let size = (attributes[.size] as? NSNumber)?.intValue ?? -1
-        let date = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
-        return "\(size)-\(date)"
+        SourceFileIdentity.read(at: url).versionToken
     }
+
+    /// The identity version the running pass was started with, for tests of the store guard.
+    var runningVersionTokenForTesting: String? { runningVersionToken }
 
     /// Test-only: the page the running pass is decoding.
     var runningPageIndexForTesting: Int { runningPageIndex }
@@ -160,13 +170,33 @@ public actor NativeDetailScheduler {
                               colorSpace: CGColorSpace?, orientation: SourceOrientation) {
         self.colorSpace = colorSpace
         self.orientation = orientation
-        cache.setSourceVersion(Self.sourceVersion(of: source), for: source.path)
-        // Tiles belong to one source. When the request is for a different one, the previous source's
-        // tiles are dropped instead of being cached out of budget until something else evicts them;
-        // a request for the same source keeps them, so a disable → re-enable stays warm.
-        if let previous = runningSource, previous != source {
-            cache.purge(exceptSourcePath: source.path)
-        } else if runningSource == nil {
+        // Read once, here, and carry it through the pass: this is the file the pass decodes.
+        let identity = SourceFileIdentity.read(at: source)
+        cache.setSourceVersion(identity.versionToken, for: source.path)
+        let sameSource = runningSource == source
+        // A file replaced at the same path is a *new* source even though the path is unchanged:
+        // the running pass is decoding the previous file's bytes. It must be invalidated before
+        // the coverage check below, because that check answers "the running plan already covers
+        // this viewport" from path-based keys and would otherwise return early — leaving the old
+        // pass holding a live token, emitting the old file's pixels, and stamping them with the
+        // new file's version on the way into the cache.
+        let replacedInPlace = sameSource && runningIdentity != identity
+        if replacedInPlace {
+            replacedSourceInvalidations += 1
+            generation += 1
+            passTask?.cancel()
+            passTask = nil
+            runningPlan = nil
+            pendingPlan = nil
+            runningSource = nil
+            runningIdentity = nil
+            runningVersionToken = nil
+            inFlightKeys.removeAll()
+        } else if !sameSource {
+            // Tiles belong to one source. When the request is for a different one, the previous
+            // source's tiles are dropped instead of being cached out of budget until something else
+            // evicts them; a request for the same source keeps them, so a disable → re-enable stays
+            // warm.
             cache.purge(exceptSourcePath: source.path)
         }
         let visibleKeys = Set(plan.visible.map {
@@ -174,7 +204,7 @@ public actor NativeDetailScheduler {
         })
         cache.pin(visibleKeys)
 
-        if let running = runningPlan, let runningSource, runningSource == source,
+        if !replacedInPlace, let running = runningPlan, let runningSource, runningSource == source,
            runningPageIndex == pageIndex {
             let covered = Set(running.allCoordinates.map {
                 key($0, tileSize: running.tileSize, source: source, pageIndex: runningPageIndex)
@@ -192,7 +222,7 @@ public actor NativeDetailScheduler {
                 return
             }
         }
-        start(plan: plan, source: source, pageIndex: pageIndex)
+        start(plan: plan, source: source, pageIndex: pageIndex, identity: identity)
     }
 
     /// Numbered clear: ignored when a newer operation has already been applied, which is what keeps
@@ -219,6 +249,8 @@ public actor NativeDetailScheduler {
         runningPlan = nil
         pendingPlan = nil
         runningSource = nil
+        runningIdentity = nil
+        runningVersionToken = nil
         inFlightKeys.removeAll()
         cache.removeAll()
     }
@@ -232,6 +264,8 @@ public actor NativeDetailScheduler {
         runningPlan = nil
         pendingPlan = nil
         runningSource = nil
+        runningIdentity = nil
+        runningVersionToken = nil
     }
 
     public func statistics() -> NativeDetailStats {
@@ -286,13 +320,16 @@ public actor NativeDetailScheduler {
                       tileSize: tileSize, x: coordinate.x, y: coordinate.y)
     }
 
-    private func start(plan: NativeTilePlan, source: URL, pageIndex: Int) {
+    private func start(plan: NativeTilePlan, source: URL, pageIndex: Int,
+                       identity: SourceFileIdentity) {
         generation += 1
         let token = generation
         passTask?.cancel()
         runningPlan = plan
         runningSource = source
         runningPageIndex = pageIndex
+        runningIdentity = identity
+        runningVersionToken = identity.versionToken
         pendingPlan = nil
         let provider = self.provider
         let cache = self.cache
@@ -345,15 +382,30 @@ public actor NativeDetailScheduler {
         }
     }
 
-    /// Validates the pass token, then stores and publishes. The order matters: the previous version
-    /// stored the tile and only then checked the token, so tiles from a cancelled pass entered the
-    /// CPU cache even though they were never shown.
+    /// Validates the pass token, then the source identity, then stores and publishes. The order
+    /// matters: the previous version stored the tile and only then checked the token, so tiles from
+    /// a cancelled pass entered the CPU cache even though they were never shown.
     private func acceptDecodedTile(_ tile: NativeTile, token: Int, outstanding: TileCounter) {
         outstanding.decrement()
         defer { maybeFinishPass() }
         guard token == generation else {
             // A real invalidation: this pass was superseded before its tail arrived.
             staleDecodedTilesDiscarded += 1
+            return
+        }
+        // The identity guard, over and above the token. The token says "this is the current pass";
+        // it cannot say "the file this pass is decoding is still the file at that path". If the
+        // two disagree, these are the previous file's pixels, and storing them would stamp them
+        // with the replacement's version — the failure the cache's own version check runs too
+        // early to see. Discard before the store, so no cache, no publication, no identity.
+        //
+        // An *absent* record is not a disagreement: the cache prunes version records that have no
+        // tiles left, and a live pass whose tiles were evicted between stores must not be mistaken
+        // for a replaced file. A superseded pass is caught by the token above in any case.
+        if let expected = runningVersionToken,
+           let recorded = cache.sourceVersion(for: tile.key.sourcePath),
+           recorded != expected {
+            replacedSourceTilesDiscarded += 1
             return
         }
         passAccepted += 1
@@ -405,14 +457,21 @@ public actor NativeDetailScheduler {
         stats.lastErrorDescription = failure
         passTask = nil
         let finishedSource = runningSource
+        let finishedIdentity = runningIdentity
         let queued = pendingPlan
         runningPlan = nil
         runningSource = nil
+        runningIdentity = nil
+        runningVersionToken = nil
         pendingPlan = nil
         inFlightKeys.removeAll()
         onPassFinished?(statistics())
         if let queued, let finishedSource {
-            start(plan: queued, source: finishedSource, pageIndex: pendingPageIndex)
+            // The queued plan was only ever accepted for the file the running pass is decoding —
+            // a change of identity drops the queue and restarts instead of queueing — so the
+            // finished pass's identity is the queued plan's identity.
+            start(plan: queued, source: finishedSource, pageIndex: pendingPageIndex,
+                  identity: finishedIdentity ?? SourceFileIdentity.read(at: finishedSource))
         }
     }
 }

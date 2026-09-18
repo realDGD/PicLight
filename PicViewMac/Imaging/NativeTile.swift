@@ -198,6 +198,7 @@ public final class NativeTileCache: @unchecked Sendable {
             removed += 1
         }
         purgedForSourceChange += removed
+        pruneOrphanedSourceVersions(keeping: path)
     }
 
     /// Tiles dropped because the pass moved to another source.
@@ -218,8 +219,12 @@ public final class NativeTileCache: @unchecked Sendable {
         var sourceVersion: String
     }
 
-    /// Identity of the file the tiles for this path came from: size and modification date together,
-    /// because neither alone survives a fast replacement. Changing it drops that path's tiles.
+    /// Identity of the file the tiles for this path came from. Changing it drops that path's tiles.
+    ///
+    /// A pin goes with the tile it protected, as everywhere else in this cache: a pin that
+    /// outlived its entry would be a pin nothing can check, and `NativeTileCacheInvariantTests`
+    /// relies on pins and entries being in step. The caller re-pins the new plan's visible keys
+    /// immediately after, so a same-file request keeps its viewport pinned.
     public func setSourceVersion(_ version: String, for path: String) {
         lock.lock(); defer { lock.unlock() }
         sourceVersions[path] = version
@@ -229,12 +234,44 @@ public final class NativeTileCache: @unchecked Sendable {
             entries.removeValue(forKey: key)
             versionMismatches += 1
         }
+        pruneOrphanedSourceVersions(keeping: path)
+    }
+
+    /// The version recorded for a path, or `nil` if none is known. The scheduler compares this
+    /// against the identity its pass was started with, which is what stops a tile decoded from a
+    /// replaced file from being stored under the replacement's version.
+    public func sourceVersion(for path: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return sourceVersions[path]
     }
 
     /// Tiles dropped because their source file was replaced.
     public private(set) var versionMismatches = 0
 
     private var sourceVersions: [String: String] = [:]
+
+    /// Number of version records, so a test can check the map does not grow with the number of
+    /// images browsed.
+    public var sourceVersionCountForTesting: Int {
+        lock.lock(); defer { lock.unlock() }
+        return sourceVersions.count
+    }
+
+    /// Forgets version records for paths that no longer hold a single tile. Without this the map
+    /// keeps one entry per image ever visited, which is exactly the unbounded growth the source
+    /// identity must not introduce. `keeping` is the path whose version was just recorded — it
+    /// belongs to the live request even before its first tile arrives.
+    ///
+    /// Called from every mutation that removes entries (`setSourceVersion`, both purges, and
+    /// eviction), so the map is bounded by the paths that actually have tiles resident plus the
+    /// one the viewer is asking for. A record dropped here is not a correctness problem: the
+    /// scheduler's per-tile guard treats an absent record as "unknown", and the pass token, not
+    /// the version, is what rejects a superseded pass.
+    private func pruneOrphanedSourceVersions(keeping: String) {
+        guard sourceVersions.count > 1 else { return }
+        let resident = Set(entries.keys.map(\.sourcePath))
+        sourceVersions = sourceVersions.filter { $0.key == keeping || resident.contains($0.key) }
+    }
 
     public init(totalCostLimit: Int = 192 * 1024 * 1024) {
         self.totalCostLimit = totalCostLimit
@@ -294,12 +331,26 @@ public final class NativeTileCache: @unchecked Sendable {
         entries = entries.filter { keys.contains($0.key) }
         pinned = pinned.intersection(keys)
         storedBytes = entries.values.reduce(0) { $0 + $1.cost }
+        // No `keeping` path: this purge is not part of a request for one source, so every record
+        // whose tiles are gone can go.
+        pruneOrphanedSourceVersions()
+    }
+
+    /// Writes the resident keys as the pin set. Kept separate from `pin(_:)` so the version map
+    /// can be pruned without inventing a second public entry point.
+    private func pruneOrphanedSourceVersions() {
+        guard sourceVersions.count > 1 else { return }
+        let resident = Set(entries.keys.map(\.sourcePath))
+        sourceVersions = sourceVersions.filter { resident.contains($0.key) }
     }
 
     public func removeAll() {
         lock.lock(); defer { lock.unlock() }
         entries.removeAll()
         pinned.removeAll()
+        // The versions describe the tiles. With no tiles there is nothing for them to describe,
+        // and keeping them would let the map grow with every image the viewer ever showed.
+        sourceVersions.removeAll()
         storedBytes = 0
     }
 
@@ -317,6 +368,9 @@ public final class NativeTileCache: @unchecked Sendable {
             storedBytes -= entry.cost
             evictionCount += 1
         }
+        // Eviction is the other way a path's last tile disappears, so it has to keep the same
+        // books as the purges.
+        pruneOrphanedSourceVersions()
     }
 }
 
