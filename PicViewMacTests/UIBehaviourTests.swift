@@ -431,39 +431,43 @@ final class DeleteFollowUpTests: XCTestCase {
     }
 
     func testViewerRoutesDeleteThroughTheConfiguredPreference() async throws {
-        let directory = try Fixtures.makeScratchDirectory("delete-policy")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        for name in ["a.png", "b.png", "c.png"] {
-            try FileManager.default.copyItem(at: Fixtures.url("static.png"),
-                                             to: directory.appendingPathComponent(name))
-        }
-        let settings = AppSettings.shared
-        let original = settings.deleteFollowUp
-        defer { settings.deleteFollowUp = original }
+        try await SharedSettingsScope.preservingSort(key: .filename, direction: .ascending) {
 
-        for policy in DeleteFollowUp.allCases {
-            settings.deleteFollowUp = policy
-            let viewer = ViewerViewController()
-            _ = viewer.view
-            viewer.open(url: directory.appendingPathComponent("b.png"))
-            let deadline = Date().addingTimeInterval(10)
-            while viewer.viewerState.currentImage == nil, Date() < deadline {
-                try? await Task.sleep(nanoseconds: 50_000_000)
+            let directory = try Fixtures.makeScratchDirectory("delete-policy")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            for name in ["a.png", "b.png", "c.png"] {
+                try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                                 to: directory.appendingPathComponent(name))
             }
-            XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
+            let settings = AppSettings.shared
+            let original = settings.deleteFollowUp
+            defer { settings.deleteFollowUp = original }
 
-            viewer.perform(.moveToTrash)
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            for policy in DeleteFollowUp.allCases {
+                settings.deleteFollowUp = policy
+                let viewer = ViewerViewController()
+                _ = viewer.view
+                viewer.open(url: directory.appendingPathComponent("b.png"))
+                let deadline = Date().addingTimeInterval(10)
+                while viewer.viewerState.currentImage == nil, Date() < deadline {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                }
+                XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
 
-            XCTAssertEqual(viewer.session.currentItem?.displayName, "c.png",
-                           "\(policy): deleting the middle image lands on the next one")
-            XCTAssertEqual(viewer.session.items.count, 2, "\(policy): the file is gone")
+                viewer.perform(.moveToTrash)
+                try? await Task.sleep(nanoseconds: 700_000_000)
 
-            // Restore the fixture for the next policy.
-            try FileManager.default.copyItem(at: Fixtures.url("static.png"),
-                                             to: directory.appendingPathComponent("b.png"))
-        }
-    }
+                XCTAssertEqual(viewer.session.currentItem?.displayName, "c.png",
+                               "\(policy): deleting the middle image lands on the next one")
+                XCTAssertEqual(viewer.session.items.count, 2, "\(policy): the file is gone")
+
+                // Restore the fixture for the next policy.
+                try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                                 to: directory.appendingPathComponent("b.png"))
+            }
+    
+}
+}
 }
 
 extension Fixtures {

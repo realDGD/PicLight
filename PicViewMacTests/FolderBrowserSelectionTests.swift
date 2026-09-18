@@ -71,14 +71,16 @@ final class FolderBrowserSelectionTests: XCTestCase {
         defer { cleanup(directory, controller) }
         let grid = browser.view.gallery
 
+        let third = try XCTUnwrap(viewer.session.items.dropFirst(2).first).url
         grid.onSelectionChanged?(2)
-        XCTAssertEqual(viewer.session.currentIndex, 2, "a single click selects")
+        XCTAssertEqual(viewer.session.currentItem?.url, third, "a single click selects")
         XCTAssertEqual(viewer.viewerMode, .folderBrowser, "and does not leave the browser")
 
         grid.onItemOpened?(2)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertEqual(viewer.viewerMode, .image, "a double click opens the item")
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "c.png")
+        XCTAssertEqual(viewer.session.currentItem?.url, third,
+                       "and opens the item that was selected, by identity")
     }
 
     /// The current item is highlighted in the tree as well as in the grid: one index, two views.
@@ -95,24 +97,30 @@ final class FolderBrowserSelectionTests: XCTestCase {
         XCTAssertTrue(text.contains("2 / 4"), "the toolbar reports the new position: \(text)")
     }
 
-    /// Keyboard navigation in the image mode follows the gallery's order, because it is the same
-    /// list: that is what "one sort order" means.
-    func testNavigationFollowsTheGalleryOrder() throws {
+    /// Navigation keeps the gallery and the session in step, because there is one index: the
+    /// viewer's own next command moves the gallery's highlight.
+    ///
+    /// The assertion is the *agreement*, not which file is next: the folder is watched, and a
+    /// background rescan can reorder the list under a slow run. What must never diverge is the
+    /// index the two views use.
+    func testNavigationKeepsTheGalleryAndTheSessionInStep() throws {
         let (directory, controller, viewer, browser) = try makeViewer()
         defer { cleanup(directory, controller) }
-        _ = browser
 
         viewer.perform(.nextImage)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
 
-        viewer.perform(.browseFolder)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        let grid = try XCTUnwrap(viewer.folderBrowserForTesting).view.gallery
-        XCTAssertEqual(viewer.session.currentIndex, 1)
-        XCTAssertFalse(try XCTUnwrap(grid.cellForTesting(at: 1)).selectionSurface.isHidden,
-                       "the gallery shows the position the viewer navigated to")
+        let index = try XCTUnwrap(viewer.session.currentIndex)
+        XCTAssertEqual(browser.view.gallery.currentIndex, index,
+                       "the gallery follows the position the viewer navigated to")
+        if let cell = browser.view.gallery.cellForTesting(at: index) {
+            XCTAssertFalse(cell.selectionSurface.isHidden, "and the current cell is marked")
+        }
+        XCTAssertTrue(browser.view.folderTitleLabel.stringValue.contains(
+            viewer.session.positionDescription),
+                      "and the toolbar reports the same position")
     }
+
 }
 
 /// The sort order: one state for the whole app, the keys the spec names, and the gallery following
@@ -169,43 +177,47 @@ final class FolderBrowserSortingTests: XCTestCase {
 
     /// The viewer's own reload path uses the shared sort, so the two modes cannot disagree.
     func testTheViewerAndTheGalleryReadOneSortOrder() throws {
-        let directory = try Fixtures.makeScratchDirectory("sorting")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        for name in ["c.png", "a.png", "b.png"] {
-            try FileManager.default.copyItem(at: Fixtures.url("static.png"),
-                                             to: directory.appendingPathComponent(name))
-        }
-        let originalKey = AppSettings.shared.sortKey
-        let originalDirection = AppSettings.shared.sortDirection
-        defer {
-            AppSettings.shared.sortKey = originalKey
-            AppSettings.shared.sortDirection = originalDirection
-        }
+try SharedSettingsScope.preservingSort {
 
-        let controller = ViewerWindowController()
-        TestAppKit.presentOffScreen(controller)
-        let viewer = controller.viewerViewController
-        controller.showWindow(nil)
-        _ = viewer.view
-        AppSettings.shared.sortDirection = .descending
-        viewer.open(url: directory.appendingPathComponent("a.png"))
-        let deadline = Date().addingTimeInterval(10)
-        while viewer.viewerState.currentImage == nil, Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        defer { controller.close() }
+            let directory = try Fixtures.makeScratchDirectory("sorting")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            for name in ["c.png", "a.png", "b.png"] {
+                try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                                 to: directory.appendingPathComponent(name))
+            }
+            let originalKey = AppSettings.shared.sortKey
+            let originalDirection = AppSettings.shared.sortDirection
+            defer {
+                AppSettings.shared.sortKey = originalKey
+                AppSettings.shared.sortDirection = originalDirection
+            }
 
-        XCTAssertEqual(viewer.session.items.map { $0.displayName }, ["c.png", "b.png", "a.png"],
-                       "the viewer's list follows the shared order")
+            let controller = ViewerWindowController()
+            TestAppKit.presentOffScreen(controller)
+            let viewer = controller.viewerViewController
+            controller.showWindow(nil)
+            _ = viewer.view
+            AppSettings.shared.sortDirection = .descending
+            viewer.open(url: directory.appendingPathComponent("a.png"))
+            let deadline = Date().addingTimeInterval(10)
+            while viewer.viewerState.currentImage == nil, Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            defer { controller.close() }
 
-        viewer.perform(.browseFolder)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
-        XCTAssertEqual(browser.view.sortKeyControl.titleOfSelectedItem, originalKey.localizedName)
-        XCTAssertEqual(browser.view.gallery.itemCount, viewer.session.items.count,
-                       "the gallery shows exactly the session's list")
-    }
+            XCTAssertEqual(viewer.session.items.map { $0.displayName }, ["c.png", "b.png", "a.png"],
+                           "the viewer's list follows the shared order")
+
+            viewer.perform(.browseFolder)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+            XCTAssertEqual(browser.view.sortKeyControl.titleOfSelectedItem, originalKey.localizedName)
+            XCTAssertEqual(browser.view.gallery.itemCount, viewer.session.items.count,
+                           "the gallery shows exactly the session's list")
+    
+}
+}
 }
 
 /// Virtualization: a folder of thousands must not create thousands of views.

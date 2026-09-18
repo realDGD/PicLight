@@ -36,6 +36,45 @@ enum TestAppKit {
     }
 }
 
+/// The app's sort order is one shared state (that is the point of the redesign), so a test that
+/// changes it has to put it back or every later test in the process inherits it. Restoring is not
+/// tidiness: a leaked `.descending` made a dozen unrelated navigation tests fail with "the next
+/// image is the wrong one".
+@MainActor
+enum SharedSettingsScope {
+    /// Runs `body` with the sort order it expects, and puts the previous order back afterwards.
+    static func preservingSort<T>(key: ImageSortKey? = nil,
+                                  direction: SortDirection? = nil,
+                                  _ body: () throws -> T) rethrows -> T {
+        let settings = AppSettings.shared
+        let previousKey = settings.sortKey
+        let previousDirection = settings.sortDirection
+        if let key { settings.sortKey = key }
+        if let direction { settings.sortDirection = direction }
+        defer {
+            settings.sortKey = previousKey
+            settings.sortDirection = previousDirection
+        }
+        return try body()
+    }
+
+    /// The same for an async body, which `rethrows` cannot express.
+    static func preservingSort<T>(key: ImageSortKey? = nil,
+                                  direction: SortDirection? = nil,
+                                  _ body: () async throws -> T) async rethrows -> T {
+        let settings = AppSettings.shared
+        let previousKey = settings.sortKey
+        let previousDirection = settings.sortDirection
+        if let key { settings.sortKey = key }
+        if let direction { settings.sortDirection = direction }
+        defer {
+            settings.sortKey = previousKey
+            settings.sortDirection = previousDirection
+        }
+        return try await body()
+    }
+}
+
 /// Shared access to the generated fixture folder.
 enum Fixtures {
     static var directory: URL {

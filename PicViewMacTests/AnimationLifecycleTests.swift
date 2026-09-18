@@ -76,19 +76,23 @@ final class AnimationLifecycleTests: XCTestCase {
     }
 
     func testSpaceOnAStillImageAdvancesInsteadOfStartingAPlayback() async throws {
-        let directory = try makeFolder()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let viewer = ViewerViewController()
-        _ = viewer.view
-        await open(viewer, directory.appendingPathComponent("c-static.png"))
-        XCTAssertFalse(viewer.viewerState.isAnimated)
+        try await SharedSettingsScope.preservingSort(key: .filename, direction: .ascending) {
 
-        // Still content: the documented behavior is "next image", never a fake clock.
-        viewer.perform(.togglePlayback)
-        try? await Task.sleep(nanoseconds: 600_000_000)
-        XCTAssertEqual(viewer.viewerState.playback, .staticImage)
-        XCTAssertFalse(viewer.chromeSnapshot.isAnimationTimerActive)
-    }
+            let directory = try makeFolder()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let viewer = ViewerViewController()
+            _ = viewer.view
+            await open(viewer, directory.appendingPathComponent("c-static.png"))
+            XCTAssertFalse(viewer.viewerState.isAnimated)
+
+            // Still content: the documented behavior is "next image", never a fake clock.
+            viewer.perform(.togglePlayback)
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            XCTAssertEqual(viewer.viewerState.playback, .staticImage)
+            XCTAssertFalse(viewer.chromeSnapshot.isAnimationTimerActive)
+    
+}
+}
 
     func testSwitchingAwayAndBackRestartsTheAnimationFromFrameZero() async throws {
         let directory = try makeFolder()

@@ -241,23 +241,27 @@ final class TrashAndImmutabilityTests: XCTestCase {
     }
 
     func testTrashUsesTheSystemAPIAndSelectsTheNextImage() async throws {
-        let directory = try makeFolder(names: ["a.png", "b.png", "c.png"])
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let viewer = ViewerViewController()
-        _ = viewer.view
-        viewer.open(url: directory.appendingPathComponent("b.png"))
-        await waitForDecode(viewer)
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
+        try await SharedSettingsScope.preservingSort(key: .filename, direction: .ascending) {
 
-        viewer.perform(.moveToTrash)
-        try await Task.sleep(nanoseconds: 600_000_000)
+            let directory = try makeFolder(names: ["a.png", "b.png", "c.png"])
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let viewer = ViewerViewController()
+            _ = viewer.view
+            viewer.open(url: directory.appendingPathComponent("b.png"))
+            await waitForDecode(viewer)
+            XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("b.png").path),
-                       "the file must be gone from the folder")
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "c.png",
-                       "deleting mid-folder prefers the next image")
-        XCTAssertEqual(viewer.session.items.count, 2)
-    }
+            viewer.perform(.moveToTrash)
+            try await Task.sleep(nanoseconds: 600_000_000)
+
+            XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("b.png").path),
+                           "the file must be gone from the folder")
+            XCTAssertEqual(viewer.session.currentItem?.displayName, "c.png",
+                           "deleting mid-folder prefers the next image")
+            XCTAssertEqual(viewer.session.items.count, 2)
+    
+}
+}
 
     func testTrashingTheLastImageFallsBackToThePreviousOne() async throws {
         let directory = try makeFolder(names: ["a.png", "b.png"])
@@ -290,43 +294,47 @@ final class TrashAndImmutabilityTests: XCTestCase {
     }
 
     func testAFailedTrashKeepsTheCurrentSelectionAndReportsWhy() async throws {
-        let directory = try makeFolder(names: ["a.png", "b.png"])
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700],
-                                                   ofItemAtPath: directory.path)
-            try? FileManager.default.removeItem(at: directory)
-        }
-        let viewer = ViewerViewController()
-        _ = viewer.view
-        viewer.open(url: directory.appendingPathComponent("a.png"))
-        await waitForDecode(viewer)
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "a.png")
+        try await SharedSettingsScope.preservingSort(key: .filename, direction: .ascending) {
 
-        // Moving a file out of a directory requires write permission on the
-        // directory, so this makes the Trash operation fail deterministically.
-        try FileManager.default.setAttributes([.posixPermissions: 0o500],
-                                              ofItemAtPath: directory.path)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700],
-                                                       ofItemAtPath: directory.path) }
+            let directory = try makeFolder(names: ["a.png", "b.png"])
+            defer {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                                       ofItemAtPath: directory.path)
+                try? FileManager.default.removeItem(at: directory)
+            }
+            let viewer = ViewerViewController()
+            _ = viewer.view
+            viewer.open(url: directory.appendingPathComponent("a.png"))
+            await waitForDecode(viewer)
+            XCTAssertEqual(viewer.session.currentItem?.displayName, "a.png")
 
-        viewer.perform(.moveToTrash)
-        try await Task.sleep(nanoseconds: 800_000_000)
+            // Moving a file out of a directory requires write permission on the
+            // directory, so this makes the Trash operation fail deterministically.
+            try FileManager.default.setAttributes([.posixPermissions: 0o500],
+                                                  ofItemAtPath: directory.path)
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700],
+                                                           ofItemAtPath: directory.path) }
 
-        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("a.png").path),
-                      "a failed Trash must leave the file alone")
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "a.png",
-                       "a failed Trash must keep the current selection")
-        XCTAssertEqual(viewer.session.items.count, 2)
-        let message = viewer.viewerState.errorMessage ?? ""
-        XCTAssertFalse(message.isEmpty, "a failed Trash must be reported non-modally")
-        XCTAssertTrue(message.contains("废纸篓") || message.contains("Trash"),
-                      "the message should name the Trash operation, got \(message)")
+            viewer.perform(.moveToTrash)
+            try await Task.sleep(nanoseconds: 800_000_000)
 
-        // The viewer stays usable after the failure.
-        viewer.perform(.nextImage)
-        try await Task.sleep(nanoseconds: 800_000_000)
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
-    }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("a.png").path),
+                          "a failed Trash must leave the file alone")
+            XCTAssertEqual(viewer.session.currentItem?.displayName, "a.png",
+                           "a failed Trash must keep the current selection")
+            XCTAssertEqual(viewer.session.items.count, 2)
+            let message = viewer.viewerState.errorMessage ?? ""
+            XCTAssertFalse(message.isEmpty, "a failed Trash must be reported non-modally")
+            XCTAssertTrue(message.contains("废纸篓") || message.contains("Trash"),
+                          "the message should name the Trash operation, got \(message)")
+
+            // The viewer stays usable after the failure.
+            viewer.perform(.nextImage)
+            try await Task.sleep(nanoseconds: 800_000_000)
+            XCTAssertEqual(viewer.session.currentItem?.displayName, "b.png")
+    
+}
+}
 
     func testExternalRemovalOfTheLastFileLeavesNoStaleSelection() async throws {
         let directory = try makeFolder(names: ["a.png"])

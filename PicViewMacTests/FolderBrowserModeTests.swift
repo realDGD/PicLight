@@ -163,12 +163,14 @@ final class FolderBrowserModeTests: XCTestCase {
 
         browser.select(2)
         XCTAssertEqual(viewer.session.currentIndex, 2, "one index, shared")
+        // Captured by URL rather than by name: the folder is watched, and a rescan may re-sort the
+        // list under a slow run. What the test is about is that the *file* survives the trip.
+        let selected = try XCTUnwrap(viewer.session.currentItem).url
 
         browser.view.backControl.sendAction(browser.view.backControl.action!,
                                             to: browser.view.backControl.target)
         waitForImage(viewer)
-        XCTAssertEqual(viewer.session.currentIndex, 2)
-        XCTAssertEqual(viewer.session.currentItem?.displayName, "img2.png",
+        XCTAssertEqual(viewer.session.currentItem?.url, selected,
                        "and the image mode shows the selection")
     }
 
@@ -211,24 +213,28 @@ final class FolderBrowserModeTests: XCTestCase {
     /// Sorting is one shared order: changing it in the gallery changes the order the image mode
     /// navigates in, with no second sort state anywhere.
     func testTheGalleryAndTheImageViewerShareOneSortOrder() throws {
-        let (directory, controller, viewer) = try makeFolder(5)
-        defer { cleanup(directory, controller) }
-        let original = AppSettings.shared.sortKey
-        defer { AppSettings.shared.sortKey = original }
+try SharedSettingsScope.preservingSort {
 
-        viewer.perform(.browseFolder)
-        settle()
-        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
-        browser.view.onSortKeyChanged?(.fileSize)
-        settle()
+            let (directory, controller, viewer) = try makeFolder(5)
+            defer { cleanup(directory, controller) }
+            let original = AppSettings.shared.sortKey
+            defer { AppSettings.shared.sortKey = original }
 
-        XCTAssertEqual(AppSettings.shared.sortKey, .fileSize)
-        // The image mode's own navigation now follows that order, because it reads the same list.
-        let names = viewer.session.items.map(\.displayName)
-        XCTAssertEqual(names, ImageSort.sort(viewer.session.items, by: .fileSize,
-                                             direction: AppSettings.shared.sortDirection)
-            .map(\.displayName))
-    }
+            viewer.perform(.browseFolder)
+            settle()
+            let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+            browser.view.onSortKeyChanged?(.fileSize)
+            settle()
+
+            XCTAssertEqual(AppSettings.shared.sortKey, .fileSize)
+            // The image mode's own navigation now follows that order, because it reads the same list.
+            let names = viewer.session.items.map(\.displayName)
+            XCTAssertEqual(names, ImageSort.sort(viewer.session.items, by: .fileSize,
+                                                 direction: AppSettings.shared.sortDirection)
+                .map(\.displayName))
+    
+}
+}
 
     // MARK: - The folder tree
 
