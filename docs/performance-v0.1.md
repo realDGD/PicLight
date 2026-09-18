@@ -133,7 +133,8 @@ streams the PNG itself and draws native tiles over the proxy:
 | whole-image decodes for the gesture | 0 (the level path stands down; the pass replaces it) |
 | peak footprint / peak RSS | 0.226 GiB / 2.113 GiB |
 | main-thread stall | max 88 ms (tile texture uploads; warm tiles now upload on a background queue) |
-| warm tiles kept | 40 (nine-grid plan, clamped by a 256 MiB tile budget) |
+| warm tiles kept | 24–40 (nine-grid plan; the budget is the cache's own 256 MiB) |
+| pan one viewport | 0 new uploads, 0 new traversals, every drawn tile a GPU cache hit |
 | footprint with the warm plan | 0.348 GiB |
 
 Why a custom decoder: measured with `bench/regionbench`, no format ImageIO reads offers a region

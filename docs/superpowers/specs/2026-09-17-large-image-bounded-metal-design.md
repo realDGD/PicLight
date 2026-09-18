@@ -1316,6 +1316,29 @@ region buffer used to be as large as the tile union, so even the one-ring alloca
 and a nine-grid would have allocated 3.4 GiB — the failure mode the task forbids. Peak decoder memory
 is now one scanline plus the tiles a plan actually needs, at every magnification.
 
+**Residency, corrected after review (2026-09-18).** The first version of the warm path was dead in
+the shipped code, and the review found it: `cachedTiles` returned visible+warm, that whole set was
+assigned to `canvas.nativeTiles` (so warm tiles were *drawn*, taking their upload on the draw path),
+and the warm set was computed as the difference between that list and itself — always empty, so the
+background uploader never ran. The three sets are now explicit: the canvas draws the visible set, the
+renderer warms the rest, and `trimTileTextures` is called with the *resident* set. A plan update used
+to publish empty with an empty resident set, which wiped the GPU cache (measured: 18 uploads for a
+half-viewport pan); it now trims against the new plan's keys.
+
+Measured on the investigation image, before and after a **one-viewport** pan (`results/gates-warm-pan-run.txt`):
+
+```text
+before pan: drawn 8   warm 24   cpuCache 32 (32 MiB, pinned 8)   gpuResident 32   uploads 32  hits 443  sync 8
+after  pan: drawn 6   warm 18   cpuCache 32 (32 MiB, pinned 6)   gpuResident 24   uploads 32  hits 475  sync 8
+stream traversals 1 · peak footprint 0.278 GiB · worst stall 80 ms
+```
+
+Zero new uploads and zero new traversals for a full-viewport pan: every tile it drew was already on
+the GPU. Two more defects came out of the same measurements: the texture budget could evict the
+*visible* tiles (204 warm tiles against 192 MiB), now protected the way the CPU cache pins them; and
+the `.up` fast path skips an identity reorder that cost a 408 MiB copy at 0.2 (peak footprint there is
+430 MiB with the policy's visible-only plan, against 3.55 GiB if the nine-grid were forced).
+
 **What is not solved.** Tiles live in memory only, so revisiting a far region costs another pass
 (≈10 s here, more under memory pressure); the backend serves PNG that is 8-bit and not interlaced
 (other formats keep the proxy path and their level upgrades); and the tile window is the visible
