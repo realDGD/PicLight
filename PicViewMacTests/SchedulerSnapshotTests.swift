@@ -211,6 +211,32 @@ final class SchedulerSnapshotTests: XCTestCase {
         let staleCount = await scheduler.staleDecodedTilesDiscarded
         XCTAssertEqual(staleCount, 1, "and it is counted as stale, which is what it is")
     }
+    /// C. A queued plan keeps the page it was requested for. The pending start used to pass page 0
+    /// unconditionally, so a pan on page 2 restarted the pass on page 0 — the wrong page's pixels.
+    func testAPendingPlanKeepsItsPageIndex() async throws {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        let scheduler = NativeDetailScheduler(cache: cache, tileSize: 512)
+        let source = Fixtures.url("oversized-detail.png")
+        let first = try plan(x: 0)
+        let second = try plan(x: 512)
+
+        await scheduler.request(plan: first, source: source, pageIndex: 2, epoch: 1)
+        let runningPage = await scheduler.runningPageIndexForTesting
+        XCTAssertEqual(runningPage, 2, "the pass decodes the requested page")
+
+        // A small move inside the same page becomes a queued plan.
+        await scheduler.request(plan: second, source: source, pageIndex: 2, epoch: 2)
+        let queued = await scheduler.pendingPlanForTesting
+        XCTAssertNotNil(queued, "the small move is queued, not started")
+
+        // Finish the running pass so the queued one starts.
+        await scheduler.noteEmittedTileForTesting()
+        await scheduler.noteProducerFinishedForTesting(token: await scheduler.passTokenForTesting,
+                                                       produced: 1)
+        let pageAfterQueue = await scheduler.runningPageIndexForTesting
+        XCTAssertEqual(pageAfterQueue, 2, "the queued plan starts on its own page, not page 0")
+    }
+
 }
 
 /// D. A very long filename must not stretch the selection card past the row.

@@ -25,6 +25,13 @@ public actor NativeDetailScheduler {
     private var passTask: Task<Void, Never>?
     private var runningPlan: NativeTilePlan?
     private var pendingPlan: NativeTilePlan?
+    /// The page the queued plan belongs to. It used to be dropped: a pending plan for page 2
+    /// restarted the pass on page 0, decoding the wrong page.
+    private var pendingPageIndex = 0
+    /// The page the running pass is decoding. The viewport-coverage check compares like with like:
+    /// building the running pass's keys with the *new* request's page index made a different page
+    /// look covered.
+    private var runningPageIndex = 0
     /// Colour space of the source as ImageIO interpreted it, applied to every tile.
     private var colorSpace: CGColorSpace?
     /// How the file's pixels relate to canonical source space.
@@ -87,6 +94,9 @@ public actor NativeDetailScheduler {
         }
     }
 
+    /// Test-only: the page the running pass is decoding.
+    var runningPageIndexForTesting: Int { runningPageIndex }
+
     /// Test-only: the plan waiting behind the running pass.
     var pendingPlanForTesting: NativeTilePlan? { pendingPlan }
 
@@ -146,9 +156,10 @@ public actor NativeDetailScheduler {
         })
         cache.pin(visibleKeys)
 
-        if let running = runningPlan, let runningSource, runningSource == source {
+        if let running = runningPlan, let runningSource, runningSource == source,
+           runningPageIndex == pageIndex {
             let covered = Set(running.allCoordinates.map {
-                key($0, tileSize: running.tileSize, source: source, pageIndex: pageIndex)
+                key($0, tileSize: running.tileSize, source: source, pageIndex: runningPageIndex)
             })
             let missing = visibleKeys.subtracting(covered)
             if missing.isEmpty {
@@ -159,6 +170,7 @@ public actor NativeDetailScheduler {
             let overlap = visibleKeys.intersection(covered)
             if !overlap.isEmpty || running.visible.isEmpty {
                 pendingPlan = plan
+                pendingPageIndex = pageIndex
                 return
             }
         }
@@ -262,6 +274,7 @@ public actor NativeDetailScheduler {
         passTask?.cancel()
         runningPlan = plan
         runningSource = source
+        runningPageIndex = pageIndex
         pendingPlan = nil
         let provider = self.provider
         let cache = self.cache
@@ -381,7 +394,7 @@ public actor NativeDetailScheduler {
         inFlightKeys.removeAll()
         onPassFinished?(statistics())
         if let queued, let finishedSource {
-            start(plan: queued, source: finishedSource, pageIndex: 0)
+            start(plan: queued, source: finishedSource, pageIndex: pendingPageIndex)
         }
     }
 }
