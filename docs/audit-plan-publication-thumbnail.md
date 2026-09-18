@@ -111,6 +111,11 @@ healthy (`preview -> image 300x200` when called later) and the cell accepts and 
 correctly when pushed. Fix: when a bitmap is published, re-request the current item's thumbnail if
 it is still missing. Guarded by a test that fails while the cache stays empty.
 
+**Acceptance after the fix (real file, drawer pinned open from launch).** The row is read before the
+probe pushes anything, so these numbers are the automatic path: `requests=2` (was 1),
+`hasImage=true`, image box **160×106** at (10, 54), border **168×114**, current=true — at both
+sampling points, with the source SHA-256 unchanged and one bounded-decode traversal.
+
 ## 8. Publication A/B on the real image
 
 Four runs, 95 s window, variant probe, back to back, same binary (larger window):
@@ -162,3 +167,6 @@ was the leading hypothesis and this A/B does not support it.
 - The drawer's thumbnail is now delivered for the current item, but the retry is triggered by bitmap
   publication; a file whose bitmap never publishes (an unsupported or failed decode) still shows a
   placeholder, which is the intended policy.
+- The retry was verified on one file (the investigation image) and by one unit test; a folder whose
+  current item changes while a decode is in flight is covered by the same code path but was not
+  measured separately.
