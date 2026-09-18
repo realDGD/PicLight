@@ -171,6 +171,7 @@ enum SelfTest {
 
         verifyStartupPresentation(environment, reporter)
         verifyWindowShape(viewer, reporter)
+        verifyOnScreenOrientation(viewer, reporter)
         verifyChrome(viewer, reporter)
         verifyDrawerPin(viewer, reporter)
         verifyViewerLayout(viewer, reporter)
@@ -327,6 +328,82 @@ enum SelfTest {
     /// Measures the window's own composited pixels. A rounded window has corner
     /// pixels that are not part of the window (transparent or desktop); a square
     /// bottom corner is the signature of content painting past the window shape.
+    /// Is the image upright *on screen*?
+    ///
+    /// The renderers disagree with each other about the y direction unless this is checked
+    /// against reality: a parity test between two flipped renderers passes happily, and a
+    /// uniform or sideways fixture hides the flip. This writes a top-half-red,
+    /// bottom-half-blue image, opens it, and samples the real window pixels above and below
+    /// the image's centre.
+    private static func verifyOnScreenOrientation(_ viewer: ViewerViewController,
+                                                 _ reporter: SelfTestReporter) {
+        func check(_ name: String, _ condition: Bool, _ detail: String = "") {
+            reporter.check(name, condition, detail)
+        }
+        guard let scratch = makeScratchFolder("orientation", names: ["two-tone.png"],
+                                             corruptNames: []),
+              let window = viewer.view.window else {
+            check("orientation scenario", false)
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        // Top half red, bottom half blue — in source terms, so a y flip is visible.
+        let width = 200, height = 200
+        guard let context = CGContext(data: nil, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            check("orientation context", false)
+            return
+        }
+        let red = CGColor(red: 0.9, green: 0.1, blue: 0.1, alpha: 1)
+        let blue = CGColor(red: 0.1, green: 0.2, blue: 0.9, alpha: 1)
+        context.setFillColor(blue)                       // the context is y-up: blue low
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height / 2))
+        context.setFillColor(red)                        // red high = the image's top half
+        context.fill(CGRect(x: 0, y: height / 2, width: width, height: height - height / 2))
+        let url = scratch.appendingPathComponent("two-tone.png")
+        if let image = context.makeImage(),
+           let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, image, nil)
+            CGImageDestinationFinalize(destination)
+        }
+
+        viewer.open(url: url)
+        waitForDecode(viewer, timeout: 10)
+        viewer.perform(.zoomToFit)
+        drainRunLoop(0.4)
+
+        let canvas = viewer.canvasViewForTesting
+        let canvasInWindow = canvas.convert(canvas.bounds, to: nil)
+        guard let capture = WindowShapeProbe.capture(windowNumber: window.windowNumber),
+              let data = capture.dataProvider?.data as Data?, capture.width > 8 else {
+            check("orientation capture available", false, "no window capture")
+            return
+        }
+        // Window points (y up, origin bottom-left) → capture pixels (row 0 = top).
+        let scale = CGFloat(capture.width) / max(window.frame.width, 1)
+        func sample(windowPoint: CGPoint) -> (r: Int, g: Int, b: Int) {
+            let x = Int(windowPoint.x * scale), y = Int((window.frame.height - windowPoint.y) * scale)
+            let bytesPerPixel = max(capture.bitsPerPixel / 8, 1)
+            let offset = y * capture.bytesPerRow + x * bytesPerPixel
+            guard offset + 2 < data.count else { return (0, 0, 0) }
+            // CGWindowListCreateImage hands back BGRA premultiplied in practice.
+            return (Int(data[offset + 2]), Int(data[offset + 1]), Int(data[offset]))
+        }
+        // Upper and lower quarter of the image area, on its centre line. The image is fitted,
+        // so the canvas is filled vertically by the image when it is portrait-ish.
+        let centreX = canvasInWindow.midX
+        let upper = sample(windowPoint: CGPoint(x: centreX, y: canvasInWindow.minY + canvasInWindow.height * 0.75))
+        let lower = sample(windowPoint: CGPoint(x: centreX, y: canvasInWindow.minY + canvasInWindow.height * 0.25))
+
+        check("image is upright on screen: the top half is red",
+              upper.r > upper.b + 40, "top sample rgb(\(upper.r),\(upper.g),\(upper.b))")
+        check("image is upright on screen: the bottom half is blue",
+              lower.b > lower.r + 40, "bottom sample rgb(\(lower.r),\(lower.g),\(lower.b))")
+    }
+
     private static func verifyWindowShape(_ viewer: ViewerViewController,
                                           _ reporter: SelfTestReporter) {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {

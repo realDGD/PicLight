@@ -76,6 +76,16 @@ module PicPNGStream {
 MODULEMAP
 clang -O2 -c "$ROOT/PicPNGStream/pngstream.c" -I "$ROOT/PicPNGStream/include" -o "$WORK/pngstream.o"
 ar rcs "$WORK/libPicPNGStream.a" "$WORK/pngstream.o"
+# The shader locator reads the SwiftPM resource bundle; give the standalone benches one.
+BUNDLE="$WORK/PicViewMac_PicViewMac.bundle/Contents/Resources"
+mkdir -p "$BUNDLE"
+cp "$ROOT/PicViewMac/Shaders/ImageShaders.metal" "$BUNDLE/"
+swiftc -O -swift-version 6 "${DECODER_FLAGS[@]}" \
+    "$HERE/bench/tileposbench/main.swift" "$VENDOR/NativeTile.swift" "$VENDOR/NativeTileProvider.swift" \
+    "$VENDOR/ViewportState.swift" "$VENDOR/DecodeBudget.swift" "$VENDOR/RenderImage.swift" \
+    "$VENDOR/ImageDescriptor.swift" \
+    "$VENDOR/MetalImageRenderer.swift" "$VENDOR/MetalLibraryLocator.swift" \
+    -framework Metal -framework MetalKit -o "$WORK/tileposbench"
 swiftc -O -swift-version 6 "${DECODER_FLAGS[@]}" \
     "$HERE/bench/tilebench/main.swift" "$VENDOR/NativeTile.swift" "$VENDOR/NativeTileProvider.swift" \
     "$VENDOR/ViewportState.swift" "$VENDOR/DecodeBudget.swift" \

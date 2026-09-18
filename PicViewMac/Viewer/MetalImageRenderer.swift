@@ -139,19 +139,21 @@ public final class MetalImageRenderer {
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else { return false }
 
-        // Draw into the canonical BGRA context, flipping so that row zero is the image's
-        // *top* row: Metal's UV origin is top-left while a CGContext is bottom-up, and a
-        // silent flip here produced a plausible-looking but wrong render during the
-        // D-series gate. This pass also performs the channel- and alpha-order conversion,
-        // so no source layout can reach the GPU un-converted.
+        // Draw into the canonical BGRA context. No flip transform: a CGContext's first
+        // memory row *is* the image's top row when the image is drawn without one, which is
+        // exactly what the quad's texture coordinates assume (v = 0 at the top corner). An
+        // earlier version flipped here on the belief that a CGContext is bottom-up; that made
+        // every Metal render a mirror of the same scene drawn by Quartz — invisible to the
+        // parity tests because their fixtures were left/right two-tone, and visible to users
+        // as tiles landing mirrored inside their own rectangles while the proxy mirrored
+        // about the image centre. This pass also performs the channel- and alpha-order
+        // conversion, so no source layout can reach the GPU un-converted.
         let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
         let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
             | CGImageAlphaInfo.premultipliedFirst.rawValue
         guard let context = CGContext(data: nil, width: image.width, height: image.height,
                                       bitsPerComponent: 8, bytesPerRow: image.width * layout.bytesPerPixel,
                                       space: colorSpace, bitmapInfo: bitmapInfo) else { return false }
-        context.translateBy(x: 0, y: CGFloat(image.height))
-        context.scaleBy(x: 1, y: -1)
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         guard let data = context.data else { return false }
         texture.replace(region: MTLRegionMake2D(0, 0, image.width, image.height), mipmapLevel: 0,
