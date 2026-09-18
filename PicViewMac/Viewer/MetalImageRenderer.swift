@@ -238,6 +238,35 @@ public final class MetalImageRenderer {
         return true
     }
 
+    /// Renders one frame including native-detail tiles. Used by the tests and the
+    /// acceptance harness to answer "what does the renderer actually produce at 100 %":
+    /// a CPU capture of the window cannot see a Metal layer's contents, and comparing the
+    /// *tiles* alone would not prove that they reach the screen.
+    public func renderOffscreen(image: CGImage, nativeTiles: [NativeTile],
+                                sourcePixelSize: CGSize, viewport: ViewportState,
+                                viewSize: CGSize, contentsScale: CGFloat,
+                                backgroundColor: CGColor, into texture: MTLTexture) -> Bool {
+        guard let commandBuffer = queue.makeCommandBuffer() else { return false }
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = texture
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        let rgba = Self.rgba(backgroundColor)
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(
+            red: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return false }
+        encode(image: image, sourcePixelSize: sourcePixelSize, viewport: viewport,
+               viewSize: viewSize, contentsScale: contentsScale, into: encoder)
+        for tile in nativeTiles {
+            encode(tile: tile, sourcePixelSize: sourcePixelSize, viewport: viewport,
+                   viewSize: viewSize, contentsScale: contentsScale, into: encoder)
+        }
+        encoder.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        return true
+    }
+
     /// Encodes one quad into `encoder`.
     public func encode(image: CGImage, sourcePixelSize: CGSize, viewport: ViewportState,
                        viewSize: CGSize, contentsScale: CGFloat,

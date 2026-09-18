@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import CoreGraphics
+import Metal
 @testable import PicViewMac
 import PicPNGStream
 
@@ -241,5 +242,195 @@ final class NativeDetailWiringTests: XCTestCase {
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         }
         return buffer
+    }
+}
+
+/// The renderer's own output at 100 %, on an oversized source: proxy plus tiles, compared
+/// against the source's pixels. This is the claim the feature rests on, so it is measured
+/// on the renderer rather than inferred from the tile contents — a CPU capture cannot see
+/// a Metal layer, and "the tiles are correct" is not "the screen is correct".
+@MainActor
+final class NativeDetailRenderTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
+
+    private func sourcePixels(_ url: URL, rect: ps_rect) throws -> [UInt8] {
+        var info = ps_info()
+        var error = [CChar](repeating: 0, count: 256)
+        guard let decoder = url.path.withCString({ ps_open($0, &info, &error, 256) }) else {
+            throw XCTSkip("cannot open: \(String(cString: error))")
+        }
+        defer { ps_close(decoder) }
+        guard ps_set_region(decoder, rect) == 1 else { throw XCTSkip("no region") }
+        var status: Int32 = 1
+        while status == 1 { status = ps_step(decoder, &error, 256) }
+        guard status == 0, let base = ps_region_pixels(decoder) else { throw XCTSkip("decode failed") }
+        return [UInt8](UnsafeBufferPointer(start: base, count: Int(ps_region_bytes(decoder))))
+    }
+
+    /// Channel offsets into a `bgra8Unorm` render target.
+    private let renderRed = 2
+    private let renderGreen = 1
+    private let renderBlue = 0
+
+    /// High-frequency energy: the mean absolute difference between horizontally adjacent
+    /// pixels, per channel.
+    ///
+    /// This is the measurement that answers the user's complaint directly. Comparing
+    /// individual pixels against the source needs sub-pixel-exact sampling, and a one-pixel
+    /// slip on a per-pixel pattern reads as a wrong render; detail energy asks the question
+    /// that actually matters — is the screen as sharp as the source, or smoothed like an
+    /// upscaled proxy — and is immune to that. A proxy magnified 5× has roughly a fifth of
+    /// the source's edge energy; native tiles have all of it.
+    private func edgeEnergy(render: [UInt8], side: Int, region: CGRect,
+                            red: Int, green: Int, blue: Int) -> Double {
+        var total = 0.0
+        var pairs = 0
+        let minX = max(0, Int(region.minX)), maxX = min(side - 2, Int(region.maxX))
+        // View y grows upward, rows grow downward.
+        let minY = max(0, side - 1 - Int(region.maxY)), maxY = min(side - 1, side - 1 - Int(region.minY))
+        guard minX < maxX, minY < maxY else { return 0 }
+        for y in minY...maxY {
+            for x in minX...maxX {
+                let a = (y * side + x) * 4
+                let b = (y * side + x + 1) * 4
+                total += Double(abs(Int(render[a + red]) - Int(render[b + red])))
+                total += Double(abs(Int(render[a + green]) - Int(render[b + green])))
+                total += Double(abs(Int(render[a + blue]) - Int(render[b + blue])))
+                pairs += 3
+            }
+        }
+        return pairs > 0 ? total / Double(pairs) : 0
+    }
+
+    /// The same energy for a tightly packed RGBA8 reference.
+    private func referenceEdgeEnergy(_ pixels: [UInt8], width: Int, height: Int) -> Double {
+        var total = 0.0
+        var pairs = 0
+        for y in 0..<height {
+            for x in 0..<(width - 1) {
+                let a = (y * width + x) * 4
+                let b = (y * width + x + 1) * 4
+                for channel in 0..<3 {
+                    total += Double(abs(Int(pixels[a + channel]) - Int(pixels[b + channel])))
+                }
+                pairs += 3
+            }
+        }
+        return pairs > 0 ? total / Double(pairs) : 0
+    }
+
+    func testAtOneHundredPercentTheRenderedPixelsAreTheSourcesPixels() throws {
+        let url = Fixtures.url("oversized-detail.png")
+        guard FileManager.default.fileExists(atPath: url.path) else { throw XCTSkip("fixture missing") }
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let renderer = MetalImageRenderer(device: device) else {
+            throw XCTSkip("no Metal device on this machine")
+        }
+        let sourceSize = CGSize(width: 8448, height: 320)
+        let side = 512
+        let contentsScale: CGFloat = 1
+        let viewSize = CGSize(width: side, height: side)
+
+        // A proxy that is deliberately a fifth of the source, like the 8192 ceiling.
+        let proxyWidth = 1690, proxyHeight = 64
+        let proxyContext = CGContext(data: nil, width: proxyWidth, height: proxyHeight,
+                                     bitsPerComponent: 8, bytesPerRow: proxyWidth * 4,
+                                     space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        // A fitted, then magnified view: at physicalScale 1 the 1690-wide proxy is out-resolved.
+        var viewport = ViewportState(fitScale: 0.05, zoomScale: 1,
+                                     normalizedCenter: CGPoint(x: 0.5, y: 0.5))
+        viewport.fitScale = ViewportState.fitScale(imagePixels: sourceSize, viewPoints: viewSize)
+
+        // The proxy must not be blank, or the comparison proves nothing.
+        proxyContext.setFillColor(CGColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1))
+        proxyContext.fill(CGRect(x: 0, y: 0, width: proxyWidth, height: proxyHeight))
+        let proxy = proxyContext.makeImage()!
+
+        let visible = NativeTilePlanner.visibleSourceRect(viewport: viewport,
+                                                          sourcePixelSize: sourceSize,
+                                                          viewSize: viewSize)
+        let plan = try XCTUnwrap(NativeTilePlanner.plan(sourceRect: visible,
+                                                        sourcePixelSize: sourceSize, tileSize: 512))
+        let collector = TileCollector()
+        try PNGNativeTileProvider().produce(plan: plan, source: url, pageIndex: 0, gutter: 1,
+                                            colorSpace: proxy.colorSpace,
+                                            shouldCancel: { false },
+                                            onTile: { collector.append($0) })
+        let tiles = collector.tiles
+        XCTAssertFalse(tiles.isEmpty)
+
+        // Snap to whole pixels before decoding: a fractional origin makes every reference
+        // lookup land between two pixels, which on a per-pixel-varying fixture reads as a
+        // huge difference and hides whether the render is actually right.
+        let snapped = CGRect(x: floor(visible.minX), y: floor(visible.minY),
+                             width: ceil(visible.maxX) - floor(visible.minX),
+                             height: ceil(visible.maxY) - floor(visible.minY))
+            .intersection(CGRect(origin: .zero, size: sourceSize))
+        let reference = try sourcePixels(url, rect: ps_rect(x: Int32(snapped.minX), y: Int32(snapped.minY),
+                                                            width: Int32(snapped.width), height: Int32(snapped.height)))
+        let referenceStride = Int(snapped.width) * 4
+
+        func renderPixels(tiles: [NativeTile]) throws -> [UInt8] {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .bgra8Unorm, width: side, height: side, mipmapped: false)
+            descriptor.usage = [.renderTarget, .shaderRead]
+            // `.managed` is not available on Apple silicon; the parity tests use `.shared`.
+            descriptor.storageMode = .shared
+            let target = try XCTUnwrap(device.makeTexture(descriptor: descriptor))
+            XCTAssertTrue(renderer.renderOffscreen(image: proxy, nativeTiles: tiles,
+                                                   sourcePixelSize: sourceSize, viewport: viewport,
+                                                   viewSize: viewSize, contentsScale: contentsScale,
+                                                   backgroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
+                                                   into: target))
+            var pixels = [UInt8](repeating: 0, count: side * side * 4)
+            pixels.withUnsafeMutableBytes { bytes in
+                target.getBytes(bytes.baseAddress!, bytesPerRow: side * 4,
+                                from: MTLRegionMake2D(0, 0, side, side), mipmapLevel: 0)
+            }
+            return pixels
+        }
+
+        let withTiles = try renderPixels(tiles: tiles)
+        let proxyOnly = try renderPixels(tiles: [])
+
+        // Only the part of the view the tiles cover, so the proxy-only control is comparable.
+        // The covered rect is in source top-left space and the transform works in centred
+        // space: converting first is required, and skipping it produced an empty intersection
+        // and then an Int(inf) trap rather than a wrong number.
+        let covered = tiles.reduce(CGRect.null) { $0.union($1.sourceRect) }
+        let transform = viewport.imageToViewTransform(sourcePixelSize: sourceSize, viewSize: viewSize)
+        let viewRect = CGRect(x: 0, y: 0, width: viewSize.width, height: viewSize.height)
+        let coveredView = ViewportState.centredSourceRect(covered, sourcePixelSize: sourceSize)
+            .applying(transform).intersection(viewRect)
+        guard !coveredView.isNull, coveredView.width > 8 else {
+            return XCTFail("the tiles must cover part of the view, got \(coveredView)")
+        }
+        // edgeEnergy indexes rows top-down; the rect is in view coordinates (y up).
+        let sampleRegion = CGRect(x: coveredView.minX + 2, y: coveredView.minY + 2,
+                                  width: coveredView.width - 4, height: coveredView.height - 4)
+
+        let tilesEnergy = edgeEnergy(render: withTiles, side: side, region: sampleRegion,
+                                     red: renderRed, green: renderGreen, blue: renderBlue)
+        let proxyEnergy = edgeEnergy(render: proxyOnly, side: side, region: sampleRegion,
+                                     red: renderRed, green: renderGreen, blue: renderBlue)
+        let sourceEnergy = referenceEdgeEnergy(reference, width: Int(snapped.width),
+                                               height: Int(snapped.height))
+        FileHandle.standardError.write(Data(
+            "TRACE energies tiles=\(tilesEnergy) proxy=\(proxyEnergy) source=\(sourceEnergy) region=\(sampleRegion)\n".utf8))
+
+        // The frame with tiles must carry the source's detail; the proxy-only frame is the
+        // control and must be visibly smoother, or the comparison proves nothing.
+        XCTAssertGreaterThan(sourceEnergy, 2, "the fixture must have detail to lose")
+        XCTAssertGreaterThan(tilesEnergy, 0.8 * sourceEnergy,
+                             "with tiles the frame carries \(tilesEnergy) of the source's "
+                             + "\(sourceEnergy) edge energy: it is smoothed, not native")
+        XCTAssertLessThan(proxyEnergy, 0.55 * tilesEnergy,
+                          "the proxy-only control must be clearly softer (\(proxyEnergy) vs "
+                          + "\(tilesEnergy)) or this test cannot tell them apart")
     }
 }

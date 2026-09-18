@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Darwin
 import PicPNGStream
+import Metal
 
 // TEMPORARY benchmark instrumentation for the 1.9 GB image investigation.
 // Exists only in the throwaway copy under /tmp; enabled with
@@ -201,112 +202,112 @@ enum BenchTrace {
         }
     }
 
+    /// Renders the current frame offscreen (proxy + tiles) and compares its detail energy
+    /// with the source's own.
+    ///
+    /// A window capture cannot see a Metal layer's contents, and per-pixel comparison needs
+    /// sub-pixel-exact sampling that a 48000-pixel source cannot give reliably. Detail
+    /// energy asks the question that matters — is this frame as sharp as the source, or
+    /// smoothed like an upscaled proxy — and it is immune to a one-pixel slip. Densities are
+    /// matched by rendering at the backing scale, so one source pixel is one render pixel.
     private static func measureNativeDetail(viewer: ViewerViewController, window: NSWindow) {
         guard let descriptor = viewer.viewerState.descriptor,
-              let proxy = viewer.viewerState.currentImage else {
-            mark("NATIVE comparison: nothing on screen")
+              let proxy = viewer.viewerState.currentImage,
+              let renderer = MetalImageRenderer(device: MTLCreateSystemDefaultDevice()),
+              let device = renderer.device as MTLDevice? else {
+            mark("NATIVE comparison: no renderer")
             return
         }
         let source = descriptor.displayPixelSize
-        var viewport = viewer.viewerState.viewport
-        viewport.viewRotationQuarterTurns = 0
-        viewport.mirroredHorizontally = false
         let canvas = viewer.canvasViewForTesting
         let viewSize = canvas.bounds.size
-        guard viewSize.width > 8, viewSize.height > 8 else { return }
+        let backing = window.backingScaleFactor
+        let side = CGSize(width: (viewSize.width * backing).rounded(), height: (viewSize.height * backing).rounded())
+        guard side.width >= 32, side.height >= 32 else { return }
 
-        // One decode of the visible rectangle, sampled for the reference values.
-        let transform = viewport.imageToViewTransform(sourcePixelSize: source, viewSize: viewSize)
-        let inverse = transform.inverted()
-        let visible = CGRect(origin: .zero, size: viewSize).applying(inverse)
-        let visibleSource = CGRect(x: visible.minX + source.width / 2,
-                                   y: source.height / 2 - visible.maxY,
-                                   width: visible.width, height: visible.height)
-            .intersection(CGRect(origin: .zero, size: source))
-        guard visibleSource.width >= 2, visibleSource.height >= 2 else { return }
+        let tiles = viewer.canvasNativeTilesForTesting
+        func render(_ tiles: [NativeTile]) -> [UInt8]? {
+            let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .bgra8Unorm, width: Int(side.width), height: Int(side.height), mipmapped: false)
+            textureDescriptor.usage = [.renderTarget, .shaderRead]
+            textureDescriptor.storageMode = .shared
+            guard let target = device.makeTexture(descriptor: textureDescriptor) else { return nil }
+            guard renderer.renderOffscreen(image: proxy, nativeTiles: tiles,
+                                           sourcePixelSize: source, viewport: viewer.viewerState.viewport,
+                                           viewSize: viewSize, contentsScale: backing,
+                                           backgroundColor: CGColor(red: 0, green: 0, blue: 0, alpha: 1),
+                                           into: target) else { return nil }
+            var pixels = [UInt8](repeating: 0, count: Int(side.width) * Int(side.height) * 4)
+            pixels.withUnsafeMutableBytes { bytes in
+                target.getBytes(bytes.baseAddress!, bytesPerRow: Int(side.width) * 4,
+                                from: MTLRegionMake2D(0, 0, Int(side.width), Int(side.height)), mipmapLevel: 0)
+            }
+            return pixels
+        }
+        guard let withTiles = render(tiles), let proxyOnly = render([]) else {
+            mark("NATIVE comparison: render failed")
+            return
+        }
 
-        // Render what the window shows right now.
-        guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return }
-        canvas.cacheDisplay(in: canvas.bounds, to: rep)
-        let repScale = CGFloat(rep.pixelsWide) / max(canvas.bounds.width, 1)
+        func energy(_ pixels: [UInt8], width: Int, height: Int) -> Double {
+            var total = 0.0
+            var pairs = 0
+            for y in 0..<height {
+                for x in 0..<(width - 1) {
+                    let a = (y * width + x) * 4
+                    let b = (y * width + x + 1) * 4
+                    // bgra8Unorm: R at +2, G at +1, B at +0.
+                    total += Double(abs(Int(pixels[a + 2]) - Int(pixels[b + 2])))
+                    total += Double(abs(Int(pixels[a + 1]) - Int(pixels[b + 1])))
+                    total += Double(abs(Int(pixels[a + 0]) - Int(pixels[b + 0])))
+                    pairs += 3
+                }
+            }
+            return pairs > 0 ? total / Double(pairs) : 0
+        }
+        let tilesEnergy = energy(withTiles, width: Int(side.width), height: Int(side.height))
+        let proxyEnergy = energy(proxyOnly, width: Int(side.width), height: Int(side.height))
 
-        guard let url = viewer.viewerState.descriptor?.sourceURL else { return }
+        // The source's own energy over the visible rectangle, so the render has a target.
         var info = ps_info()
         var error = [CChar](repeating: 0, count: 256)
-        guard let decoder = url.path.withCString({ ps_open($0, &info, &error, 256) }) else {
-            mark("NATIVE comparison: decoder refused: \(String(cString: error))")
+        guard let url = descriptor.sourceURL,
+              let decoder = url.path.withCString({ ps_open($0, &info, &error, 256) }) else {
+            mark(String(format: "NATIVE VERDICT tiles=%.2f proxy=%.2f (source unreadable)", tilesEnergy, proxyEnergy))
             return
         }
         defer { ps_close(decoder) }
-        let region = ps_rect(x: Int32(visibleSource.minX), y: Int32(visibleSource.minY),
-                             width: Int32(visibleSource.width), height: Int32(visibleSource.height))
-        guard ps_set_region(decoder, region) == 1 else { return }
-        var status: Int32 = 1
-        while status == 1 { status = ps_step(decoder, &error, 256) }
-        guard status == 0, let native = ps_region_pixels(decoder) else {
-            mark("NATIVE comparison: decode failed")
+        let visible = NativeTilePlanner.visibleSourceRect(viewport: viewer.viewerState.viewport,
+                                                          sourcePixelSize: source, viewSize: viewSize)
+        let snapped = CGRect(x: visible.minX.rounded(.down), y: visible.minY.rounded(.down),
+                             width: visible.width.rounded(.up), height: visible.height.rounded(.up))
+        guard snapped.width >= 8, snapped.height >= 8,
+              ps_set_region(decoder, ps_rect(x: Int32(snapped.minX), y: Int32(snapped.minY),
+                                             width: Int32(snapped.width), height: Int32(snapped.height))) == 1 else {
+            mark(String(format: "NATIVE VERDICT tiles=%.2f proxy=%.2f (no region)", tilesEnergy, proxyEnergy))
             return
         }
-        let nativeStride = Int(visibleSource.width) * 4
-
-        // How far the proxy is from that rectangle, for the control distance.
-        // Read the proxy through a context in a layout we choose; assuming the decode's own
-        // byte order produced a meaningless control distance in the first run of this probe.
-        let proxyWidth = proxy.width, proxyHeight = proxy.height
-        var proxyPixels = [UInt8](repeating: 0, count: proxyWidth * proxyHeight * 4)
-        proxyPixels.withUnsafeMutableBytes { bytes in
-            if let context = CGContext(data: bytes.baseAddress, width: proxyWidth, height: proxyHeight,
-                                       bitsPerComponent: 8, bytesPerRow: proxyWidth * 4,
-                                       space: proxy.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
-                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
-                context.draw(proxy, in: CGRect(x: 0, y: 0, width: proxyWidth, height: proxyHeight))
+        var status: Int32 = 1
+        while status == 1 { status = ps_step(decoder, &error, 256) }
+        guard status == 0, let native = ps_region_pixels(decoder) else { return }
+        let width = Int(snapped.width), height = Int(snapped.height)
+        var sourceTotal = 0.0
+        var pairs = 0
+        for y in 0..<height {
+            for x in 0..<(width - 1) {
+                let a = (y * width + x) * 4, b = (y * width + x + 1) * 4
+                sourceTotal += Double(abs(Int(native[a]) - Int(native[b])))
+                sourceTotal += Double(abs(Int(native[a + 1]) - Int(native[b + 1])))
+                sourceTotal += Double(abs(Int(native[a + 2]) - Int(native[b + 2])))
+                pairs += 3
             }
         }
-        let proxyStride = proxyWidth * 4
-
-        var samples = 0
-        var renderedVsNative = 0.0
-        var renderedVsProxy = 0.0
-        for row in 0..<8 {
-            for column in 0..<8 {
-                let fx = (Double(column) + 0.5) / 8
-                let fy = (Double(row) + 0.5) / 8
-                let sx = visibleSource.minX + CGFloat(fx) * visibleSource.width
-                let sy = visibleSource.minY + CGFloat(fy) * visibleSource.height
-                let centred = ViewportState.centredSourceRect(
-                    CGRect(x: sx, y: sy, width: 1, height: 1), sourcePixelSize: source)
-                let viewPoint = CGPoint(x: centred.midX, y: centred.midY).applying(transform)
-                let px = Int(viewPoint.x * repScale), py = Int((viewSize.height - viewPoint.y) * repScale)
-                guard px >= 0, py >= 0, px < rep.pixelsWide, py < rep.pixelsHigh else { continue }
-                guard let rendered = rep.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) else { continue }
-
-                let nx = Int(sx - visibleSource.minX), ny = Int(sy - visibleSource.minY)
-                let n = native + ny * nativeStride + nx * 4
-                let nativeRed = Double(n[0]), nativeGreen = Double(n[1]), nativeBlue = Double(n[2])
-
-                let bx = min(proxyWidth - 1, max(0, Int(Double(nx) / Double(visibleSource.width) * Double(proxyWidth))))
-                let by = min(proxyHeight - 1, max(0, Int(Double(ny) / Double(visibleSource.height) * Double(proxyHeight))))
-                var proxyRed = 0.0, proxyGreen = 0.0, proxyBlue = 0.0
-                proxyPixels.withUnsafeBufferPointer { buffer in
-                    let p = by * proxyStride + bx * 4
-                    proxyRed = Double(buffer[p]); proxyGreen = Double(buffer[p + 1]); proxyBlue = Double(buffer[p + 2])
-                }
-                let renderedRed = Double(rendered.redComponent) * 255
-                let renderedGreen = Double(rendered.greenComponent) * 255
-                let renderedBlue = Double(rendered.blueComponent) * 255
-                renderedVsNative += (abs(renderedRed - nativeRed) + abs(renderedGreen - nativeGreen)
-                                     + abs(renderedBlue - nativeBlue)) / 3
-                renderedVsProxy += (abs(renderedRed - proxyRed) + abs(renderedGreen - proxyGreen)
-                                    + abs(renderedBlue - proxyBlue)) / 3
-                samples += 1
-            }
-        }
-        guard samples > 0 else { return }
-        let toNative = renderedVsNative / Double(samples)
-        let toProxy = renderedVsProxy / Double(samples)
-        mark(String(format: "NATIVE VERDICT samples=%d meanDeltaToNative=%.1f meanDeltaToProxy=%.1f -> %@",
-                    samples, toNative, toProxy,
-                    toNative < toProxy ? "screen is NATIVE SOURCE pixels" : "screen is the PROXY upscaled"))
+        let sourceEnergy = pairs > 0 ? sourceTotal / Double(pairs) : 0
+        mark(String(format: "NATIVE VERDICT tiles=%.2f proxyOnly=%.2f source=%.2f tilesCover=%.0f%% -> %@",
+                    tilesEnergy, proxyEnergy, sourceEnergy,
+                    tilesEnergy > 0 ? min(100, tilesEnergy / max(sourceEnergy, 0.001) * 100) : 0,
+                    tilesEnergy > 0.8 * sourceEnergy ? "screen IS native source detail"
+                        : (proxyEnergy < 0.55 * tilesEnergy ? "screen is the PROXY upscaled" : "inconclusive")))
     }
 
     // MARK: - heartbeat: memory + main-thread responsiveness, off-main
