@@ -167,6 +167,47 @@ enum BenchTrace {
         }
     }
 
+    // MARK: - variant-switch probe (PICLIGHT_BENCH_VARIANT=1)
+
+    /// Drives a fast 0.8 → 1.2 → 0.8 physical-scale switch and reports the residency invariants
+    /// after each move. The scale decides the texture flavour (mipmapped below 1.0, base-only
+    /// above), so this is the real-image test for the two failure modes the audit found: an upload
+    /// in flight during a switch must not resurrect the dropped flavour, and neither flavour may be
+    /// billed twice.
+    static func scheduleVariantProbe() {
+        guard enabled,
+              ProcessInfo.processInfo.environment["PICLIGHT_BENCH_VARIANT"] == "1" else { return }
+        var backing: CGFloat = 2
+        // physicalScale = zoomScale × backingScale; the probe asks for 0.8 / 1.2 / 0.8.
+        let scales = [0.8, 1.2, 0.8, 1.2]
+        DispatchQueue.main.asyncAfter(deadline: .now() + 22) {
+            guard let window = NSApp.windows.first(where: { $0.isVisible }),
+                  let viewer = window.contentViewController as? ViewerViewController else {
+                mark("VARIANT probe: no visible viewer")
+                return
+            }
+            backing = window.backingScaleFactor
+            viewer.perform(.zoomActualPixels)
+            for (index, physical) in scales.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 6) {
+                    var viewport = viewer.canvasViewportForTesting
+                    viewport.zoomScale = physical / backing
+                    // Recompute the fit so the transform stays valid for the new zoom.
+                    let fit = ViewportState.fitScale(imagePixels: viewer.viewerState.descriptor?
+                        .displayPixelSize ?? .zero,
+                        viewPoints: viewer.canvasViewForTesting.bounds.size)
+                    viewport.fitScale = fit
+                    viewer.canvasViewportForTesting = viewport
+                    mark(String(format: "VARIANT switch %d → physicalScale %.2f (zoom %.4f)",
+                                index, physical, viewport.zoomScale))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        reportResidency(viewer: viewer, label: "variant \(index) physical \(physical)")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - native-detail probe (PICLIGHT_BENCH_ZOOM=1)
 
     /// Drives the app to 100 %, then answers the question the whole native-detail backend
@@ -227,6 +268,12 @@ enum BenchTrace {
              + "gpuResident=\(d.gpuResidentTiles)(\(d.gpuTextureBytes / 1_048_576) MiB) "
              + "gpuUploads=\(d.gpuUploads) hits=\(d.gpuCacheHits) bg=\(d.gpuBackgroundUploads) "
              + "sync=\(d.gpuSynchronousUploads)")
+        // The dedup and variant invariants, on the real image: textures actually created, entries
+        // discarded as stale, warm requests skipped as duplicates, and the LRU's own consistency.
+        mark("INVARIANTS \(label): creations=\(d.gpuTextureCreations) stale=\(d.gpuStaleDiscarded) "
+             + "dupWarm=\(d.gpuDuplicateWarmSkips) inFlight=\(d.gpuInFlight) "
+             + "bgHits=\(d.gpuBackgroundHits) protected=\(d.gpuProtectedTiles) "
+             + "lru=\(d.gpuLruConsistent ? "consistent" : "INCONSISTENT")")
     }
 
     /// Renders the current frame offscreen (proxy + tiles) and compares its detail energy

@@ -131,6 +131,7 @@ edit("App/AppDelegate.swift", [
             BenchTrace.startHeartbeat()
             BenchTrace.scheduleResizeSequence()
             BenchTrace.scheduleZoomProbe()
+            BenchTrace.scheduleVariantProbe()
             BenchTrace.mark("T0 user open requested (FileOpenCoordinator.open)")
             BenchTrace.energyStart = BenchTrace.readEnergyNJ()
             environment.fileOpener.open(url: URL(fileURLWithPath: benchPath))

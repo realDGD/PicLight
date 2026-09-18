@@ -332,6 +332,148 @@ if let renderer, device != nil {
     }
 }
 
+// MARK: - Continuous drag: does the direction hint earn its place?
+
+trace("drag A/B")
+do {
+    let scale = 1.0
+    let visibleSize = CGSize(width: backing.width / scale, height: backing.height / scale)
+    let step = visibleSize.width * 0.5          // half a viewport per step, 40 steps = 20 viewports
+    // Upload rate: a 512 px tile takes ~0.4 ms to upload (measured above), and a drag step at 60 Hz
+    // is 16 ms, so 40 tiles per step is generous and 8 is pessimistic. Both are reported.
+    let rates = [8, 40]
+    let steps = 40
+    print("\n  continuous drag: \(steps) steps of \(Int(step)) px, uploader rates \(rates) tiles/step")
+    func padded(_ text: String, _ width: Int) -> String {
+        text.count >= width ? text : text + String(repeating: " ", count: width - text.count)
+    }
+    print("  " + padded("rate", 8) + padded("hint", 8) + padded("visible hits", 14)
+          + padded("sync uploads", 14) + padded("uploaded", 10) + "hit rate")
+    for rate in rates {
+        for hintEnabled in [false, true] {
+            var uploaded = Set<NativeTileKey>()
+            var visibleHits = 0, syncUploads = 0, totalVisible = 0
+            var previousVisible: CGRect?
+            var originX = (sourceSize.width - visibleSize.width) / 2
+            for stepIndex in 0..<steps {
+                let visible = CGRect(x: originX, y: (sourceSize.height - visibleSize.height) / 2,
+                                     width: visibleSize.width, height: visibleSize.height)
+                    .intersection(CGRect(origin: .zero, size: sourceSize))
+                let hint = hintEnabled ? WarmAreaPolicy.directionHint(from: previousVisible, to: visible) : .zero
+                previousVisible = visible
+                guard let plan = WarmAreaPolicy.plan(visible: visible, sourcePixelSize: sourceSize,
+                                                     tileSize: tileSize,
+                                                     cpuBudgetBytes: 256 * 1024 * 1024,
+                                                     margin: 1.0, directionHint: hint) else { continue }
+                let keys = plan.plan.visible.map {
+                    NativeTileKey(sourcePath: url.path, tileSize: tileSize, x: $0.x, y: $0.y)
+                }
+                totalVisible += keys.count
+                for key in keys {
+                    if uploaded.contains(key) { visibleHits += 1 } else { syncUploads += 1 }
+                }
+                // The uploader processes this step's warm set in the policy's order, up to the rate.
+                let ordered = WarmAreaPolicy.order(plan: plan.plan, visibleRect: visible,
+                                                   sourcePixelSize: sourceSize, tileSize: tileSize,
+                                                   directionHint: hint)
+                var budget = rate
+                for coordinate in ordered {
+                    let key = NativeTileKey(sourcePath: url.path, tileSize: tileSize,
+                                            x: coordinate.x, y: coordinate.y)
+                    if uploaded.contains(key) { continue }
+                    uploaded.insert(key)
+                    budget -= 1
+                    if budget == 0 { break }
+                }
+                originX += step
+                if originX + visibleSize.width > sourceSize.width { originX = 0 }
+            }
+            let hits = totalVisible - syncUploads
+            let rateText = totalVisible == 0 ? "—" : String(format: "%.1f%%", Double(hits) / Double(totalVisible) * 100)
+            print("  " + padded("\(rate)", 8) + padded(hintEnabled ? "on" : "off", 8)
+                  + padded("\(visibleHits)", 14) + padded("\(syncUploads)", 14)
+                  + padded("\(uploaded.count)", 10) + rateText)
+        }
+    }
+}
+
+// MARK: - Where the first-visible-tile latency goes
+
+trace("first tile phases")
+if let renderer {
+    let scale = 1.0
+    let visibleSize = CGSize(width: backing.width / scale, height: backing.height / scale)
+    for (label, centerY) in [("top", 0.08), ("middle", 0.5)] {
+        let originY = max(0, sourceSize.height * centerY - visibleSize.height / 2)
+        let visible = CGRect(x: (sourceSize.width - visibleSize.width) / 2, y: originY,
+                             width: visibleSize.width, height: visibleSize.height)
+        guard let plan = WarmAreaPolicy.plan(visible: visible, sourcePixelSize: sourceSize,
+                                             tileSize: tileSize,
+                                             cpuBudgetBytes: 32 * 1024 * 1024,
+                                             margin: 0.0, directionHint: .zero)?.plan else { continue }
+        final class StageBox: @unchecked Sendable {
+            private let lock = NSLock()
+            private var stages: [(String, Double)] = []
+            private var firstAt: Double?
+            private var count = 0
+            private var decodeMS = 0.0
+            func add(label: String, _ ms: Double) { lock.lock(); stages.append((label, ms)); lock.unlock() }
+            func markFirst(_ ms: Double) { lock.lock(); if firstAt == nil { firstAt = ms }; count += 1; lock.unlock() }
+            func addDecode(_ ms: Double) { lock.lock(); decodeMS = ms; lock.unlock() }
+            var average: [(String, Double)] {
+                lock.lock(); defer { lock.unlock() }
+                var sums: [String: Double] = [:]
+                for (label, ms) in stages { sums[label, default: 0] += ms }
+                return sums.map { ($0.key, $0.value / Double(max(1, stages.count / sums.count))) }
+                    .sorted { $0.0 < $1.0 }
+            }
+            var summary: (first: Double?, tiles: Int, decodeMS: Double) {
+                lock.lock(); defer { lock.unlock() }
+                return (firstAt, count, decodeMS)
+            }
+        }
+        let box = StageBox()
+        let start = monotonicNS()
+        let provider = PNGNativeTileProvider()
+        try? provider.produce(plan: plan, source: url, pageIndex: 0, gutter: 0, colorSpace: nil,
+                              orientation: SourceOrientation(.up), shouldCancel: { false },
+                              onTile: { tile in
+            let arrived = millis(start, monotonicNS())
+            box.markFirst(arrived)
+            // The same phases the renderer's upload performs, measured on the real tile image.
+            var phase = monotonicNS()
+            let colorSpace = tile.image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+            let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
+                | CGImageAlphaInfo.premultipliedFirst.rawValue
+            guard let context = CGContext(data: nil, width: tile.image.width, height: tile.image.height,
+                                          bitsPerComponent: 8, bytesPerRow: tile.image.width * 4,
+                                          space: colorSpace, bitmapInfo: bitmapInfo) else { return }
+            context.draw(tile.image, in: CGRect(x: 0, y: 0, width: tile.image.width,
+                                                height: tile.image.height))
+            box.add(label: "context draw", millis(phase, monotonicNS()))
+            phase = monotonicNS()
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                width: tile.image.width, height: tile.image.height, mipmapped: false)
+            descriptor.usage = [.shaderRead]
+            descriptor.storageMode = .shared
+            guard let texture = renderer.device.makeTexture(descriptor: descriptor),
+                  let data = context.data else { return }
+            box.add(label: "texture create", millis(phase, monotonicNS()))
+            phase = monotonicNS()
+            texture.replace(region: MTLRegionMake2D(0, 0, tile.image.width, tile.image.height),
+                            mipmapLevel: 0, withBytes: data, bytesPerRow: context.bytesPerRow)
+            box.add(label: "replace", millis(phase, monotonicNS()))
+        })
+        let totalMS = millis(start, monotonicNS())
+        let summary = box.summary
+        let phases = box.average.map { "\($0.0) \(String(format: "%.2f", $0.1)) ms" }.joined(separator: ", ")
+        print("  first-visible (\(label), \(summary.tiles) tiles decoded, visible y=\(Int(originY))): "
+              + "first tile \(String(format: "%.0f", summary.first ?? -1)) ms, "
+              + "all \(String(format: "%.0f", totalMS)) ms")
+        print("    per-tile upload phases: \(phases)")
+    }
+}
+
 print("\n| strategy | scale | peak footprint | peak RSS | tile bytes | traversals | first visible tile | report |")
 print("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
 for row in reportRows { print(row) }

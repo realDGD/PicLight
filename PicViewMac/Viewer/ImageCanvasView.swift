@@ -28,7 +28,7 @@ public final class ImageCanvasView: NSView {
             guard nativeTiles.map({ $0.key }) != oldValue.map({ $0.key }) else { return }
             // Tiles on screen are protected from the texture budget: a warm upload must never evict
             // what is being drawn.
-            metalRenderer?.protectedTileKeys = Set(nativeTiles.map { $0.key })
+            metalRenderer?.setProtectedTileKeys(Set(nativeTiles.map { $0.key }))
             pushToMetal()
             needsDisplay = true
         }
@@ -423,10 +423,8 @@ public final class ImageCanvasView: NSView {
     private var tileVariant: MetalImageRenderer.TileTextureVariant = .baseOnly
 
     /// Texture cache diagnostics, for tests and the acceptance runner.
-    public func tileTextureDiagnostics() -> (resident: Int, bytes: Int, budget: Int, uploads: Int,
-                                             hits: Int, backgroundUploads: Int,
-                                             synchronousUploads: Int) {
-        guard let renderer = metalRenderer else { return (0, 0, 0, 0, 0, 0, 0) }
+    public func tileTextureDiagnostics() -> MetalImageRenderer.TileTextureDiagnostics {
+        guard let renderer = metalRenderer else { return MetalImageRenderer.TileTextureDiagnostics() }
         return renderer.tileTextureDiagnostics()
     }
 

@@ -91,21 +91,71 @@ public final class MetalImageRenderer {
         case mipmapped
     }
 
-    private struct TileTextureKey: Hashable {
+    /// Internal rather than private so the invariant tests can name individual entries.
+    struct TileTextureKey: Hashable {
         let tile: NativeTileKey
         let variant: TileTextureVariant
     }
 
     private var tileTextures: [TileTextureKey: MTLTexture] = [:]
+    /// Keys with an upload in progress. Two callers — the draw path and the warm queue — can miss
+    /// the same key in the same instant; without this the tile was uploaded twice, one texture
+    /// leaked, and the byte total counted it twice.
+    private var tileTextureInFlight: Set<TileTextureKey> = []
+    /// Bumped whenever the texture policy invalidates entries. An upload that started before the
+    /// bump is discarded on completion instead of inserting a stale variant back into the cache.
+    private var textureGeneration: UInt64 = 0
+    /// Keys queued for the warm uploader, so a tile is never enqueued twice while it waits.
+    private var warmQueue: Set<TileTextureKey> = []
     /// Tiles on screen: the budget may not evict them, however many warm tiles are queued behind
-    /// them. Measured without this, a 204-tile warm upload at the 192 MiB budget evicted the
-    /// visible tiles that had been uploaded first.
-    public var protectedTileKeys: Set<NativeTileKey> = []
+    /// them. Written and read under `tileTextureLock`.
+    private var protectedTileKeys: Set<NativeTileKey> = []
     private var tileTextureOrder: [TileTextureKey] = []
-    private var tileTextureStats = (uploads: 0, hits: 0, background: 0, synchronous: 0)
-    /// Bytes of tile texture storage, including each tile's mip chain.
+    private var tileTextureStats = (foregroundUploads: 0, backgroundUploads: 0,
+                                    foregroundHits: 0, backgroundHits: 0,
+                                    inFlightSkips: 0, staleDiscarded: 0, duplicateWarmSkips: 0,
+                                    textureCreations: 0)
+    /// Bytes of tile texture storage. Real `MTLTexture.allocatedSize` where the driver reports it,
+    /// the base-plus-mip estimate otherwise.
     public private(set) var tileTextureBytes = 0
     public var tileTextureBudget = 192 * 1024 * 1024
+
+    /// Test hook, called after a cache miss and after the in-flight check, before the upload work.
+    /// Tests hold it to prove the concurrency invariants deterministically instead of hoping to
+    /// collide. Set through the lock so the upload queue sees it without a race.
+    private var beforeUploadHook: (() -> Void)?
+    /// Test-only fault injection: restores the pre-fix behaviour so the guard tests can show the bug
+    /// they exist to catch. Production code never writes these.
+    ///
+    /// `debugLegacyDuplicateUpload` reproduces the original upload path in full — no in-flight check,
+    /// no re-check of the cache before inserting, unconditional append to the LRU. Disabling only one
+    /// of those three would let another guard mask the duplicate, which is why the flag covers all of
+    /// them.
+    private var debugLegacyDuplicateUpload = false
+    private var debugDisableGenerationCheck = false
+
+    public func setBeforeUploadHook(_ hook: (() -> Void)?) {
+        tileTextureLock.lock(); beforeUploadHook = hook; tileTextureLock.unlock()
+    }
+
+    public func setDebugLegacyDuplicateUpload(_ enabled: Bool) {
+        tileTextureLock.lock(); debugLegacyDuplicateUpload = enabled; tileTextureLock.unlock()
+    }
+
+    public func setDebugDisableGenerationCheck(_ enabled: Bool) {
+        tileTextureLock.lock(); debugDisableGenerationCheck = enabled; tileTextureLock.unlock()
+    }
+
+    /// Test-only: the billed cost of every resident entry, which must sum to `tileTextureBytes`.
+    func debugEntryCosts() -> [TileTextureKey: Int] {
+        tileTextureLock.lock(); defer { tileTextureLock.unlock() }
+        return tileTextures.mapValues { Self.byteCost(of: $0) }
+    }
+
+    func debugHasTexture(_ key: TileTextureKey) -> Bool {
+        tileTextureLock.lock(); defer { tileTextureLock.unlock() }
+        return tileTextures[key] != nil
+    }
     private var corners = [SIMD2<Float>](repeating: .zero, count: 4)
     private let uvs: [SIMD2<Float>] = [SIMD2(0, 1), SIMD2(1, 1), SIMD2(0, 0), SIMD2(1, 0)]
 
@@ -178,7 +228,7 @@ public final class MetalImageRenderer {
                 let offset = (y * width + x) * 4
                 pixels[offset] = UInt8(x % 251)
                 pixels[offset + 1] = UInt8(y % 241)
-                pixels[offset + 2] = UInt8((x + y) / 2)
+                pixels[offset + 2] = UInt8((x + y) % 256)
                 pixels[offset + 3] = 255
             }
         }
@@ -230,19 +280,16 @@ public final class MetalImageRenderer {
         return texture
     }
 
-    /// Uploads one tile, reusing its texture if it is already resident, and returns it. The
-    /// caller binds exactly this texture, so no shared mutable "current texture" can be stale.
-    /// Drops tile textures whose tiles are no longer cached, so GPU memory follows the tile
-    /// cache instead of growing on its own.
-    /// Uploads one tile, reusing its texture if it is already resident, and returns it. The caller
-    /// binds exactly this texture, so no shared mutable "current texture" can be stale.
+    /// Returns one tile's texture, uploading it if missing. The caller binds exactly this texture,
+    /// so no shared mutable "current texture" can be stale.
     @discardableResult
     public func prepareTexture(for tile: NativeTile, variant: TileTextureVariant,
                                fromBackground: Bool = false) -> MTLTexture? {
         let key = TileTextureKey(tile: tile.key, variant: variant)
         tileTextureLock.lock()
         if let existing = tileTextures[key] {
-            tileTextureStats.hits += 1
+            if fromBackground { tileTextureStats.backgroundHits += 1 }
+            else { tileTextureStats.foregroundHits += 1 }
             // LRU by use, not by insertion: a tile the user just looked at must survive a pan away
             // and back.
             tileTextureOrder.removeAll { $0 == key }
@@ -250,27 +297,66 @@ public final class MetalImageRenderer {
             tileTextureLock.unlock()
             return existing
         }
+        if tileTextureInFlight.contains(key) && !debugLegacyDuplicateUpload {
+            tileTextureStats.inFlightSkips += 1
+            tileTextureLock.unlock()
+            return nil
+        }
+        let generation = textureGeneration
+        if !debugLegacyDuplicateUpload { tileTextureInFlight.insert(key) }
+        let hook = beforeUploadHook
         tileTextureLock.unlock()
+
+        hook?()
+
         // Mipmaps only where the D-series argument applies: tiles are requested as soon as the proxy
         // is out-resolved, which includes the low magnifications (measured threshold ≈ 0.2 for a
         // 48000-pixel source) where a tile is minified up to 5:1. Generation happens on the upload
         // queue, never as a synchronous wait on the main thread.
         let mipmapped = variant == .mipmapped
-        guard let uploaded = uploadTexture(for: tile.image, mipmapped: mipmapped) else { return nil }
+        let uploaded = uploadTexture(for: tile.image, mipmapped: mipmapped)
+
         tileTextureLock.lock()
+        tileTextureInFlight.remove(key)
+        guard generation == textureGeneration || debugDisableGenerationCheck else {
+            // The policy changed while this upload ran: the texture is already the wrong flavour, so
+            // it never enters the cache and never counts towards the budget.
+            tileTextureStats.staleDiscarded += 1
+            tileTextureLock.unlock()
+            return nil
+        }
+        guard let uploaded else {
+            tileTextureLock.unlock()
+            return nil
+        }
+        tileTextureStats.textureCreations += 1
+        // A racing caller may have completed the same key first; keep one entry, not two.
+        if let existing = tileTextures[key], !debugLegacyDuplicateUpload {
+            tileTextureLock.unlock()
+            return existing
+        }
         tileTextures[key] = uploaded
         tileTextureOrder.append(key)
-        tileTextureBytes += Self.textureBytes(width: uploaded.width, height: uploaded.height,
-                                              mipmapped: mipmapped)
-        tileTextureStats.uploads += 1
-        if fromBackground { tileTextureStats.background += 1 } else { tileTextureStats.synchronous += 1 }
+        tileTextureBytes += Self.byteCost(of: uploaded)
+        if fromBackground { tileTextureStats.backgroundUploads += 1 }
+        else { tileTextureStats.foregroundUploads += 1 }
         evictTileTexturesIfNeededLocked()
         tileTextureLock.unlock()
         return uploaded
     }
 
-    /// Real allocation size: a mip chain is 4/3 of the base level, and billing it as the base alone
-    /// let a 192 MiB budget hold ~256 MiB.
+    /// The cost a texture is accounted at: the driver's own figure when it reports one, otherwise
+    /// the base-plus-mip estimate.
+    static func byteCost(of texture: MTLTexture) -> Int {
+        let allocated = texture.allocatedSize
+        if allocated > 0 { return allocated }
+        return textureBytes(width: texture.width, height: texture.height,
+                            mipmapped: texture.mipmapLevelCount > 1)
+    }
+
+    /// Estimate: a mip chain is 4/3 of the base level, and billing it as the base alone let a
+    /// 192 MiB budget hold ~256 MiB. Used for planning and comparisons; the cache itself bills
+    /// `MTLTexture.allocatedSize` when the driver reports it.
     static func textureBytes(width: Int, height: Int, mipmapped: Bool) -> Int {
         let base = width * height * 4
         return mipmapped ? base * 4 / 3 : base
@@ -280,32 +366,104 @@ public final class MetalImageRenderer {
     /// across threads.
     public func warmTilesInBackground(_ tiles: [NativeTile], variant: TileTextureVariant) {
         guard !tiles.isEmpty else { return }
+        // Enqueue each tile once: every tile arrival re-publishes the whole warm set, so without this
+        // the queue filled with requests for tiles already resident or already waiting.
+        var wanted: [NativeTileKey] = []
+        tileTextureLock.lock()
+        for tile in tiles {
+            let key = TileTextureKey(tile: tile.key, variant: variant)
+            if tileTextures[key] != nil || tileTextureInFlight.contains(key) || warmQueue.contains(key) {
+                tileTextureStats.duplicateWarmSkips += 1
+                continue
+            }
+            warmQueue.insert(key)
+            wanted.append(tile.key)
+        }
+        tileTextureLock.unlock()
+        guard !wanted.isEmpty else { return }
+        let byKey = Dictionary(uniqueKeysWithValues: tiles.map { ($0.key, $0) })
         uploadQueue.async { [weak self] in
             guard let self else { return }
-            for tile in tiles {
+            for key in wanted {
+                guard let tile = byKey[key] else { continue }
                 _ = self.prepareTexture(for: tile, variant: variant, fromBackground: true)
+                self.tileTextureLock.lock()
+                self.warmQueue.remove(TileTextureKey(tile: key, variant: variant))
+                self.tileTextureLock.unlock()
             }
         }
+    }
+
+    /// Tiles on screen: protected from the budget. The set is written and read under the same lock
+    /// as the eviction that consults it — the previous public var was written unlocked from the
+    /// main thread and read under the lock, which is not synchronisation.
+    public func setProtectedTileKeys(_ keys: Set<NativeTileKey>) {
+        tileTextureLock.lock()
+        protectedTileKeys = keys
+        evictTileTexturesIfNeededLocked()
+        tileTextureLock.unlock()
     }
 
     /// Drops textures of one variant when the magnification policy changes, so the GPU cache does
     /// not hold both flavours of the same tile for long.
     public func dropTileTextures(of variant: TileTextureVariant) {
         tileTextureLock.lock(); defer { tileTextureLock.unlock() }
+        // Bumping the generation is what stops an upload already in flight from resurrecting the
+        // variant: it completes, sees the new generation and is discarded.
+        textureGeneration &+= 1
         for (key, texture) in tileTextures where key.variant == variant {
-            tileTextureBytes -= Self.textureBytes(width: texture.width, height: texture.height,
-                                                  mipmapped: variant == .mipmapped)
+            tileTextureBytes -= Self.byteCost(of: texture)
             tileTextures.removeValue(forKey: key)
         }
         tileTextureOrder.removeAll { !tileTextures.keys.contains($0) }
+        evictTileTexturesIfNeededLocked()
     }
 
-    public func tileTextureDiagnostics() -> (resident: Int, bytes: Int, budget: Int, uploads: Int,
-                                             hits: Int, backgroundUploads: Int,
-                                             synchronousUploads: Int) {
+    /// Every counter the residency questions need, separated by caller: a hit on the draw path and
+    /// a hit on the warm queue mean different things, and mixing them let a pan report read as more
+    /// foreground hits than it had.
+    public struct TileTextureDiagnostics: Equatable {
+        public var resident = 0
+        public var bytes = 0
+        public var budget = 0
+        public var inFlight = 0
+        public var queuedWarm = 0
+        public var foregroundUploads = 0
+        public var backgroundUploads = 0
+        public var foregroundHits = 0
+        public var backgroundHits = 0
+        public var inFlightSkips = 0
+        public var staleDiscarded = 0
+        public var duplicateWarmSkips = 0
+        /// Textures actually created, counted at creation rather than at insertion: the two differ
+        /// exactly when a duplicate upload was made and then thrown away, which is the failure the
+        /// in-flight check prevents.
+        public var textureCreations = 0
+        public var protectedTiles = 0
+        /// Invariant check: the LRU mentions each resident key exactly once.
+        public var lruIsConsistent = true
+    }
+
+    public func tileTextureDiagnostics() -> TileTextureDiagnostics {
         tileTextureLock.lock(); defer { tileTextureLock.unlock() }
-        return (tileTextures.count, tileTextureBytes, tileTextureBudget, tileTextureStats.uploads,
-                tileTextureStats.hits, tileTextureStats.background, tileTextureStats.synchronous)
+        var report = TileTextureDiagnostics()
+        report.resident = tileTextures.count
+        report.bytes = tileTextureBytes
+        report.budget = tileTextureBudget
+        report.inFlight = tileTextureInFlight.count
+        report.queuedWarm = warmQueue.count
+        report.foregroundUploads = tileTextureStats.foregroundUploads
+        report.backgroundUploads = tileTextureStats.backgroundUploads
+        report.foregroundHits = tileTextureStats.foregroundHits
+        report.backgroundHits = tileTextureStats.backgroundHits
+        report.inFlightSkips = tileTextureStats.inFlightSkips
+        report.staleDiscarded = tileTextureStats.staleDiscarded
+        report.duplicateWarmSkips = tileTextureStats.duplicateWarmSkips
+        report.textureCreations = tileTextureStats.textureCreations
+        report.protectedTiles = protectedTileKeys.count
+        report.lruIsConsistent = Set(tileTextureOrder).count == tileTextureOrder.count
+            && Set(tileTextureOrder) == Set(tileTextures.keys)
+        return report
     }
 
     /// The variant this frame's tiles are drawn with, set once per plan by the viewer. Read and
@@ -317,8 +475,7 @@ public final class MetalImageRenderer {
         let doomed = tileTextures.keys.filter { !keys.contains($0.tile) }
         for key in doomed {
             if let texture = tileTextures.removeValue(forKey: key) {
-                tileTextureBytes -= Self.textureBytes(width: texture.width, height: texture.height,
-                                                      mipmapped: key.variant == .mipmapped)
+                tileTextureBytes -= Self.byteCost(of: texture)
             }
         }
         tileTextureOrder.removeAll { !tileTextures.keys.contains($0) }
@@ -335,13 +492,12 @@ public final class MetalImageRenderer {
             }
             tileTextureOrder.remove(at: index)
             if let texture = tileTextures.removeValue(forKey: candidate) {
-                tileTextureBytes -= Self.textureBytes(width: texture.width, height: texture.height,
-                                                      mipmapped: candidate.variant == .mipmapped)
+                tileTextureBytes -= Self.byteCost(of: texture)
             }
         }
     }
 
-    /// Texture storage in bytes, including the mip chain (4/3 of the base level).
+    /// Texture storage in bytes, including the mip chain (4/3 of the base level), as an estimate.
     public var textureBytes: Int {
         guard let proxyTexture else { return 0 }
         return proxyTexture.width * proxyTexture.height * 4 * 4 / 3

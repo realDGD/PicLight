@@ -732,16 +732,31 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         var gpuWarmTiles = 0
         var gpuTextureBytes = 0
         var gpuBudgetBytes = 0
+        /// Total tile uploads, both callers.
         var gpuUploads = 0
+        /// Hits on the draw path. Background warm hits are counted separately: mixing them made a
+        /// pan look like it had more foreground hits than it did.
         var gpuCacheHits = 0
+        var gpuBackgroundHits = 0
         var gpuBackgroundUploads = 0
+        /// Uploads on the draw path — the ones the user could wait for.
         var gpuSynchronousUploads = 0
+        var gpuInFlight = 0
+        var gpuStaleDiscarded = 0
+        var gpuDuplicateWarmSkips = 0
+        /// Textures created, counted at creation: the dedup metric that cannot be hidden by a
+        /// discarded duplicate.
+        var gpuTextureCreations = 0
+        var gpuProtectedTiles = 0
+        /// Invariant: the GPU LRU mentions each resident entry exactly once.
+        var gpuLruConsistent = true
         var clampedByBudget = false
     }
 
     private(set) var warmTileCount = 0
 
-    var nativeDetailCacheCountForTesting: Int { nativeDetailTileCount }
+    /// Tiles in the backend's CPU cache, as opposed to tiles currently drawn.
+    var nativeDetailCacheCountForTesting: Int { nativeDetail.cache.count }
 
     func nativeDetailDiagnostics() -> NativeDetailDiagnostics {
         var report = NativeDetailDiagnostics()
@@ -758,10 +773,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         report.gpuWarmTiles = max(0, gpu.resident - nativeDetailTileCount)
         report.gpuTextureBytes = gpu.bytes
         report.gpuBudgetBytes = gpu.budget
-        report.gpuUploads = gpu.uploads
-        report.gpuCacheHits = gpu.hits
+        report.gpuUploads = gpu.foregroundUploads + gpu.backgroundUploads
+        report.gpuCacheHits = gpu.foregroundHits
+        report.gpuBackgroundHits = gpu.backgroundHits
         report.gpuBackgroundUploads = gpu.backgroundUploads
-        report.gpuSynchronousUploads = gpu.synchronousUploads
+        report.gpuSynchronousUploads = gpu.foregroundUploads
+        report.gpuInFlight = gpu.inFlight
+        report.gpuStaleDiscarded = gpu.staleDiscarded
+        report.gpuDuplicateWarmSkips = gpu.duplicateWarmSkips
+        report.gpuTextureCreations = gpu.textureCreations
+        report.gpuProtectedTiles = gpu.protectedTiles
+        report.gpuLruConsistent = gpu.lruIsConsistent
         report.clampedByBudget = nativeDetailClampedByBudget
         return report
     }

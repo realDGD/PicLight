@@ -154,6 +154,23 @@ final class WarmResidencyTests: XCTestCase {
         XCTAssertGreaterThan(after.gpuUploads, 0)
     }
 
+    /// The cache count is the cache count: the old property reported the *drawn* tile count, so a
+    /// warm plan looked like it had no cached tiles at all.
+    func testCacheCountForTestingIsTheCacheNotTheDrawList() throws {
+        let (viewer, controller, cache, _) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }))
+        viewer.perform(.zoomActualPixels)
+        XCTAssertTrue(pump(until: { viewer.nativeDetailDiagnostics().warmTiles > 0 }),
+                      "the plan must warm tiles beyond the viewport")
+        XCTAssertTrue(pump(until: { viewer.nativeDetailDiagnostics().cpuCacheTiles > 0 }))
+        let diagnostics = viewer.nativeDetailDiagnostics()
+        XCTAssertEqual(viewer.nativeDetailCacheCountForTesting, cache.count,
+                       "the property must read the cache")
+        XCTAssertEqual(viewer.nativeDetailCacheCountForTesting, diagnostics.cpuCacheTiles)
+        XCTAssertGreaterThanOrEqual(diagnostics.cpuCacheTiles, diagnostics.visibleTiles)
+    }
+
     /// The budget the policy plans against is the budget the cache enforces.
     func testThePolicyBudgetIsTheCacheBudget() throws {
         let (viewer, controller, cache, scheduler) = try makeViewer()
@@ -198,14 +215,22 @@ final class WarmResidencyTests: XCTestCase {
                        "switching variant drops the other flavour")
     }
 
+    private func tileForBilling(_ renderer: MetalImageRenderer, x: Int) throws -> NativeTile {
+        NativeTile(key: NativeTileKey(sourcePath: "/tmp/billing.png", tileSize: 64, x: x, y: 0),
+                   sourceRect: CGRect(x: x * 64, y: 0, width: 64, height: 64),
+                   image: try XCTUnwrap(renderer.encodedTileImage(width: 64, height: 64)))
+    }
+
     /// A tile the user just looked at survives a pan away and back (LRU by use, not insertion).
     func testGpuCacheIsLruByUse() throws {
         guard let device = MTLCreateSystemDefaultDevice(),
               let renderer = MetalImageRenderer(device: device) else {
             throw XCTSkip("no Metal device")
         }
-        renderer.tileTextureBudget = 3 * MetalImageRenderer.textureBytes(width: 64, height: 64,
-                                                                        mipmapped: false)
+        // The budget is built from the *billed* cost, which is what the cache compares against.
+        let probe = try XCTUnwrap(renderer.prepareTexture(for: try tileForBilling(renderer, x: 80),
+                                                          variant: .baseOnly))
+        renderer.tileTextureBudget = 3 * MetalImageRenderer.byteCost(of: probe)
         func tile(_ x: Int) throws -> NativeTile {
             NativeTile(key: NativeTileKey(sourcePath: "/tmp/y.png", tileSize: 64, x: x, y: 0),
                        sourceRect: CGRect(x: x * 64, y: 0, width: 64, height: 64),
@@ -215,15 +240,15 @@ final class WarmResidencyTests: XCTestCase {
         _ = renderer.prepareTexture(for: first, variant: .baseOnly)
         for x in 1...2 { _ = renderer.prepareTexture(for: try tile(x), variant: .baseOnly) }
         // Touch the oldest so it is the most recently used, then force eviction.
-        let hitsBefore = renderer.tileTextureDiagnostics().hits
+        let hitsBefore = renderer.tileTextureDiagnostics().foregroundHits
         _ = renderer.prepareTexture(for: first, variant: .baseOnly)
-        XCTAssertEqual(renderer.tileTextureDiagnostics().hits, hitsBefore + 1)
+        XCTAssertEqual(renderer.tileTextureDiagnostics().foregroundHits, hitsBefore + 1)
         _ = renderer.prepareTexture(for: try tile(3), variant: .baseOnly)
         XCTAssertEqual(renderer.tileTextureDiagnostics().resident, 3, "the budget holds three tiles")
         // The tile that was *not* touched most recently must be the one that went.
         let survivor = renderer.prepareTexture(for: first, variant: .baseOnly)
         XCTAssertNotNil(survivor, "the recently used tile survives")
-        XCTAssertEqual(renderer.tileTextureDiagnostics().hits, hitsBefore + 2,
+        XCTAssertEqual(renderer.tileTextureDiagnostics().foregroundHits, hitsBefore + 2,
                        "and it is a hit, not a re-upload")
     }
 
