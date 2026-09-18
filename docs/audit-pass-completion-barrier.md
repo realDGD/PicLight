@@ -145,5 +145,5 @@ shows no abnormal growth of *anything it prints*, which is not the same measurem
 
 ## 18. Commit SHA
 
-`3cf3e34` (barrier fix), report commit follows, pushed to `perf/bounded-metal-design` with a clean
+`3edfcce` (barrier fix), report commit follows, pushed to `perf/bounded-metal-design` with a clean
 tree.
