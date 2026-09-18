@@ -26,6 +26,9 @@ public final class ImageCanvasView: NSView {
     public var nativeTiles: [NativeTile] = [] {
         didSet {
             guard nativeTiles.map({ $0.key }) != oldValue.map({ $0.key }) else { return }
+            // Tiles on screen are protected from the texture budget: a warm upload must never evict
+            // what is being drawn.
+            metalRenderer?.protectedTileKeys = Set(nativeTiles.map { $0.key })
             pushToMetal()
             needsDisplay = true
         }

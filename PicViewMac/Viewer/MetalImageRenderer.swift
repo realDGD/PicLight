@@ -97,6 +97,10 @@ public final class MetalImageRenderer {
     }
 
     private var tileTextures: [TileTextureKey: MTLTexture] = [:]
+    /// Tiles on screen: the budget may not evict them, however many warm tiles are queued behind
+    /// them. Measured without this, a 204-tile warm upload at the 192 MiB budget evicted the
+    /// visible tiles that had been uploaded first.
+    public var protectedTileKeys: Set<NativeTileKey> = []
     private var tileTextureOrder: [TileTextureKey] = []
     private var tileTextureStats = (uploads: 0, hits: 0, background: 0, synchronous: 0)
     /// Bytes of tile texture storage, including each tile's mip chain.
@@ -322,11 +326,17 @@ public final class MetalImageRenderer {
 
     /// LRU by use, not by insertion.
     private func evictTileTexturesIfNeededLocked() {
-        while tileTextureBytes > tileTextureBudget, let oldest = tileTextureOrder.first {
-            tileTextureOrder.removeFirst()
-            if let texture = tileTextures.removeValue(forKey: oldest) {
+        var index = 0
+        while tileTextureBytes > tileTextureBudget, index < tileTextureOrder.count {
+            let candidate = tileTextureOrder[index]
+            if protectedTileKeys.contains(candidate.tile) {
+                index += 1
+                continue
+            }
+            tileTextureOrder.remove(at: index)
+            if let texture = tileTextures.removeValue(forKey: candidate) {
                 tileTextureBytes -= Self.textureBytes(width: texture.width, height: texture.height,
-                                                      mipmapped: oldest.variant == .mipmapped)
+                                                      mipmapped: candidate.variant == .mipmapped)
             }
         }
     }

@@ -208,10 +208,10 @@ enum BenchTrace {
                     ? viewer.canvasViewForTesting.bounds.width / viewport.zoomScale : 0
                 let sourceLongEdge = viewer.viewerState.descriptor?.displayPixelSize.width ?? 48000
                 viewport.normalizedCenter = CGPoint(
-                    x: viewport.normalizedCenter.x + (visibleSourceWidth * 0.5 / sourceLongEdge),
+                    x: viewport.normalizedCenter.x + (visibleSourceWidth * 1.0 / sourceLongEdge),
                     y: viewport.normalizedCenter.y)
                 viewer.canvasViewportForTesting = viewport
-                mark("PAN half a viewport to the right")
+                mark("PAN one viewport to the right")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     reportResidency(viewer: viewer, label: "after pan")
                 }

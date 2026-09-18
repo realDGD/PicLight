@@ -316,12 +316,18 @@ if let renderer, device != nil {
         let warmTiles = box.all
         let visibleTiles = warmTiles.filter { $0.sourceRect.intersects(visible) }
         for (label, tiles) in [("visible", visibleTiles), ("visible+1ring", warmTiles)] {
-            let uploadStart = monotonicNS()
-            var uploaded = 0
-            for tile in tiles where renderer.prepareTexture(for: tile, variant: .baseOnly) != nil { uploaded += 1 }
-            let uploadMS = millis(uploadStart, monotonicNS())
-            print(String(format: "  GPU upload (\(label)): %d tiles, %.1f ms on the calling thread", uploaded, uploadMS)
-                  + ", \(human(renderer.tileTextureBytes)) resident")
+            for variant in [MetalImageRenderer.TileTextureVariant.baseOnly, .mipmapped] {
+                renderer.dropTileTextures(of: variant == .baseOnly ? .mipmapped : .baseOnly)
+                let uploadStart = monotonicNS()
+                var uploaded = 0
+                for tile in tiles where renderer.prepareTexture(for: tile, variant: variant) != nil {
+                    uploaded += 1
+                }
+                let uploadMS = millis(uploadStart, monotonicNS())
+                let name = variant == .baseOnly ? "no mip" : "mip"
+                print(String(format: "  GPU upload (\(label), \(name)): %d tiles, %.1f ms on the calling thread",
+                             uploaded, uploadMS) + ", \(human(renderer.tileTextureBytes)) resident")
+            }
         }
     }
 }

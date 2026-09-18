@@ -1,0 +1,40 @@
+MetalLibraryLocator: no compiled default.metallib in the resource bundle; compiling the shipped ImageShaders.metal at first use (install the Metal toolchain with `xcodebuild -downloadComponent MetalToolchain` to package a compiled library)
+warmbench: opening 万萝图.png
+scale 1.0: starting pass for plan warm margin 1.00 decodeRect (19968.0, 13312.0, 7680.0, 5120.0)
+scale 1.0: pass returned
+scales done; GPU section
+warmbench: 万萝图.png 48000x32000, viewport 2400x1600 backing px, tile 512
+
+=== physicalScale 1.0 — visible source 2400x1600 ===
+  strategy                  tiles   tile bytes   region bytes   region
+  visible only              24      24.0 MiB     24.0 MiB       0.02 GiB
+  visible+1ring (current)   48      48.0 MiB     48.0 MiB       0.05 GiB
+  warm margin 0.25          48      48.0 MiB     48.0 MiB       0.05 GiB
+  warm margin 0.50          70      70.0 MiB     70.0 MiB       0.07 GiB
+  warm margin 1.00          150     150.0 MiB    150.0 MiB      0.15 GiB
+  POLICY plan: margin 1.00, 150 tiles, 9980 ms, peak footprint 162.9 MiB, peak RSS 0.17 GiB
+  pass: 150 tiles, 150.0 MiB, 9988 ms, first visible tile 8859 ms, peak footprint 165.0 MiB, peak RSS 0.17 GiB
+  pan (+x)  strategy                  visible   warm hits  time-to-sharp
+  0.5       visible only              24        66.7%      9988 ms (one pass)
+  0.5       visible+1ring (current)   24        83.3%      9988 ms (one pass)
+  0.5       warm margin 0.25          24        83.3%      9988 ms (one pass)
+  0.5       warm margin 0.50          24        100.0%     0 ms (GPU upload only)
+  0.5       warm margin 1.00          24        100.0%     0 ms (GPU upload only)
+  1.0       visible only              20        20.0%      9988 ms (one pass)
+  1.0       visible+1ring (current)   20        40.0%      9988 ms (one pass)
+  1.0       warm margin 0.25          20        40.0%      9988 ms (one pass)
+  1.0       warm margin 0.50          20        60.0%      9988 ms (one pass)
+  1.0       warm margin 1.00          20        100.0%     0 ms (GPU upload only)
+  2.0       visible only              24        0.0%       9988 ms (one pass)
+  2.0       visible+1ring (current)   24        0.0%       9988 ms (one pass)
+  2.0       warm margin 0.25          24        0.0%       9988 ms (one pass)
+  2.0       warm margin 0.50          24        0.0%       9988 ms (one pass)
+  2.0       warm margin 1.00          24        16.7%      9988 ms (one pass)
+  GPU upload (visible, no mip): 24 tiles, 9.7 ms on the calling thread, 24.0 MiB resident
+  GPU upload (visible, mip): 24 tiles, 19.6 ms on the calling thread, 32.0 MiB resident
+  GPU upload (visible+1ring, no mip): 204 tiles, 67.2 ms on the calling thread, 192.0 MiB resident
+  GPU upload (visible+1ring, mip): 204 tiles, 126.9 ms on the calling thread, 192.0 MiB resident
+
+| strategy | scale | peak footprint | peak RSS | tile bytes | traversals | first visible tile | report |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| warm margin 1.00 | 1.0 | 165.0 MiB | 0.17 GiB | 150.0 MiB | 1 | 8859 ms | — |
