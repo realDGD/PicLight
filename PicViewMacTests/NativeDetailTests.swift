@@ -86,6 +86,38 @@ final class NativeDetailTests: XCTestCase {
                                                            physicalScale: 4), "magnifying cannot add detail")
     }
 
+    /// 100 % means one source pixel per *physical* pixel, so the same window asks for native
+    /// detail at different zoom levels on a 1× and a 2× display — and a backing-scale change
+    /// must therefore re-evaluate the requirement (§4).
+    func testOneHundredPercentMeansOneSourcePixelPerPhysicalPixelOnEitherDisplay() {
+        let sourceLongEdge = 48000, proxyLongEdge = 8192
+        // 2× display: 100 % is zoomScale 0.5, and physicalScale is 1.
+        let retinaZoom: CGFloat = 0.5, retinaScale: CGFloat = 2
+        XCTAssertEqual(retinaZoom * retinaScale, 1, accuracy: 0.0001)
+        XCTAssertTrue(NativeTilePlanner.needsNativeDetail(sourceLongEdge: sourceLongEdge,
+                                                          proxyLongEdge: proxyLongEdge,
+                                                          physicalScale: retinaZoom * retinaScale),
+                      "100 % on a 2× display is past the proxy")
+        // 1× display: the same 100 % is zoomScale 1, still physicalScale 1.
+        let plainZoom: CGFloat = 1, plainScale: CGFloat = 1
+        XCTAssertEqual(plainZoom * plainScale, 1, accuracy: 0.0001)
+        XCTAssertTrue(NativeTilePlanner.needsNativeDetail(sourceLongEdge: sourceLongEdge,
+                                                          proxyLongEdge: proxyLongEdge,
+                                                          physicalScale: plainZoom * plainScale))
+        // Moving the window to the other display changes physicalScale without a gesture, so
+        // the requirement has to be recomputed from the new backing scale, not remembered.
+        let sameWindowOnRetina = plainZoom * retinaScale          // 2.0: magnified on Retina
+        XCTAssertTrue(NativeTilePlanner.needsNativeDetail(sourceLongEdge: sourceLongEdge,
+                                                          proxyLongEdge: proxyLongEdge,
+                                                          physicalScale: sameWindowOnRetina))
+        // And a fitted view on either display still does not need tiles: a 1200-point window
+        // showing all 48000 pixels is 0.025 points per source pixel, 0.05 backing pixels per
+        // source pixel on a 2× display — well under the proxy's own 0.17 ratio.
+        XCTAssertFalse(NativeTilePlanner.needsNativeDetail(sourceLongEdge: sourceLongEdge,
+                                                           proxyLongEdge: proxyLongEdge,
+                                                           physicalScale: 0.025 * 2))
+    }
+
     func testPlanCoversTheViewportAndOneRingNearestFirst() {
         let source = CGSize(width: 48000, height: 32000)
         let rect = CGRect(x: 10000, y: 8000, width: 2400, height: 1600)
