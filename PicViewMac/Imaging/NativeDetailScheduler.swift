@@ -104,8 +104,12 @@ public actor NativeDetailScheduler {
         return snapshot
     }
 
-    public func cachedTiles(for plan: NativeTilePlan, source: URL, pageIndex: Int = 0) -> [NativeTile] {
-        plan.visible.compactMap { cache.tile(for: key($0, source: source, pageIndex: pageIndex)) }
+    /// Tiles a plan wants that are already decoded, in the plan's order. `visibleOnly` keeps the
+    /// canvas's draw list to what is actually on screen while the rest stays warm.
+    public func cachedTiles(for plan: NativeTilePlan, source: URL, pageIndex: Int = 0,
+                            visibleOnly: Bool = false) -> [NativeTile] {
+        let coordinates = visibleOnly ? plan.visible : plan.allCoordinates
+        return coordinates.compactMap { cache.tile(for: key($0, source: source, pageIndex: pageIndex)) }
     }
 
     private func key(_ coordinate: TileCoordinate, source: URL, pageIndex: Int) -> NativeTileKey {

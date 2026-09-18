@@ -604,11 +604,22 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let visible = NativeTilePlanner.visibleSourceRect(viewport: viewerState.viewport,
                                                           sourcePixelSize: sourceSize,
                                                           viewSize: canvas.bounds.size)
-        guard let plan = NativeTilePlanner.plan(sourceRect: visible, sourcePixelSize: sourceSize,
-                                                tileSize: nativeDetailTileSize) else {
+        // Warm plan instead of a one-tile ring: one viewport in each direction, clamped by the
+        // CPU tile budget. The sweep (results/warm-strategy-sweep.txt) is what sets the budget —
+        // measured, the full nine-grid is 3.38 GiB at physicalScale 0.2 and 150 MiB at 1.0.
+        guard let warmPlan = WarmAreaPolicy.plan(visible: visible, sourcePixelSize: sourceSize,
+                                                 tileSize: nativeDetailTileSize,
+                                                 cpuBudgetBytes: nativeDetailCPUBudgetBytes,
+                                                 margin: WarmAreaPolicy.requestedMargin) else {
             publishNativeTiles([])
             return
         }
+        nativeDetailClampedByBudget = warmPlan.clampedByBudget
+        // Tiles are minified at the low end of the native-detail range (measured threshold ≈ 0.2),
+        // where the D-series mipmap argument applies; magnified tiles skip the chain, which also
+        // keeps their upload out of the main thread's way.
+        canvas.setTileMipmapsEnabled(physicalScale < 1.0)
+        let plan = warmPlan.plan
         detailPlan = plan
         detailSource = item.url
         publishNativeTiles([])
@@ -637,6 +648,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         nativeDetailTileCount = tiles.count
     }
 
+    /// Hands the warm (not yet visible) tiles to the renderer's background uploader, so a pan onto
+    /// them is a draw rather than an upload. Bounded by the GPU budget the renderer was given.
+    private func warmTileTextures(_ tiles: [NativeTile], visibleKeys: Set<NativeTileKey>) {
+        let warm = tiles.filter { !visibleKeys.contains($0.key) }
+        guard !warm.isEmpty else { return }
+        canvas.warmTileTextures(warm)
+    }
+
     /// Tiles currently drawn, for the acceptance runner and the tests.
     private(set) var nativeDetailTileCount = 0
 
@@ -645,6 +664,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// The canvas itself, for measurements that map view points to source pixels.
     var canvasViewForTesting: ImageCanvasView { canvas }
+
+    /// Measured budget for decoded tiles (results/warm-strategy-sweep.txt): at 0.5 the full
+    /// nine-grid is 580 MiB and at 0.2 it is 3.38 GiB, so 256 MiB keeps the nine-grid at 1.0 and
+    /// 2.0 while clamping it at 0.5 and 0.2 — where the viewport itself is already hundreds of
+    /// megabytes and visible tiles win unconditionally.
+    var nativeDetailCPUBudgetBytes: Int { 256 * 1024 * 1024 }
+
+    /// Set when the last warm plan was clamped by the budget, for tests and the acceptance runner.
+    private(set) var nativeDetailClampedByBudget = false
 
     /// Tiles resident in the backend's cache, synchronously readable for instrumentation.
     var nativeDetailCacheCountForTesting: Int { nativeDetailCacheSnapshot() }
@@ -773,8 +801,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         guard let plan = detailPlan, let url = detailSource else { return }
         Task { [weak self] in
             guard let self else { return }
-            let tiles = await self.nativeDetail.cachedTiles(for: plan, source: url)
-            await MainActor.run { self.publishNativeTiles(tiles) }
+            let visible = await self.nativeDetail.cachedTiles(for: plan, source: url)
+            await MainActor.run {
+                self.publishNativeTiles(visible)
+                self.warmTileTextures(visible, visibleKeys: Set(visible.map { $0.key }))
+            }
         }
     }
 

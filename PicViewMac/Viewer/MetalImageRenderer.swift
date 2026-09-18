@@ -81,6 +81,8 @@ public final class MetalImageRenderer {
     private var proxyTextureKey: CGImage?
     /// Tile textures, keyed by tile identity rather than by image pointer: the same tile
     /// arrives again after a pan and must not be uploaded twice.
+    private let tileTextureLock = NSLock()
+    private let uploadQueue = DispatchQueue(label: "picviewmac.tile-textures", qos: .utility)
     private var tileTextures: [NativeTileKey: MTLTexture] = [:]
     private var tileTextureOrder: [NativeTileKey] = []
     /// Bytes of tile texture storage, including each tile's mip chain.
@@ -212,23 +214,44 @@ public final class MetalImageRenderer {
 
     /// Uploads one tile, reusing its texture if it is already resident, and returns it. The
     /// caller binds exactly this texture, so no shared mutable "current texture" can be stale.
+    /// Drops tile textures whose tiles are no longer cached, so GPU memory follows the tile
+    /// cache instead of growing on its own.
+    /// Uploads one tile, reusing its texture if it is already resident, and returns it. The caller
+    /// binds exactly this texture, so no shared mutable "current texture" can be stale.
     @discardableResult
     public func prepareTexture(for tile: NativeTile) -> MTLTexture? {
-        if let existing = tileTextures[tile.key] { return existing }
-        // Tiles are requested only when the proxy is out-resolved, i.e. when they are magnified,
-        // so a mip chain buys them nothing — and generating one costs a synchronous GPU wait per
-        // tile on the main thread, measured as a 170 ms stall the first time tiles arrive.
-        guard let uploaded = uploadTexture(for: tile.image, mipmapped: false) else { return nil }
+        tileTextureLock.lock()
+        if let existing = tileTextures[tile.key] { tileTextureLock.unlock(); return existing }
+        tileTextureLock.unlock()
+        // Mipmaps only where the D-series argument applies: warm tiles are requested as soon as the
+        // proxy is out-resolved, which includes the *low* magnifications (measured threshold ≈ 0.2
+        // for a 48000-pixel source) where a tile is minified up to 5:1. Generation happens on the
+        // upload queue, never as a synchronous wait on the main thread.
+        guard let uploaded = uploadTexture(for: tile.image, mipmapped: tileWantsMipmaps) else { return nil }
+        tileTextureLock.lock()
         tileTextures[tile.key] = uploaded
         tileTextureOrder.append(tile.key)
         tileTextureBytes += uploaded.width * uploaded.height * 4
-        evictTileTexturesIfNeeded()
+        evictTileTexturesIfNeededLocked()
+        tileTextureLock.unlock()
         return uploaded
     }
 
-    /// Drops tile textures whose tiles are no longer cached, so GPU memory follows the tile
-    /// cache instead of growing on its own.
+    /// Uploads tiles off the main thread. The texture cache is lock-protected for this; the encode
+    /// path stays main-thread-only and reads the cache under the same lock.
+    public func warmTilesInBackground(_ tiles: [NativeTile]) {
+        guard !tiles.isEmpty else { return }
+        uploadQueue.async { [weak self] in
+            guard let self else { return }
+            for tile in tiles { _ = self.prepareTexture(for: tile) }
+        }
+    }
+
+    /// Whether warm tiles carry a mip chain; set by the viewer from the current magnification.
+    public var tileWantsMipmaps = false
+
     public func trimTileTextures(keeping keys: Set<NativeTileKey>) {
+        tileTextureLock.lock(); defer { tileTextureLock.unlock() }
         let doomed = tileTextures.keys.filter { !keys.contains($0) }
         for key in doomed {
             if let texture = tileTextures.removeValue(forKey: key) {
@@ -238,7 +261,7 @@ public final class MetalImageRenderer {
         tileTextureOrder.removeAll { !tileTextures.keys.contains($0) }
     }
 
-    private func evictTileTexturesIfNeeded() {
+    private func evictTileTexturesIfNeededLocked() {
         while tileTextureBytes > tileTextureBudget, let oldest = tileTextureOrder.first {
             tileTextureOrder.removeFirst()
             if let texture = tileTextures.removeValue(forKey: oldest) {
@@ -324,6 +347,7 @@ public final class MetalImageRenderer {
                        viewSize: CGSize, contentsScale: CGFloat,
                        into encoder: MTLRenderCommandEncoder) {
         guard let texture = prepareTexture(for: tile) else { return }
+        _ = texture
         encodeQuad(sourceRect: tile.sourceRect, texture: texture,
                    sourcePixelSize: sourcePixelSize, viewport: viewport, viewSize: viewSize,
                    contentsScale: contentsScale, into: encoder)

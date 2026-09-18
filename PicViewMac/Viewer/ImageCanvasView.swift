@@ -400,6 +400,17 @@ public final class ImageCanvasView: NSView {
         metalRenderer?.trimTileTextures(keeping: keys)
     }
 
+    /// Uploads warm tiles on the renderer's background queue, so a pan onto them is a draw
+    /// rather than a main-thread upload (measured: 204 tiles cost 88 ms synchronously).
+    public func warmTileTextures(_ tiles: [NativeTile]) {
+        metalRenderer?.warmTilesInBackground(tiles)
+    }
+
+    /// Mipmaps for tiles are worth their cost only when tiles are minified (physicalScale < 1).
+    public func setTileMipmapsEnabled(_ enabled: Bool) {
+        metalRenderer?.tileWantsMipmaps = enabled
+    }
+
     public override func layout() {
         super.layout()
         if let metalSurface, metalSurface.frame != bounds {
