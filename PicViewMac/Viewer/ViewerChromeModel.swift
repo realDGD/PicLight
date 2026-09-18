@@ -117,6 +117,82 @@ public struct ToolDockVisibilityModel: Sendable {
     public var snapshot: Bool { visible }
 }
 
+/// Pure idle-fade state machine for the bottom info HUD.
+///
+/// The HUD is informational: it appears when something it describes changes, and fades once
+/// nothing has changed for a moment. It deliberately has no reveal zone and no pointer rule.
+/// The pointer crossing the image is not an event about the image, so it must not summon a
+/// readout of the image's position, zoom and dimensions.
+public struct InfoHUDVisibilityModel: Sendable {
+    public struct Timing: Sendable {
+        /// Idle time before the fade. The spec asks for 1.5–2.0 s; this sits in the middle,
+        /// long enough to read three fields, short enough to get out of the way.
+        public var idleFadeDelay: TimeInterval = 1.75
+
+        public init() {}
+    }
+
+    public var timing = Timing()
+    public private(set) var visible = false
+    /// Whether there is an image for the HUD to describe. Without one it stays away and its
+    /// fade timer does not start.
+    public private(set) var hasImage = false
+    /// Immersive mode takes the HUD away immediately, and restores nothing on exit until the
+    /// next meaningful change — immersive is the user asking for fewer readouts.
+    public var immersive = false
+
+    private var lastChangeAt: TimeInterval?
+    private var hasPendingFade = false
+
+    public init() {}
+
+    /// Something the HUD describes changed: a new image, a new page, a new zoom, or a
+    /// viewport that moved. This is the only way the HUD becomes visible.
+    public mutating func noteMeaningfulChange(at time: TimeInterval) {
+        lastChangeAt = time
+        hasPendingFade = true
+        if hasImage, !immersive { visible = true }
+    }
+
+    public mutating func setHasImage(_ value: Bool, at time: TimeInterval) {
+        guard value != hasImage else { return }
+        hasImage = value
+        if value {
+            noteMeaningfulChange(at: time)
+        } else {
+            visible = false
+            hasPendingFade = false
+            lastChangeAt = nil
+        }
+    }
+
+    public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
+        immersive = value
+        if value {
+            visible = false
+            // The pending fade is cancelled, not merely postponed: leaving immersive mode must
+            // not produce a HUD that was never asked for.
+            hasPendingFade = false
+            lastChangeAt = nil
+        }
+    }
+
+    /// Recomputes visibility. Returns `true` when it changed.
+    @discardableResult
+    public mutating func update(at time: TimeInterval) -> Bool {
+        let before = visible
+        if !hasImage || immersive {
+            visible = false
+        } else if hasPendingFade, let lastChangeAt, time - lastChangeAt >= timing.idleFadeDelay {
+            visible = false
+            hasPendingFade = false
+        }
+        return visible != before
+    }
+
+    public var snapshot: Bool { visible }
+}
+
 /// Pure hover/idle state machine for the viewer's overlay chrome. The window
 /// management strip is the standard AppKit titlebar and is always visible, so
 /// there is no top state left to track here.
@@ -124,7 +200,7 @@ public struct ToolDockVisibilityModel: Sendable {
 /// The three surfaces it tracks — the thumbnail drawer, the minimap and the tool dock — are
 /// independent: each has its own inputs and its own rule. They share the tick that evaluates
 /// them and nothing else, so a pointer event that concerns one cannot move another.
-public struct HoverVisibilityModel: Sendable {
+public struct ViewerChromeModel: Sendable {
     public struct Timing: Sendable {
         public var minimapIdleFadeDelay: TimeInterval = 1.5
 
@@ -132,9 +208,11 @@ public struct HoverVisibilityModel: Sendable {
     }
 
     public var timing = Timing()
-    /// The dock's own state machine. Independent of the drawer's: the two share the tick that
-    /// drives them, never a flag.
+    /// The four overlay surfaces, each with its own state, its own inputs and its own rules.
+    /// They share this tick and nothing else: there is no single "chrome is visible" flag, and no
+    /// pointer event can move a surface whose rule does not mention the pointer.
     public var toolDock = ToolDockVisibilityModel()
+    public var infoHUD = InfoHUDVisibilityModel()
 
     /// Whether the thumbnail drawer is open. Explicitly controlled — see `setDrawerOpen`.
     ///
@@ -191,6 +269,7 @@ public struct HoverVisibilityModel: Sendable {
     public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
         immersive = value
         toolDock.setImmersive(value, at: time)
+        infoHUD.setImmersive(value, at: time)
         // Immersive suppresses the drawer's *appearance* without forgetting the user's choice, so
         // leaving immersive mode restores exactly the state they left.
         if value { minimapVisible = false }
@@ -216,6 +295,7 @@ public struct HoverVisibilityModel: Sendable {
         }
 
         toolDock.update(at: time)
+        infoHUD.update(at: time)
 
         return snapshot != before
     }
@@ -224,15 +304,19 @@ public struct HoverVisibilityModel: Sendable {
     public var drawerVisible: Bool { drawerOpen && !immersive }
 
     public var snapshot: Snapshot {
-        Snapshot(drawer: drawerVisible, minimap: minimapVisible, toolDock: toolDock.visible)
+        Snapshot(drawer: drawerVisible, minimap: minimapVisible, toolDock: toolDock.visible,
+                 infoHUD: infoHUD.visible)
     }
 
     public struct Snapshot: Equatable, Sendable {
         public let drawer: Bool
         public let minimap: Bool
         public let toolDock: Bool
+        public let infoHUD: Bool
     }
 
     /// Keyboard navigation must always work, even with all overlay chrome hidden.
-    public var chromeHidden: Bool { !drawerVisible && !minimapVisible && !toolDock.visible }
+    public var chromeHidden: Bool {
+        !drawerVisible && !minimapVisible && !toolDock.visible && !infoHUD.visible
+    }
 }

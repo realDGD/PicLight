@@ -162,7 +162,7 @@ final class DrawerPinTests: XCTestCase {
         TestAppKit.ensureApplication()
     }
     func testAnOpenDrawerStaysOpenWithThePointerAnywhere() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.2)
         XCTAssertTrue(model.drawerVisible)
@@ -176,7 +176,7 @@ final class DrawerPinTests: XCTestCase {
     }
 
     func testClosingTheDrawerIsExplicitToo() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.1)
         XCTAssertTrue(model.drawerVisible)
@@ -187,7 +187,7 @@ final class DrawerPinTests: XCTestCase {
     }
 
     func testAnOpenDrawerIsTemporarilyHiddenInImmersiveModeAndComesBack() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.1)
         XCTAssertTrue(model.drawerVisible)

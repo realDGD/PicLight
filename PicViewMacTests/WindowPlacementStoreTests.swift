@@ -86,7 +86,7 @@ final class HoverVisibilityTests: XCTestCase {
     /// The drawer is explicit. There is no delay to wait out and no timer to run down: the state
     /// is exactly what `setDrawerOpen` was last told, and time passing changes nothing.
     func testTheDrawerOpensAndClosesOnlyWhenTold() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         XCTAssertFalse(model.drawerVisible, "closed until the user opens it")
         for time in [0.05, 0.2, 1.0, 60.0] {
             model.pointerMoved(at: time)
@@ -105,7 +105,7 @@ final class HoverVisibilityTests: XCTestCase {
 
     /// Toggling is the control the titlebar button and the command use.
     func testTogglingTheDrawerFlipsItAndNothingElseDoes() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.toggleDrawer(at: 0)
         XCTAssertTrue(model.drawerVisible)
         model.setImmersive(true, at: 0.1)
@@ -119,7 +119,7 @@ final class HoverVisibilityTests: XCTestCase {
     /// The pointer over the drawer surface is activity and nothing more. It must not be able to
     /// close a drawer the user opened, and it must not be able to open one they closed.
     func testPointerOverTheDrawerSurfaceCannotChangeIt() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.setDrawerOpen(true, at: 0)
         for step in 1...20 {
             model.pointerOverDrawer(at: Double(step))
@@ -136,7 +136,7 @@ final class HoverVisibilityTests: XCTestCase {
     }
 
     func testPointerActivityKeepsTheMinimapAliveAndFitHidesIt() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.setZoomedIn(true, at: 0)
         XCTAssertTrue(model.update(at: 0.2))
         XCTAssertTrue(model.minimapVisible)
@@ -154,7 +154,7 @@ final class HoverVisibilityTests: XCTestCase {
     }
 
     func testImmersiveModeHidesOverlayChromeButKeepsTheChoice() {
-        var model = HoverVisibilityModel()
+        var model = ViewerChromeModel()
         model.setDrawerOpen(true, at: 0)
         _ = model.update(at: 0.1)
         XCTAssertTrue(model.drawerVisible)
@@ -172,7 +172,7 @@ final class HoverVisibilityTests: XCTestCase {
     /// The model no longer carries any window-management state: the titlebar is
     /// AppKit's and is always visible.
     func testModelHasNoTopChromeState() {
-        let model = HoverVisibilityModel()
+        let model = ViewerChromeModel()
         XCTAssertTrue(model.chromeHidden, "only the drawer and minimap are model state")
         XCTAssertFalse(model.drawerVisible)
         XCTAssertFalse(model.minimapVisible)

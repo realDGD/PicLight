@@ -41,7 +41,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
 
-    private var hover = HoverVisibilityModel()
+    private var chrome = ViewerChromeModel()
     private var chromeTimer: Timer?
     private var animationTimer: Timer?
     private let clock = AnimationClock()
@@ -142,18 +142,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// position can change it.
     public func setDrawerOpen(_ open: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.setDrawerOpen(open, at: now)
-        hover.update(at: now)
+        chrome.setDrawerOpen(open, at: now)
+        chrome.update(at: now)
         applyChromeVisibility()
-        onDrawerOpenChanged?(hover.drawerOpen)
+        onDrawerOpenChanged?(chrome.drawerOpen)
     }
 
     public func toggleDrawer() {
-        setDrawerOpen(!hover.drawerOpen)
+        setDrawerOpen(!chrome.drawerOpen)
     }
 
     /// Whether the drawer is open, immersive mode aside.
-    public var isDrawerOpen: Bool { hover.drawerOpen }
+    public var isDrawerOpen: Bool { chrome.drawerOpen }
 
     func toggleDrawerForTesting() {
         toggleDrawer()
@@ -165,18 +165,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// statement about the pointer, not an app setting.
     public func setToolDockPinned(_ pinned: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.toolDock.setPinned(pinned, at: now)
+        chrome.toolDock.setPinned(pinned, at: now)
         toolDock.setPinned(pinned)
-        hover.update(at: now)
+        chrome.update(at: now)
         applyChromeVisibility()
     }
 
     public func toggleToolDockPinned() {
-        setToolDockPinned(!hover.toolDock.pinned)
+        setToolDockPinned(!chrome.toolDock.pinned)
     }
 
     /// Whether the tool dock is currently held open.
-    public var isToolDockPinned: Bool { hover.toolDock.pinned }
+    public var isToolDockPinned: Bool { chrome.toolDock.pinned }
 
     func toggleToolDockPinForTesting() {
         toggleToolDockPinned()
@@ -307,8 +307,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         rootView.onPointerExited = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.hover.toolDock.setPointer(inZone: false, at: now)
-            self.hover.update(at: now)
+            self.chrome.toolDock.setPointer(inZone: false, at: now)
+            self.chrome.update(at: now)
             self.applyChromeVisibility()
         }
 
@@ -327,6 +327,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.onViewportChange = { [weak self] viewport in
             guard let self else { return }
             self.viewerState.viewport = viewport
+            // A viewport the user moved is a meaningful change: the readout describes it, so it
+            // comes back while the gesture is happening and fades when the gesture stops.
+            self.chrome.infoHUD.noteMeaningfulChange(at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
             self.refreshBottomBar()
             // Pan moves the tile window; it never re-evaluates the whole-image level.
@@ -334,8 +337,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         canvas.onZoomChanged = { [weak self] in
             guard let self else { return }
-            self.hover.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
-            self.hover.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
+            let now = Date().timeIntervalSinceReferenceDate
+            self.chrome.infoHUD.noteMeaningfulChange(at: now)
+            self.chrome.zoomActivity(at: now)
+            self.chrome.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
             self.scheduleNativeDetailUpdate()
             // Zooming in is the other way a bitmap becomes undersampled (§9.5), so the
@@ -346,11 +351,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.onPointerActivity = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.hover.pointerMoved(at: now)
+            self.chrome.pointerMoved(at: now)
         }
         canvas.onDoubleClickAction = { [weak self] in
             guard let self else { return }
-            self.hover.setImmersive(!self.hover.immersive, at: Date().timeIntervalSinceReferenceDate)
+            self.chrome.setImmersive(!self.chrome.immersive, at: Date().timeIntervalSinceReferenceDate)
             self.applyChromeVisibility()
         }
         canvas.onGeometryChange = { [weak self] in
@@ -1079,6 +1084,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func handle(event: DecodeEvent) {
         switch event {
         case let .head(head):
+            // The image (or its replacement) is on screen, so the HUD's readout is worth showing.
+            // This is the load/change trigger; it is deliberately not driven by the decode
+            // starting, which would show a readout for an image that has not arrived.
+            noteImageChangedForInfoHUD()
             viewerState.apply(head: head)
             displayedLevel = head.level
             inFlightLevel = nil
@@ -1480,27 +1489,47 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func tickChrome() {
         guard isViewLoaded else { return }
-        syncToolDockPresence()
-        if hover.update(at: Date().timeIntervalSinceReferenceDate) {
-            applyChromeVisibility()
-        }
+        syncChromePresence()
+        _ = chrome.update(at: Date().timeIntervalSinceReferenceDate)
+        // Compared against what was last *applied*, not against the model's own before/after
+        // diff: another entry point (an image load marking the HUD as described) can change the
+        // model between ticks, and a diff taken after that change cannot see it. Measured as a
+        // HUD that never appeared at all, because the load had already set `visible` before the
+        // tick that was supposed to apply it.
+        guard chrome.snapshot != appliedChromeSnapshot else { return }
+        applyChromeVisibility()
     }
 
-    /// The dock's state machine needs to know whether there is an image; every entry
-    /// point that reads a dock decision tells it first.
-    private func syncToolDockPresence() {
-        hover.toolDock.setHasImage(viewerState.currentImage != nil,
-                                   at: Date().timeIntervalSinceReferenceDate)
+    /// The dock and the HUD both need to know whether there is an image; every entry point that
+    /// reads a chrome decision tells them first. Each model keeps its own copy of that fact and
+    /// its own rule about what to do with it.
+    private func syncChromePresence() {
+        let now = Date().timeIntervalSinceReferenceDate
+        let hasImage = viewerState.currentImage != nil
+        chrome.toolDock.setHasImage(hasImage, at: now)
+        chrome.infoHUD.setHasImage(hasImage, at: now)
     }
+
+    /// An image arrived, or a different one did. The HUD reports on the image, so this is the
+    /// change that brings it back — and it does so on both the load and the switch.
+    private func noteImageChangedForInfoHUD() {
+        chrome.infoHUD.noteMeaningfulChange(at: Date().timeIntervalSinceReferenceDate)
+    }
+
+    /// The chrome state the views are currently showing, so a tick can tell whether anything
+    /// needs re-applying.
+    private var appliedChromeSnapshot: ViewerChromeModel.Snapshot?
 
     private func applyChromeVisibility() {
-        syncToolDockPresence()
-        let snapshot = hover.snapshot
-        let immersive = hover.immersive
+        let snapshot = chrome.snapshot
+        appliedChromeSnapshot = snapshot
+        let immersive = chrome.immersive
         // The tool dock auto-hides: it follows its own model, which already folds in
         // the pin, the pointer and the immersive state.
         setDockChrome(visible: !immersive && snapshot.toolDock)
-        setChrome(bottomBar, visible: !immersive && viewerState.currentImage != nil)
+        // The HUD auto-hides: it follows its own idle model, which already folds in the image's
+        // presence and the immersive state.
+        setChrome(bottomBar, visible: snapshot.infoHUD)
         setChrome(drawer, visible: snapshot.drawer && !immersive)
         setChrome(minimap, visible: snapshot.minimap && !immersive)
         setChrome(infoCard, visible: !immersive && isInfoCardVisible)
@@ -1517,7 +1546,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func applyDrawerLayout() {
         // An open drawer reserves canvas width; there is no hover-only overlay state left for the
         // drawer to occupy, so the two are the same question.
-        let pinned = hover.drawerOpen
+        let pinned = chrome.drawerOpen
         guard pinned != isDrawerReservingSpace else { return }
         isDrawerReservingSpace = pinned
 
@@ -1634,7 +1663,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // but interactive dock over the image.
             DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) { [weak self] in
                 MainActor.assumeIsolated {
-                    guard let self, !self.hover.toolDock.visible,
+                    guard let self, !self.chrome.toolDock.visible,
                           self.toolDock.alphaValue < 0.01 else { return }
                     self.toolDock.isHidden = true
                 }
@@ -1671,13 +1700,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The dock's state, for diagnostics and tests.
     var toolDockVisibilityForTesting: (visible: Bool, pointerInZone: Bool, pinned: Bool,
                                        hasImage: Bool) {
-        (hover.toolDock.visible, hover.toolDock.pointerInZone, hover.toolDock.pinned,
-         hover.toolDock.hasImage)
+        (chrome.toolDock.visible, chrome.toolDock.pointerInZone, chrome.toolDock.pinned,
+         chrome.toolDock.hasImage)
     }
 
     func zone(forRootPoint point: CGPoint) -> ViewerPointerZone {
         zoneGeometry.zone(for: point, in: rootView.bounds,
-                          drawerVisible: hover.drawerVisible,
+                          drawerVisible: chrome.drawerVisible,
                           minimapRect: minimap.isHidden ? nil : minimap.frame)
     }
 
@@ -1685,9 +1714,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// tracking or from a test driving the same production path.
     func handlePointer(atRootPoint point: CGPoint) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.pointerMoved(at: now)
-        syncToolDockPresence()
-        hover.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
+        chrome.pointerMoved(at: now)
+        syncChromePresence()
+        chrome.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
 
         switch zone(forRootPoint: point) {
         case .topChrome:
@@ -1696,14 +1725,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .drawerSurface:
             // The pointer being over the drawer is activity, nothing more: it cannot open or
             // close anything.
-            hover.pointerOverDrawer(at: now)
+            chrome.pointerOverDrawer(at: now)
         case .minimapSurface:
-            hover.zoomActivity(at: now)
+            chrome.zoomActivity(at: now)
         case .canvas:
             break
         }
 
-        hover.update(at: now)
+        chrome.update(at: now)
         applyChromeVisibility()
     }
 
@@ -1757,7 +1786,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .previousPage:
             goToPage(-1)
         case .toggleImmersive:
-            hover.setImmersive(!hover.immersive, at: Date().timeIntervalSinceReferenceDate)
+            chrome.setImmersive(!chrome.immersive, at: Date().timeIntervalSinceReferenceDate)
             viewerState.toggleImmersive()
             applyChromeVisibility()
         case .toggleThumbnailDrawer:
@@ -1925,7 +1954,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     var chromeSnapshot: ChromeSnapshot {
         ChromeSnapshot(
             top: false, bottom: !bottomBar.isHidden,
-            drawer: hover.snapshot.drawer, minimap: hover.snapshot.minimap,
+            drawer: chrome.snapshot.drawer, minimap: chrome.snapshot.minimap,
             drawerRows: drawer.visibleRowCount,
             drawerReservedWidth: isDrawerReservingSpace ? currentDrawerWidth : 0,
             drawerWidth: currentDrawerWidth,
@@ -1944,13 +1973,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     func simulateImmersive(_ value: Bool) {
-        hover.setImmersive(value, at: Date().timeIntervalSinceReferenceDate)
+        chrome.setImmersive(value, at: Date().timeIntervalSinceReferenceDate)
         applyChromeVisibility()
     }
 
     func simulateZoomActivity() {
-        hover.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
-        hover.setZoomedIn(canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
+        chrome.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
+        chrome.setZoomedIn(canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
         applyChromeVisibility()
     }
 
@@ -1963,8 +1992,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         switch event.keyCode {
         case 53: // Escape leaves immersive mode first, then is ignored.
-            if hover.immersive {
-                hover.setImmersive(false, at: Date().timeIntervalSinceReferenceDate)
+            if chrome.immersive {
+                chrome.setImmersive(false, at: Date().timeIntervalSinceReferenceDate)
                 viewerState.toggleImmersive()
                 applyChromeVisibility()
             }
