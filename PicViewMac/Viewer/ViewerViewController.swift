@@ -688,6 +688,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 return
             }
             self.publicationStats.publicationRuns += 1
+            self.publicationStats.generation = Int(self.detailPublicationGeneration)
             self.publicationStats.visibleTilesMaterialized += visible.count
             self.publicationStats.warmTilesMaterialized += warm.count
             let mainStarted = Date()

@@ -111,6 +111,10 @@ final class PublicationGenerationTests: XCTestCase {
                        "nor hand the renderer the previous resident set")
         XCTAssertGreaterThanOrEqual(viewer.publicationDiagnostics().stalePublicationDiscarded, 1,
                                     "and the drop is counted")
+        // The reported generation has to be the live one: a diagnostics field that is never written
+        // reads as a constant and says nothing (it printed 0 in the first real-file run).
+        XCTAssertGreaterThanOrEqual(viewer.publicationDiagnostics().generation, 2,
+                                    "the generation must be reported, not left at its initial value")
     }
 
     /// A publication for the current plan still applies (the guard must not block everything).
