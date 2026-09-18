@@ -46,6 +46,8 @@ final class ThumbnailCellView: NSTableCellView {
         nameLabel.font = .systemFont(ofSize: 11)
         nameLabel.textColor = .secondaryLabelColor
         nameLabel.lineBreakMode = .byTruncatingMiddle
+        // The label yields to the card's width limits so it truncates instead of pushing.
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         nameLabel.alignment = .center
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -97,6 +99,11 @@ final class ThumbnailCellView: NSTableCellView {
             // And the card keeps a usable filename width even for an ultra-tall image, instead of
             // collapsing to a sliver around it.
             selectionBackground.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            // A very long filename must not stretch the card: without this the label's intrinsic
+            // width pulled the card past the drawer, because the card's width was bounded only from
+            // below.
+            selectionBackground.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor,
+                                                       constant: -12),
         ])
         // The box wants to be as large as the two caps allow; the aspect constraint below decides
         // how the size is split between width and height. The priority has to beat NSImageView's own

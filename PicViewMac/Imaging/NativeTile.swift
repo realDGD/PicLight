@@ -185,6 +185,24 @@ public final class NativeTileCache: @unchecked Sendable {
     private var clock: UInt64 = 0
     private var storedBytes = 0
 
+    /// Drops every tile that is not from `sourcePath`. Used when a pass starts for a different
+    /// source: its tiles are useless and would otherwise hold budget until eviction reached them.
+    /// A request for the same source keeps them, so a disable → re-enable stays warm.
+    public func purge(exceptSourcePath path: String) {
+        lock.lock(); defer { lock.unlock() }
+        var removed = 0
+        for (key, entry) in entries where key.sourcePath != path {
+            storedBytes -= entry.cost
+            pinned.remove(key)
+            entries.removeValue(forKey: key)
+            removed += 1
+        }
+        purgedForSourceChange += removed
+    }
+
+    /// Tiles dropped because the pass moved to another source.
+    public private(set) var purgedForSourceChange = 0
+
     public var totalCostLimit: Int
     /// Evicted because the budget was reached — a number a test can assert on.
     public private(set) var evictionCount = 0

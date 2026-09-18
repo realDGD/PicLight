@@ -64,6 +64,20 @@ public actor NativeDetailScheduler {
     /// later request — wiped the pass that had replaced it, because the actor sees two unrelated
     /// messages with no way to tell which belongs to the newer plan.
     private var lifecycleEpoch: UInt64 = 0
+    /// Tiles from a cancelled pass that arrived after the token changed, dropped before they could
+    /// be stored.
+    private(set) var staleDecodedTilesDiscarded = 0
+    /// The pass token, for tests that need to hand a tile to the validation path.
+    var passTokenForTesting: Int { generation }
+
+    /// Runs the tile-acceptance path directly, so a test can present a tile from a stale token
+    /// without having to race a real pass for one.
+    func acceptDecodedTileForTesting(_ tile: NativeTile, token: Int) async {
+        acceptDecodedTile(tile, token: token, counter: TileCounter())
+    }
+
+    /// The metadata the running pass was started with, for tests of the snapshot contract.
+    private(set) var runningMetadataForTesting: (colorSpace: CGColorSpace?, orientation: SourceOrientation)?
     /// Operations dropped because a newer one had already been applied.
     private(set) var lifecycleIgnoredStale = 0
 
@@ -93,6 +107,14 @@ public actor NativeDetailScheduler {
                               colorSpace: CGColorSpace?, orientation: SourceOrientation) {
         self.colorSpace = colorSpace
         self.orientation = orientation
+        // Tiles belong to one source. When the request is for a different one, the previous source's
+        // tiles are dropped instead of being cached out of budget until something else evicts them;
+        // a request for the same source keeps them, so a disable → re-enable stays warm.
+        if let previous = runningSource, previous != source {
+            cache.purge(exceptSourcePath: source.path)
+        } else if runningSource == nil {
+            cache.purge(exceptSourcePath: source.path)
+        }
         let visibleKeys = Set(plan.visible.map {
             key($0, tileSize: plan.tileSize, source: source, pageIndex: pageIndex)
         })
@@ -218,6 +240,12 @@ public actor NativeDetailScheduler {
         let provider = self.provider
         let cache = self.cache
         let gutter = self.gutter
+        // Captured here, on the actor, while this request is the current one. The pass used to read
+        // them from the actor when it started, so a pass for source A that started after a request
+        // for source B decoded A with B's orientation and colour space.
+        let passColorSpace = colorSpace
+        let passOrientation = orientation
+        runningMetadataForTesting = (passColorSpace, passOrientation)
 
         let wanted = plan.allCoordinates.map {
             key($0, tileSize: plan.tileSize, source: source, pageIndex: pageIndex)
@@ -230,18 +258,19 @@ public actor NativeDetailScheduler {
             let cancelFlag = CancelFlag()
             var failure: String?
             do {
-                let space = await self?.currentColorSpace() ?? nil
-                let orientation = await self?.currentOrientation() ?? .up
                 try provider.produce(plan: plan, source: source, pageIndex: pageIndex,
-                                     gutter: gutter, colorSpace: space, orientation: orientation,
+                                     gutter: gutter, colorSpace: passColorSpace,
+                                     orientation: passOrientation,
                                      shouldCancel: { cancelFlag.isSet || Task.isCancelled },
                                      onTile: { tile in
-                                         // Called on the pass's thread, once per tile: the
-                                         // cache is lock-protected and the actor is only
-                                         // entered to publish.
-                                         counter.increment()
-                                         cache.store(tile)
-                                         Task { await scheduler.deliver(tile, token: token) }
+                                         // Called on the pass's thread, once per tile. The tile is
+                                         // handed to the actor, which validates the token *before*
+                                         // storing it: storing first let a cancelled pass's late tile
+                                         // into the CPU cache, where it displaced live tiles.
+                                         Task {
+                                             await scheduler.acceptDecodedTile(tile, token: token,
+                                                                               counter: counter)
+                                         }
                                      })
             } catch {
                 failure = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -255,6 +284,20 @@ public actor NativeDetailScheduler {
     private func currentColorSpace() -> CGColorSpace? { colorSpace }
 
     private func currentOrientation() -> SourceOrientation { orientation }
+
+    /// Validates the pass token, then stores and publishes. The order matters: the previous version
+    /// stored the tile and only then checked the token, so tiles from a cancelled pass entered the
+    /// CPU cache even though they were never shown.
+    private func acceptDecodedTile(_ tile: NativeTile, token: Int, counter: TileCounter) {
+        guard token == generation else {
+            staleDecodedTilesDiscarded += 1
+            return
+        }
+        counter.increment()
+        cache.store(tile)
+        // `deliver` owns the rest (in-flight bookkeeping, stats, the publish callback).
+        deliver(tile, token: token)
+    }
 
     private func deliver(_ tile: NativeTile, token: Int) {
         guard token == generation else { return }
