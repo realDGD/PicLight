@@ -234,6 +234,23 @@ final class WarmResidencyTests: XCTestCase {
                        "a publication whose warm set did not change submits nothing")
     }
 
+    /// The drawer asks for its thumbnails before the current item's bitmap exists, and for an
+    /// oversized file that request is answered by the oversized policy with a placeholder. Nothing
+    /// asked again: measured on the investigation image, exactly one request in the whole session
+    /// (`requests=1` after 34 s) and a permanently empty row.
+    ///
+    /// The before-state evidence is that measurement; this test guards the retry that fixes it.
+    func testCurrentItemThumbnailArrivesAfterTheBitmapPublishes() throws {
+        let (viewer, controller, _, _) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }))
+        let url = Fixtures.url(fixtureName)
+        XCTAssertTrue(pump(until: { viewer.hasCachedThumbnailForTesting(url) }, timeout: 10),
+                      "the current item's thumbnail must arrive once its bitmap exists")
+        XCTAssertGreaterThan(viewer.thumbnailRequestCount, 0,
+                             "and the request must have been made from the current-item preview")
+    }
+
     /// The cache count is the cache count: the old property reported the *drawn* tile count, so a
     /// warm plan looked like it had no cached tiles at all.
     func testCacheCountForTestingIsTheCacheNotTheDrawList() throws {

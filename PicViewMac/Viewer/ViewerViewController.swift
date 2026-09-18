@@ -918,6 +918,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             inFlightLevel = nil
             isDecodingCurrentItem = false
             errorLabel.isHidden = true
+            // The drawer asks for its thumbnails as soon as its cells exist, which is usually before
+            // the first bitmap arrives. For an oversized file the current item has no bitmap yet at
+            // that moment, so the request is answered by the oversized policy with a placeholder —
+            // and nothing asks again. Measured on the investigation image: exactly one request in the
+            // whole session (requests=1 after 34 s) and a permanent placeholder in the row.
+            retryCurrentItemThumbnail()
             onDescriptorAvailable?(head.descriptor)
             // Once per displayed image, as the navigator's own documentation states.
             regenerateNavigatorPreview()
@@ -1143,6 +1149,19 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         drawer.rebuild(items: session.items, currentIndex: session.currentIndex)
     }
+
+    /// Re-requests the current item's thumbnail once its bitmap exists. The cell already exists and
+    /// is not rebuilt, so without this the row keeps the placeholder although the source it needs is
+    /// now in memory.
+    private func retryCurrentItemThumbnail() {
+        guard let item = session.currentItem, let index = session.currentIndex,
+              thumbnailCache[item.url] == nil, viewerState.currentImage != nil else { return }
+        inFlightThumbnails[item.url] = nil
+        requestThumbnail(at: index, for: item)
+    }
+
+    /// Whether a drawer thumbnail has been delivered, for tests and the acceptance runner.
+    func hasCachedThumbnailForTesting(_ url: URL) -> Bool { thumbnailCache[url] != nil }
 
     private func requestThumbnail(at index: Int, for item: FolderItem) {
         guard inFlightThumbnails[item.url] == nil, thumbnailCache[item.url] == nil else { return }
