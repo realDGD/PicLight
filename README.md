@@ -76,6 +76,9 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
 - Large images decode into a bounded level (1024–8192) chosen from the canvas
   size, and the bitmap is materialized off the main thread, so opening a 1.9 GiB
   48000×32000 PNG costs one decode pass instead of four and no main-thread stall.
+  Zooming past what that proxy can resolve adds native-detail tiles on top: on the
+  48000×32000 image at 100 %, the visible region carries 91 % of the source's own
+  detail energy (the proxy alone carries 16 %), in ~10 s behind a 220 ms debounce.
   Rendering is on-demand Metal with mandatory mipmaps and a Quartz fallback
   (`PICLIGHT_DISABLE_METAL=1` forces Quartz); a resize or a zoom-in upgrades the
   level only after a 300 ms debounce and never during a drag, and the viewer says
@@ -129,10 +132,14 @@ matrix (Mission Control, tiling, Stage Manager, native Full Screen, third-party
 window managers), a visual pass on Light/Dark and accessibility appearance, and
 an Instruments memory profile all still need a human at a display.
 
-Two deliberate limits of the large-image work: 100 % zoom on a source above 8192
-shows the 8192 proxy rather than native pixels (streaming tiles need a
-`LargeImageBackend`, which is out of scope for v0.1), and a released build wants a
-compiled `default.metallib` — `scripts/build-release.sh` fails loudly without the
-Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`) instead of
-shipping a fallback-only app, while a local run compiles the shipped
-`ImageShaders.metal` source at startup and says so.
+At 100 % an oversized source is served by **native-detail tiles**: the app streams the PNG
+itself (ImageIO has no region decode — a 512×512 crop costs a full decode, measured), keeps
+only the tiles the viewport needs plus a ring, and draws them over the bounded proxy. The
+8192 proxy remains the base layer and the whole answer at Fit. Tiles live in memory, so
+revisiting a far region costs another pass, and the backend serves PNG that is 8-bit and not
+interlaced — other formats keep the proxy path.
+
+One packaging limit remains: a released build wants a compiled `default.metallib` —
+`scripts/build-release.sh` fails loudly without the Metal toolchain
+(`xcodebuild -downloadComponent MetalToolchain`) instead of shipping a fallback-only app,
+while a local run compiles the shipped `ImageShaders.metal` source at startup and says so.

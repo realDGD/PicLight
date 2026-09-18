@@ -119,10 +119,26 @@ one the canvas's own geometry implies; a window that opens larger asks for the
 level it needs, and settling a window larger afterwards buys the coarser level
 after the debounce.
 
-**Known limitation (v0.1).** 100 % zoom on a source above 8192 is intentionally
-undersampled to the current level: detail beyond the 8192 proxy needs a
-`LargeImageBackend` that streams tiles, which is out of scope here. Zooming to
-100 % therefore shows a 8192-class image, not 48000×32000 pixels.
+## Native detail above the 8192 proxy
+
+100 % on a source above 8192 is no longer the proxy upscaled. When the display density passes what
+the proxy can resolve (`zoomScale × backingScale` against `proxyLongEdge / sourceLongEdge`), the app
+streams the PNG itself and draws native tiles over the proxy:
+
+| measurement (48000×32000 at 100 %, 2× display) | value |
+| --- | --- |
+| detail energy of the frame with tiles | 4.15 (source itself: 4.56) |
+| detail energy of the same frame without tiles | 0.74 |
+| time from the zoom gesture to tiles on screen | 10.5 s (220 ms debounce + one pass) |
+| whole-image decodes for the gesture | 0 (the level path stands down; the pass replaces it) |
+| peak footprint / peak RSS | 0.226 GiB / 2.113 GiB |
+| main-thread stall | max 9 ms |
+
+Why a custom decoder: measured with `bench/regionbench`, no format ImageIO reads offers a region
+decode — a 512×512 crop costs a full decode in every case (PNG 375 ms against 403 ms) — so native
+pixels for part of a huge file can only come from streaming it and keeping what the viewport asks
+for. Tiles are byte-budgeted, LRU, with the viewport's tiles pinned; the backend serves PNG that is
+8-bit and not interlaced, and tiles are in memory only, so a far revisit costs another pass.
 
 ## Energy numbers are session-scoped
 

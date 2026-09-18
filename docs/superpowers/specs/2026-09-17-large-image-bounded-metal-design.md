@@ -40,8 +40,12 @@ A second objective of this revision is to settle policy disagreements with repea
 - Native-resolution tiled rendering.
 - Custom PNG decoder in production.
 - Core Image as the main rendering path.
-- Native-detail delivery for oversized images above the 8192 proxy ceiling.
-- A LargeImageBackend for random-access native pixels.
+- ~~Native-detail delivery for oversized images above the 8192 proxy ceiling.~~
+- ~~A LargeImageBackend for random-access native pixels.~~
+
+*(Both were closed on 2026-09-18 by the native-detail tile backend — §24. It is not
+random-access: the measurements below show no format ImageIO reads offers region decode, so the
+backend streams the file and keeps the tiles a viewport asks for.)*
 
 ## 3. Evidence already established
 
@@ -1151,3 +1155,84 @@ The design/implementation is successful only when all are true:
 - Existing behavioral tests remain green.
 - Reviewer-added discriminating tests are resolved before implementation planning (see §20.1).
 - Quick Look/decoder spikes remain isolated unless later evidence justifies production adoption.
+
+
+---
+
+## 24. Native-detail tiles (the end of the 8192-proxy ceiling)
+
+**Why it was needed.** At 100 % the visible region used to be the 8192 proxy stretched over 48000
+source pixels. Closing that needed native pixels for *part* of a huge image, and the first question
+was whether any decode path offers them.
+
+**Format capability, measured** (`benchmarks/LargeImagePolicyBench/bench/regionbench`,
+`results/region-capability.txt`, 12000×9000 fixtures, ImageIO):
+
+| format | full decode | thumbnail 1024 | crop 512×512 | verdict |
+| --- | --- | --- | --- | --- |
+| PNG | 403 ms / 0.43 GiB | 505 ms | 375 ms / 0.43 GiB | no region decode |
+| JPEG | 390 ms / 0.77 GiB | 576 ms | 355 ms / 0.83 GiB | no region decode |
+| TIFF | 59 ms / 0.43 GiB | 99 ms | 55 ms | cheap only because uncompressed |
+| BMP | 54 ms / 0.43 GiB | 88 ms | 51 ms | same |
+
+A crop costs what the whole decode costs, in every format: ImageIO has no region API, and on the
+investigation image the lazy path allocates a 5.86 GiB region. `kCGImageSourceSubsampleFactor`
+returns the size it promises but costs the same or more (PNG: 1000 ms against 403 ms), and PNG's row
+filters make row *n* unreachable without rows 0…n-1. **So the answer is A/B/C from §10's list: not
+random-access tiles, and not a sidecar pyramid, but a decode that streams the stream itself.**
+
+**Architecture.**
+
+```
+PNG file ──▶ PicPNGStream (C, system zlib)          PicViewMac/Imaging
+              one scanline per ps_step               NativeTilePlanner   — visible rect + one ring
+              region buffer only, 1 MiB window       NativeTileCache     — bytes, LRU, pinned
+                 │                                   PNGNativeTileProvider — one pass, all tiles
+                 ▼                                   NativeDetailScheduler — one pass, deduped
+            NativeTile (RGBA8 premultiplied,          │
+            own source rect, 1 px gutter)  ───────────┘
+                 │
+                 ▼
+   Metal (texture per tile, drawn after the proxy) / Quartz (same rects)
+```
+
+- **Tile identity**: source path, page, level, tile x/y. View-only rotation and mirroring are
+  deliberately *not* in the key — they are view transforms, and putting them in decode identity would
+  cache the same pixels several times.
+- **Planning**: the visible source rectangle is the view rectangle mapped back through the same
+  transform the renderers use, so rotation needs no second geometry implementation. Tiles are
+  gathered for that rect plus a one-ring, nearest to the centre first.
+- **One pass fills the plan**: the stream is inflated once and the rows inside the plan's rectangle
+  are kept; rows outside are discarded. A 512×512 tile grid with a one-pixel gutter means a
+  bilinear tap at a tile edge reads real neighbour pixels instead of a seam.
+- **Cache**: byte budget (192 MiB), LRU, and the viewport's tiles are *pinned* — the entry the user
+  is looking at is the one thing an LRU must never take.
+- **Scheduler**: one pass at a time; identical requests deduplicate; a small pan is queued rather
+  than cutting short an inflate that is already paid for; a jump cancels; zooming out purges.
+- **When it engages**: `physicalScale = zoomScale × backingScale` against the proxy's ratio
+  (`proxyLongEdge / sourceLongEdge`), with a 15 % margin, and only for sources the backend can
+  actually serve.
+- **Interaction with the level path**: while tiles can serve the viewport, a resize or zoom does
+  *not* also buy a coarser whole-image level — that would be a second full traversal of the same
+  stream for pixels the tiles deliver better. The level path keeps running for sources the tile
+  backend refuses (interlaced, 16-bit, non-PNG), which is why the capability question is asked first.
+
+**Measured on the investigation image at 100 %** (`results/gates-native-detail-run.txt`, `-trace.txt`):
+
+```text
+T+20.996  zoom to 100 % (physicalScale 1.0 on this 2× display)
+T+31.488  four native tiles on screen: 10.5 s after the gesture (220 ms debounce + one pass)
+T+114.896 NATIVE VERDICT tiles=4.15 proxyOnly=0.74 source=4.56 tilesCover=91 %
+          -> screen IS native source detail
+main-thread stall max 9 ms; peak footprint 0.226 GiB; peak RSS 2.113 GiB; one stream traversal
+```
+
+Detail energy is the mean absolute difference between horizontally adjacent pixels — the proxy-only
+control (0.74) is the blur the user reported, the tiled frame (4.15) carries 91 % of the source's own
+energy (4.56). Per-pixel equality was tried first and abandoned: it needs sub-pixel-exact sampling
+and reads a one-pixel slip as a wrong render.
+
+**What is not solved.** Tiles live in memory only, so revisiting a far region costs another pass
+(≈10 s here, more under memory pressure); the backend serves PNG that is 8-bit and not interlaced
+(other formats keep the proxy path and their level upgrades); and the tile window is the visible
+region plus one ring, so a very large viewport fills progressively rather than instantly.
