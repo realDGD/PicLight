@@ -127,12 +127,12 @@ streams the PNG itself and draws native tiles over the proxy:
 
 | measurement (48000×32000 at 100 %, 2× display) | value |
 | --- | --- |
-| detail energy of the frame with tiles | 4.15 (source itself: 4.56) |
-| detail energy of the same frame without tiles | 0.74 |
+| detail energy of the frame with tiles | 3.49 (source itself: 3.49) |
+| detail energy of the same frame without tiles | 0.64 |
 | time from the zoom gesture to tiles on screen | 10.5 s (220 ms debounce + one pass) |
 | whole-image decodes for the gesture | 0 (the level path stands down; the pass replaces it) |
 | peak footprint / peak RSS | 0.226 GiB / 2.113 GiB |
-| main-thread stall | max 9 ms |
+| main-thread stall | max 88 ms (the first frame that uploads tile textures) |
 
 Why a custom decoder: measured with `bench/regionbench`, no format ImageIO reads offers a region
 decode — a 512×512 crop costs a full decode in every case (PNG 375 ms against 403 ms) — so native

@@ -77,8 +77,11 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   size, and the bitmap is materialized off the main thread, so opening a 1.9 GiB
   48000×32000 PNG costs one decode pass instead of four and no main-thread stall.
   Zooming past what that proxy can resolve adds native-detail tiles on top: on the
-  48000×32000 image at 100 %, the visible region carries 91 % of the source's own
-  detail energy (the proxy alone carries 16 %), in ~10 s behind a 220 ms debounce.
+  48000×32000 image at 100 %, the visible region carries 100 % of the source's own
+  detail energy (the proxy alone carries 18 %), in ~10 s behind a 220 ms debounce.
+  Tiles are placed through the same transform as the proxy and verified against a Core
+  Graphics reference pixel for pixel, and sources with EXIF orientation are mapped from
+  their raw pixel space into the same canonical space the proxy uses.
   Rendering is on-demand Metal with mandatory mipmaps and a Quartz fallback
   (`PICLIGHT_DISABLE_METAL=1` forces Quartz); a resize or a zoom-in upgrades the
   level only after a 300 ms debounce and never during a drag, and the viewer says

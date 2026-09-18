@@ -1251,6 +1251,36 @@ control (0.74) is the blur the user reported, the tiled frame (4.15) carries 91 
 energy (4.56). Per-pixel equality was tried first and abandoned: it needs sub-pixel-exact sampling
 and reads a one-pixel slip as a wrong render.
 
+**Correctness fixes after real use (2026-09-18).** The first version put the right pixels in the
+wrong places, and the suite could not see it: detail energy is preserved by a mirror, and every
+Metal-vs-Quartz parity fixture was a left/right two-tone rectangle, which a vertical flip maps
+onto itself. Three defects, found with a coordinate-encoding fixture (`bench/tileposbench`) that
+renders the same scene through both renderers and diffs whole frames:
+
+1. **The texture upload flipped every image vertically**, so Metal rendered a mirror of what Core
+   Graphics drew. The proxy mirrored about the image centre; each tile mirrored about its *own*
+   centre, which is what "the picture is rearranged into bands" looks like. A CGContext's first
+   memory row *is* the image's top row when the image is drawn without a flip, so the flip is
+   simply removed.
+2. **The tile texture cache key omitted the grid**, so a 64-pixel tile's texture was reused for a
+   128-pixel tile at the same coordinates and stretched over its quad — a registration error of
+   55/255 between the two renderers. `NativeTileKey` now carries `tileSize`, and the renderer
+   keeps the proxy texture and the tile textures in separate fields instead of one shared
+   "current texture" (which also made the proxy re-upload after every tile).
+3. **The tile backend ignored `ImageDescriptor.orientation`.** It reads raw PNG rows while the
+   plan, the proxy and `displayPixelSize` all speak canonical oriented space, so any source whose
+   orientation is not `.up` would have had tile content against a differently oriented proxy.
+   `SourceOrientation` now holds the one affine table, the provider converts canonical rects to
+   raw rects and writes pixels back in canonical order, and `ImageIODecoder.apply` uses the same
+   table (its hand-written transforms clipped a column for `.left`/`.leftMirrored`). Two traps
+   there: Core Graphics' case names do not match the EXIF numbers they stand for (`.left` is 8,
+   `.leftMirrored` is 5), and a square fixture cannot distinguish a correct translation from a
+   clipped one — hence a 40×30 fixture and positions measured from ImageIO's own oriented decode
+   rather than derived by hand.
+
+Tiles also skip the mip chain now: they are requested only when magnified, and generating a chain
+cost a synchronous GPU wait per tile on the main thread (a 170 ms stall that is 88 ms without it).
+
 **What is not solved.** Tiles live in memory only, so revisiting a far region costs another pass
 (≈10 s here, more under memory pressure); the backend serves PNG that is 8-bit and not interlaced
 (other formats keep the proxy path and their level upgrades); and the tile window is the visible
