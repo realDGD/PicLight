@@ -371,6 +371,22 @@ enum BenchTrace {
         }
     }
 
+    /// Pins the drawer open from launch, which is the state the user is in: the probe below pins it
+    /// at +24 s, by which time the current item preview has already been requested and its result
+    /// dropped for want of a cell.
+    static func scheduleEarlyDrawerOpen() {
+        guard enabled,
+              ProcessInfo.processInfo.environment["PICLIGHT_BENCH_DRAWER"] == "1" else { return }
+        for delay in [1.5, 6.0, 12.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard let viewer = NSApp.windows.first(where: { $0.isVisible })?
+                    .contentViewController as? ViewerViewController else { return }
+                viewer.setDrawerPinned(true)
+                mark("DRAWER pinned open at launch")
+            }
+        }
+    }
+
     static func findView<T: NSView>(ofType: T.Type, in view: NSView?) -> T? {
         guard let view else { return nil }
         if let match = view as? T { return match }
