@@ -442,7 +442,7 @@ not. Report: `benchmarks/PngDecoderSpike/results/report.md`.
 
 ### §23 criteria at the release commit
 | Spec §12 loading state | `LoadingStateTests` (3): a decode in flight shows "正在解码…", a folder with no supported images keeps its own wording, a bare launch keeps the welcome state; the scenario's window-size check no longer depends on remembered placement (`verifyWindowSizing` resets `lastWindowSize`) |
-| View-only rotation geometry | `ViewRotationGeometryTests` (6): one shared `imageToViewTransform` for both renderers, the requested centre lands at the view centre for all four rotations with and without mirroring, and a drag moves content the same way as unrotated (fails on the pre-fix offset, 23 assertions) |
+| View-only rotation geometry | `ViewRotationGeometryTests` (9): one shared `imageToViewTransform` for both renderers; the requested centre lands at the view centre for all four rotations with and without mirroring; a drag moves content the same way as unrotated (fails on the pre-fix offset, 23 assertions); the *rendered* direction matches 顺时针旋转 (a marked corner ends top-right); and rotating or mirroring a zoomed-in view keeps the same image point under the view centre — also asserted in the packaged acceptance runner (drift 0.0 px) |
 | Zoom sharpens the bitmap | `ResizeWiringTests.testZoomingInBuysTheCoarserLevelAfterTheDebounce`: 100 % on a 48000-px source buys the 8192 level, nothing decodes inside the gesture, and zooming out buys nothing |
 
 

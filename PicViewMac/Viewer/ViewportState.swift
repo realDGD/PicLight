@@ -63,28 +63,36 @@ public struct ViewportState: Equatable, Sendable {
 
     // MARK: - Render transform
 
+    /// The rotation and mirror a renderer applies to the image, in view space.
+    ///
+    /// Positive quarter turns rotate the *content clockwise on screen*, which is what
+    /// the 顺时针旋转 command promises and what a viewer expects; in the y-up drawing
+    /// space that is a negative angle. One definition, used by the transform below and
+    /// by the centre conversions, so the direction cannot disagree with itself.
+    public static func contentRotation(quarterTurns: Int, mirroredHorizontally: Bool) -> CGAffineTransform {
+        let turns = ((quarterTurns % 4) + 4) % 4
+        var transform = CGAffineTransform(rotationAngle: -CGFloat(turns) * .pi / 2)
+        if mirroredHorizontally { transform = transform.scaledBy(x: -1, y: 1) }
+        return transform
+    }
+
     /// The offset a renderer subtracts **in the image's own axes** so the displayed
     /// point at `normalizedCenter` lands at the view centre.
     ///
     /// `normalizedCenter` lives in displayed (post-rotation) space, but a renderer
-    /// subtracts its offset *before* applying the rotation, so the vector has to be
-    /// rotated back through the inverse view rotation and mirror. Getting this wrong
-    /// is not a visual detail: the offset then moves the image along the wrong axis
-    /// and a drag appears to go the wrong way.
+    /// subtracts its offset *before* applying the rotation, so the vector is the
+    /// inverse-mapped one. Expressed through `contentRotation().inverted()` rather than
+    /// a hand-written sign table: getting this wrong moves the image along the wrong
+    /// axis, which is exactly how a drag ends up going the wrong way.
     public static func imageSpaceOffset(normalizedCenter: CGPoint,
                                         displayedPixelSize: CGSize,
                                         quarterTurns: Int,
                                         mirroredHorizontally: Bool) -> CGPoint {
-        var x = (normalizedCenter.x - 0.5) * displayedPixelSize.width
-        var y = (normalizedCenter.y - 0.5) * displayedPixelSize.height
-        switch ((quarterTurns % 4) + 4) % 4 {
-        case 1: (x, y) = (y, -x)
-        case 2: (x, y) = (-x, -y)
-        case 3: (x, y) = (-y, x)
-        default: break
-        }
-        if mirroredHorizontally { x = -x }
-        return CGPoint(x: x, y: y)
+        let displayed = CGPoint(x: (normalizedCenter.x - 0.5) * displayedPixelSize.width,
+                               y: (normalizedCenter.y - 0.5) * displayedPixelSize.height)
+        return displayed.applying(
+            contentRotation(quarterTurns: quarterTurns, mirroredHorizontally: mirroredHorizontally).inverted()
+        )
     }
 
     /// Image space → view space, exactly as both renderers build it (Quartz
@@ -102,10 +110,45 @@ public struct ViewportState: Equatable, Sendable {
         var transform = CGAffineTransform.identity
         transform = transform.translatedBy(x: viewSize.width / 2, y: viewSize.height / 2)
         transform = transform.scaledBy(x: zoomScale, y: zoomScale)
-        transform = transform.rotated(by: CGFloat(normalizedQuarterTurns) * .pi / 2)
+        // Chained builder calls, not `concatenating`: the builder applies each step about
+        // the view centre (which is what makes rotation feel like the image turning in
+        // place), while `concatenating` puts the argument outside the centre translation
+        // and rotates the whole frame about the origin instead.
+        transform = transform.rotated(by: -CGFloat(normalizedQuarterTurns) * .pi / 2)
         if mirroredHorizontally { transform = transform.scaledBy(x: -1, y: 1) }
         transform = transform.translatedBy(x: -offset.x, y: -offset.y)
         return transform
+    }
+
+    /// The point of the *source*, in pixels relative to the image centre, that is
+    /// currently under the centre of the view.
+    public func imagePointUnderViewCenter(sourcePixelSize: CGSize) -> CGPoint {
+        ViewportState.imageSpaceOffset(
+            normalizedCenter: normalizedCenter,
+            displayedPixelSize: ViewportState.displayedPixelSize(
+                sourcePixelSize, quarterTurns: normalizedQuarterTurns),
+            quarterTurns: normalizedQuarterTurns,
+            mirroredHorizontally: mirroredHorizontally
+        )
+    }
+
+    /// The normalized centre that keeps `imagePoint` under the view centre for the
+    /// given rotation and mirror. Rotating or mirroring a zoomed-in view must not move
+    /// the user somewhere else, and this is what makes that true: the image point under
+    /// the centre is carried across the rotation rather than the normalized pair being
+    /// reinterpreted in the new axes (which is the same numbers pointing at a
+    /// different place).
+    public static func normalizedCenter(keeping imagePoint: CGPoint,
+                                        sourcePixelSize: CGSize,
+                                        quarterTurns: Int,
+                                        mirroredHorizontally: Bool) -> CGPoint {
+        let displayedSize = displayedPixelSize(sourcePixelSize, quarterTurns: quarterTurns)
+        guard displayedSize.width > 0, displayedSize.height > 0 else { return CGPoint(x: 0.5, y: 0.5) }
+        let displayed = imagePoint.applying(
+            contentRotation(quarterTurns: quarterTurns, mirroredHorizontally: mirroredHorizontally)
+        )
+        return CGPoint(x: displayed.x / displayedSize.width + 0.5,
+                       y: displayed.y / displayedSize.height + 0.5)
     }
 
     // MARK: - Center clamping

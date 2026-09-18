@@ -398,6 +398,20 @@ image vertically, and a 180° turn mirrored the visible region. `ViewRotationGeo
 invariant for all four rotations with and without mirroring: the requested centre lands at the view
 centre, and a drag moves the content the same way as it does unrotated.
 
+Two further defects of the same family were found by using the app and fixed in the same change:
+
+- **The direction was inverted.** `顺时针旋转` turned the content counter-clockwise: a rendered probe
+  (a marked corner in a 4×4 image drawn through the real transform) put the top-left marker at
+  bottom-left for one quarter turn. The sign is now defined once in `ViewportState.contentRotation`
+  (positive quarter turns = content clockwise on screen, i.e. a negative angle in the y-up drawing
+  space), and `testTheRenderedDirectionMatchesTheClockwiseName` asserts the visible result per turn.
+- **Rotating while zoomed in dropped the user somewhere else.** `normalizedCenter` is a pair of
+  numbers in displayed space; after a rotation the same pair names a different image point, so a
+  zoomed-in view jumped. Rotation and mirroring now carry the image point under the view centre
+  across the change (`ViewportState.normalizedCenter(keeping:)` / `imagePointUnderViewCenter`) and
+  clamp afterwards. `testRotatingAndMirroringKeepTheSameImagePointUnderTheViewCentre` walks a full
+  turn plus a mirror, and the packaged acceptance runner checks it in a real window (drift 0.0 px).
+
 Therefore a 8192×5461 proxy for a 48000×32000 source has the same Fit/100%/pan geometry as the Metal path.
 
 Fallback may never re-open or publish an oversized lazy native source merely because Metal failed.

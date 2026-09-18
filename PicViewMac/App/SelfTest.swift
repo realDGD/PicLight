@@ -112,6 +112,28 @@ enum SelfTest {
         let fitted = viewer.viewerState.viewport.isAtFit
         let after = try? Data(contentsOf: fileURL)
         check("rotate and mirror are view-only", before == after)
+
+        // Rotating or mirroring a zoomed-in view must not move the user somewhere else:
+        // the image point under the view centre has to survive the change.
+        if let descriptor = viewer.viewerState.descriptor {
+            let source = descriptor.displayPixelSize
+            var offCentre = viewer.viewerState.viewport
+            offCentre.zoomScale = max(offCentre.zoomScale, 4)
+            offCentre.normalizedCenter = CGPoint(x: 0.7, y: 0.3)
+            viewer.canvasViewportForTesting = offCentre
+            let anchor = viewer.viewerState.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+            viewer.perform(.rotateClockwise)
+            let afterRotation = viewer.viewerState.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+            viewer.perform(.toggleMirror)
+            let afterMirror = viewer.viewerState.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+            let drift = hypot(afterRotation.x - anchor.x, afterRotation.y - anchor.y)
+            let mirrorDrift = hypot(afterMirror.x - anchor.x, afterMirror.y - anchor.y)
+            check("rotation keeps the visible image point", drift < 1.5,
+                  String(format: "drift %.1f px from (%.0f, %.0f)", drift, anchor.x, anchor.y))
+            check("mirroring keeps the visible image point", mirrorDrift < 1.5,
+                  String(format: "drift %.1f px", mirrorDrift))
+            viewer.perform(.toggleMirror)
+        }
         check("100% then Fit works", viewer.viewerState.currentImage != nil && zoomedPercent != 0 && fitted,
               "100% reported \(zoomedPercent)%, Fit restored: \(fitted)")
 

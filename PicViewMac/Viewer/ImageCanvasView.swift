@@ -168,28 +168,45 @@ public final class ImageCanvasView: NSView {
     }
 
     public func rotateClockwise() {
-        var updated = viewport
-        updated.rotateClockwise()
-        updated.fitScale = ViewportState.fitScale(
-            imagePixels: ViewportState.displayedPixelSize(imagePixelSize, quarterTurns: updated.normalizedQuarterTurns),
-            viewPoints: bounds.size
-        )
-        viewport = updated
+        rotate(toQuarterTurns: viewport.normalizedQuarterTurns + 1)
     }
 
     public func rotateCounterClockwise() {
+        rotate(toQuarterTurns: viewport.normalizedQuarterTurns + 3)
+    }
+
+    /// Rotation and mirroring carry the image point under the view centre across the
+    /// change. Reusing the same normalized pair would keep the *numbers* and move the
+    /// user somewhere else entirely — the pair means different image points once the
+    /// axes have turned.
+    private func rotate(toQuarterTurns turns: Int) {
+        guard imagePixelSize != .zero else { return }
+        let source = imagePixelSize
         var updated = viewport
-        updated.rotateCounterClockwise()
+        let imagePoint = viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+        updated.viewRotationQuarterTurns = turns
+        updated.normalizedCenter = ViewportState.normalizedCenter(
+            keeping: imagePoint, sourcePixelSize: source,
+            quarterTurns: updated.normalizedQuarterTurns,
+            mirroredHorizontally: updated.mirroredHorizontally)
         updated.fitScale = ViewportState.fitScale(
-            imagePixels: ViewportState.displayedPixelSize(imagePixelSize, quarterTurns: updated.normalizedQuarterTurns),
-            viewPoints: bounds.size
-        )
+            imagePixels: ViewportState.displayedPixelSize(source, quarterTurns: updated.normalizedQuarterTurns),
+            viewPoints: bounds.size)
+        updated.clampCenter(imagePixels: source, viewPoints: bounds.size, backingScale: backingScale)
         viewport = updated
     }
 
     public func toggleMirror() {
+        guard imagePixelSize != .zero else { return }
+        let source = imagePixelSize
         var updated = viewport
+        let imagePoint = viewport.imagePointUnderViewCenter(sourcePixelSize: source)
         updated.toggleMirror()
+        updated.normalizedCenter = ViewportState.normalizedCenter(
+            keeping: imagePoint, sourcePixelSize: source,
+            quarterTurns: updated.normalizedQuarterTurns,
+            mirroredHorizontally: updated.mirroredHorizontally)
+        updated.clampCenter(imagePixels: source, viewPoints: bounds.size, backingScale: backingScale)
         viewport = updated
     }
 
