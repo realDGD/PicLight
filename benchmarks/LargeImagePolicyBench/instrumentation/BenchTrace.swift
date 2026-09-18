@@ -290,6 +290,14 @@ enum BenchTrace {
               ProcessInfo.processInfo.environment["PICLIGHT_BENCH_DRAWER"] == "1" else { return }
         for delay in [24.0, 34.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                // The drawer must be open for the owner to request the current item preview: a
+                // hidden drawer leaves the cell with no image, which is a different question from
+                // how the cell lays out.
+                if let viewer = NSApp.windows.first(where: { $0.isVisible })?
+                    .contentViewController as? ViewerViewController {
+                    viewer.setDrawerPinned(true)
+                    mark("DRAWER pinned open for the probe")
+                }
                 guard let window = NSApp.windows.first(where: { $0.isVisible }),
                       let drawer = findView(ofType: ThumbnailDrawerView.self, in: window.contentView),
                       let table = findView(ofType: NSTableView.self, in: drawer) else {
