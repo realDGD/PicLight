@@ -253,7 +253,9 @@ enum BenchTrace {
         let proxyWidth = proxy.width, proxyHeight = proxy.height
         let proxyStride = proxy.bytesPerRow
         let proxyData = proxy.dataProvider?.data
-        let proxyBytes = proxyData.map { CFDataGetBytePtr($0) }
+        // flatMap, not map: CFDataGetBytePtr is itself optional, and `map` would leave an
+        // optional-of-optional that `if let` only half unwraps.
+        let proxyBytes = proxyData.flatMap { CFDataGetBytePtr($0) }
 
         var samples = 0
         var renderedVsNative = 0.0
