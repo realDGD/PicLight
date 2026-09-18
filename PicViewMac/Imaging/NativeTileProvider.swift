@@ -180,8 +180,15 @@ public struct PNGNativeTileProvider: NativeTileProviding {
         let rect = accumulator.rawRect
         guard rect.width >= 1, rect.height >= 1 else { return nil }
         let space = colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
-        let canonical = orientation.canonicalPixels(fromRawBuffer: accumulator.pixels,
-                                                    rawRect: rect, rawPixelSize: rawPixelSize)
+        // `.up` means raw order *is* canonical order, so the reorder would be an identity copy —
+        // measured at 0.2 as a 408 MiB allocation the accumulator already holds. The `Data` copy
+        // below stays: the pixels come from a Swift array, and handing its storage to a
+        // CGDataProvider without one would be a lifetime bug for the sake of a memcpy.
+        let canonical = orientation.raw == .up
+            ? (pixels: accumulator.pixels,
+               size: CGSize(width: rect.width, height: rect.height))
+            : orientation.canonicalPixels(fromRawBuffer: accumulator.pixels,
+                                          rawRect: rect, rawPixelSize: rawPixelSize)
         guard canonical.size.width >= 1, canonical.size.height >= 1,
               let provider = CGDataProvider(data: Data(canonical.pixels) as CFData),
               let image = CGImage(

@@ -46,6 +46,13 @@ func residentBytes() -> Int {
     return result == KERN_SUCCESS ? Int(info.resident_size) : 0
 }
 
+final class TileCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+}
+
 final class PeakSampler {
     private let lock = NSLock()
     private var peakFootprint = 0
@@ -178,6 +185,31 @@ for scale in scales {
               + gib(candidate.regionBytes))
     }
 
+    // The policy's own plan for this scale, with the production budget: at 0.2 that is visible-only,
+    // and its peak is the number the task asks for.
+    if let policyPlan = WarmAreaPolicy.plan(visible: visible, sourcePixelSize: sourceSize,
+                                            tileSize: tileSize,
+                                            cpuBudgetBytes: 256 * 1024 * 1024) {
+        let sampler = PeakSampler()
+        sampler.start()
+        let start = monotonicNS()
+        let counter = TileCounter()
+        do {
+            try PNGNativeTileProvider().produce(plan: policyPlan.plan, source: url, pageIndex: 0,
+                                                gutter: 1, colorSpace: nil,
+                                                orientation: SourceOrientation(.up),
+                                                shouldCancel: { false },
+                                                onTile: { _ in counter.increment() })
+        } catch {
+            FileHandle.standardError.write(Data("policy pass failed: \(error)\n".utf8))
+        }
+        let peak = sampler.stop()
+        print(String(format: "  POLICY plan: margin %.2f%@, %d tiles, %.0f ms, peak footprint %@, peak RSS %@",
+                     policyPlan.margin, policyPlan.clampedByBudget ? " (clamped)" : "",
+                     counter.value, millis(start, monotonicNS()),
+                     human(peak.footprint), gib(peak.resident)))
+    }
+
     // One traversal for the widest plan: everything narrower is a subset of its tiles.
     trace("scale \(scale): starting pass for plan \(widest.name) decodeRect \(widest.plan.decodeRect)")
     let sampler = PeakSampler()
@@ -286,7 +318,7 @@ if let renderer, device != nil {
         for (label, tiles) in [("visible", visibleTiles), ("visible+1ring", warmTiles)] {
             let uploadStart = monotonicNS()
             var uploaded = 0
-            for tile in tiles where renderer.prepareTexture(for: tile) != nil { uploaded += 1 }
+            for tile in tiles where renderer.prepareTexture(for: tile, variant: .baseOnly) != nil { uploaded += 1 }
             let uploadMS = millis(uploadStart, monotonicNS())
             print(String(format: "  GPU upload (\(label)): %d tiles, %.1f ms on the calling thread", uploaded, uploadMS)
                   + ", \(human(renderer.tileTextureBytes)) resident")

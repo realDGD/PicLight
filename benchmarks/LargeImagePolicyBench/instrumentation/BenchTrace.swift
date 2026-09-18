@@ -199,7 +199,34 @@ enum BenchTrace {
             DispatchQueue.main.asyncAfter(deadline: .now() + 40) {
                 measureNativeDetail(viewer: viewer, window: window)
             }
+            // Pan half a viewport and report the production diagnostics before and after: the
+            // question is whether the tiles that became visible were already resident on the GPU.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+                reportResidency(viewer: viewer, label: "before pan")
+                var viewport = viewer.canvasViewportForTesting
+                let visibleSourceWidth = viewport.zoomScale > 0
+                    ? viewer.canvasViewForTesting.bounds.width / viewport.zoomScale : 0
+                let sourceLongEdge = viewer.viewerState.descriptor?.displayPixelSize.width ?? 48000
+                viewport.normalizedCenter = CGPoint(
+                    x: viewport.normalizedCenter.x + (visibleSourceWidth * 0.5 / sourceLongEdge),
+                    y: viewport.normalizedCenter.y)
+                viewer.canvasViewportForTesting = viewport
+                mark("PAN half a viewport to the right")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    reportResidency(viewer: viewer, label: "after pan")
+                }
+            }
         }
+    }
+
+    /// The production residency diagnostics, printed as a mark so the run's own trace carries them.
+    private static func reportResidency(viewer: ViewerViewController, label: String) {
+        let d = viewer.nativeDetailDiagnostics()
+        mark("RESIDENCY \(label): visible=\(d.visibleTiles) warm=\(d.warmTiles) "
+             + "cpuCache=\(d.cpuCacheTiles)(\(d.cpuCacheBytes / 1_048_576) MiB, pinned \(d.cpuPinnedTiles)) "
+             + "gpuResident=\(d.gpuResidentTiles)(\(d.gpuTextureBytes / 1_048_576) MiB) "
+             + "gpuUploads=\(d.gpuUploads) hits=\(d.gpuCacheHits) bg=\(d.gpuBackgroundUploads) "
+             + "sync=\(d.gpuSynchronousUploads)")
     }
 
     /// Renders the current frame offscreen (proxy + tiles) and compares its detail energy
