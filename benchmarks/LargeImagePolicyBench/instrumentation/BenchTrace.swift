@@ -200,6 +200,16 @@ enum BenchTrace {
                 return
             }
             backing = window.backingScaleFactor
+            if let size = ProcessInfo.processInfo.environment["PICLIGHT_BENCH_WINDOW"] {
+                let parts = size.split(separator: "x").compactMap { Double($0) }
+                if parts.count == 2 {
+                    window.setContentSize(NSSize(width: parts[0], height: parts[1]))
+                    mark("WINDOW set to " + size)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        viewer.perform(.zoomActualPixels)
+                    }
+                }
+            }
             viewer.perform(.zoomActualPixels)
             for (index, physical) in scales.enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 6) {
@@ -303,6 +313,19 @@ enum BenchTrace {
                       let table = findView(ofType: NSTableView.self, in: drawer) else {
                     mark("DRAWER probe: drawer or table not found")
                     return
+                }
+                if let viewer = window.contentViewController as? ViewerViewController,
+                   let path = ProcessInfo.processInfo.environment["PICLIGHT_TTI_BENCH"] {
+                    let item = FolderItem(url: URL(fileURLWithPath: path))
+                    mark("DRAWER state: canvasBitmap=\(viewer.viewerState.currentImage != nil) "
+                         + "currentItem=\(viewer.viewerState.descriptor != nil)")
+                    Task { @MainActor in
+                        let image = await viewer.thumbnailImage(for: item)
+                        var line = "DRAWER preview -> "
+                        line += image == nil ? "nil" : "image"
+                        if let image { line += " \(image.width)x\(image.height)" }
+                        mark(line)
+                    }
                 }
                 let rows = table.rows(in: table.visibleRect)
                 mark("DRAWER visible rows \(rows.location)..<\(rows.location + rows.length) "
