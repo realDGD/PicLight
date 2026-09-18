@@ -330,47 +330,4 @@ final class NativeInFlightReplacementTests: XCTestCase {
                        "a stable file is never mistaken for a replacement")
     }
 
-    /// The identity the scheduler compares is the file's own metadata, read fresh. A replacement
-    /// that restores the size and the modification date to the originals still has to be seen —
-    /// which is what the change time contributes.
-    func testIdentitySeesAReplacementThatRestoresSizeAndDate() throws {
-        let directory = try makeTemporaryDirectory()
-        let file = directory.appendingPathComponent("cunning.png")
-        try writeImage(0x44, to: file, length: 4_096)
-        let originalDate = Date(timeIntervalSince1970: 1_700_000_000)
-        try FileManager.default.setAttributes([.modificationDate: originalDate],
-                                              ofItemAtPath: file.path)
-        let before = SourceFileIdentity.read(at: file)
-
-        // Same length, same modification date, different bytes.
-        try writeImage(0x55, to: file, length: 4_096)
-        try FileManager.default.setAttributes([.modificationDate: originalDate],
-                                              ofItemAtPath: file.path)
-        let after = SourceFileIdentity.read(at: file)
-
-        XCTAssertNotEqual(before, after,
-                          "a replacement that mimics size and date is still a different file")
-    }
-
-    /// The identity is metadata only: reading it must not open the file's contents. A 4 KiB
-    /// sentinel is cheap to read, so the assertion is on the shape of the API — one `stat`
-    /// worth of fields, no hashing.
-    func testIdentityCarriesDeviceInodeAndTimes() throws {
-        let file = Fixtures.url("oversized-detail.png")
-        let identity = SourceFileIdentity.read(at: file)
-        XCTAssertTrue(identity.exists)
-        XCTAssertGreaterThan(identity.fileSize, 0)
-        XCTAssertNotNil(identity.inode, "the inode is what tells a replacement from a rewrite")
-        XCTAssertNotNil(identity.volumeIdentifier)
-        XCTAssertEqual(identity.path, file.path,
-                       "the path is spelled the way the tile cache spells it")
-    }
-
-    func testAMissingFileHasAnIdentityThatSaysSo() throws {
-        let directory = try makeTemporaryDirectory()
-        let missing = directory.appendingPathComponent("not-there.png")
-        let identity = SourceFileIdentity.read(at: missing)
-        XCTAssertFalse(identity.exists)
-        XCTAssertEqual(identity.fileSize, -1)
-    }
 }

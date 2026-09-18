@@ -14,6 +14,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public var onDescriptorAvailable: ((ImageDescriptor) -> Void)?
 
     private let rootView = ViewerRootView()
+    /// Which mode the viewer is presenting. The two are separate hierarchies: the image mode's
+    /// chrome (canvas, dock, HUD, navigation, drawer) is one set of views, the folder browser's
+    /// (toolbar, tree, gallery) is another, and only one of the two is in the tree at a time. They
+    /// share the folder session, the sort order and the thumbnail cache, and nothing else.
+    public enum ViewerMode: Equatable, Sendable {
+        case image
+        case folderBrowser
+    }
+
+    public private(set) var viewerMode: ViewerMode = .image
+    /// The folder browser, built on demand: a viewer that never opens it never pays for it.
+    private var folderBrowser: FolderBrowserViewController?
     private let emptyState = EmptyStateView()
     private let canvas = ImageCanvasView()
     private let toolDock = ViewerToolDockView()
@@ -21,6 +33,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let bottomBar = BottomInfoBarView(style: .hud)
     /// The auto-hiding previous/next controls. An overlay on the canvas.
     private let floatingNavigation = FloatingNavigationView()
+    /// Hosts the folder browser. Empty until the mode is first entered.
+    private let folderBrowserContainer = NSView()
     private let drawer = ThumbnailDrawerView(style: .drawer)
     private let minimap = NavigatorView()
     private let errorLabel = NSTextField(labelWithString: "")
@@ -200,6 +214,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         minimap.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         floatingNavigation.translatesAutoresizingMaskIntoConstraints = false
+        folderBrowserContainer.translatesAutoresizingMaskIntoConstraints = false
+        folderBrowserContainer.isHidden = true
 
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
@@ -216,6 +232,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // Added last so it sits above the canvas; it is an overlay and the canvas is never
         // constrained to it, so it cannot move the image geometry.
         root.addSubview(floatingNavigation)
+        // The folder browser's container is a sibling of the image mode's views, not a child of
+        // them: switching modes shows one hierarchy and hides the other.
+        root.addSubview(folderBrowserContainer)
 
         let minimapWidth = minimap.widthAnchor.constraint(
             equalToConstant: NavigatorView.defaultSize.width)
@@ -280,6 +299,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             floatingNavigation.centerYAnchor.constraint(equalTo: canvas.centerYAnchor),
             floatingNavigation.heightAnchor.constraint(
                 equalToConstant: FloatingNavigationView.buttonSize),
+
+            folderBrowserContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            folderBrowserContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            folderBrowserContainer.topAnchor.constraint(equalTo: root.topAnchor),
+            folderBrowserContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         // The card grows with its content up to a fraction of the canvas.
         infoCardHeightConstraint = infoCard.heightAnchor.constraint(equalToConstant: 0)
@@ -294,7 +318,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self?.refreshBottomBar()
         }
         session.onCurrentChanged = { [weak self] in
-            self?.loadCurrentImage()
+            guard let self else { return }
+            self.loadCurrentImage()
+            // The gallery shows the same index: a move made from the image mode's keyboard, or by a
+            // delete, has to move the highlight too.
+            self.folderBrowser?.syncSelectionFromSession()
         }
         applySettings()
         NotificationCenter.default.addObserver(
@@ -318,6 +346,83 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Wiring
 
     // MARK: - Context menu
+
+    // MARK: - Viewer modes
+
+    /// Enters the folder browser. The image mode's views go away as a group; the browser's appear.
+    /// Nothing about the image is decoded again on the way in or out — the viewport and the decoded
+    /// bitmap stay exactly where they were.
+    public func enterFolderBrowser() {
+        guard viewerMode != .folderBrowser, let browser = makeFolderBrowser() else { return }
+        viewerMode = .folderBrowser
+        browser.reload()
+        folderBrowserContainer.isHidden = false
+        setImageModeViewsHidden(true)
+        view.window?.makeFirstResponder(browser.view.gallery)
+    }
+
+    /// Leaves the folder browser and returns to the image. The selected image is whatever the
+    /// browser left in the session, so it comes back on screen; the viewport is untouched.
+    public func leaveFolderBrowser() {
+        guard viewerMode == .folderBrowser else { return }
+        viewerMode = .image
+        folderBrowser?.teardown()
+        folderBrowserContainer.isHidden = true
+        setImageModeViewsHidden(false)
+        applyChromeVisibility()
+        // The session's current item may have moved while the gallery was up; showing it is the
+        // one decode this transition can cause, and only when the selection actually changed.
+        if let url = session.currentItem?.url, url != displayedItemURL {
+            // The selection moved while the gallery was up, so the image on screen is the wrong one.
+            // Anything else — coming back to the same file — leaves the decoded bitmap alone, which
+            // is what makes entering and leaving the browser free.
+            loadCurrentImage()
+        }
+        view.window?.makeFirstResponder(canvas)
+    }
+
+    private func makeFolderBrowser() -> FolderBrowserViewController? {
+        if let folderBrowser { return folderBrowser }
+        let browser = FolderBrowserViewController(host: self)
+        folderBrowser = browser
+        let browserView = browser.view
+        browserView.translatesAutoresizingMaskIntoConstraints = false
+        folderBrowserContainer.addSubview(browserView)
+        NSLayoutConstraint.activate([
+            browserView.leadingAnchor.constraint(equalTo: folderBrowserContainer.leadingAnchor),
+            browserView.trailingAnchor.constraint(equalTo: folderBrowserContainer.trailingAnchor),
+            browserView.topAnchor.constraint(equalTo: folderBrowserContainer.topAnchor),
+            browserView.bottomAnchor.constraint(equalTo: folderBrowserContainer.bottomAnchor),
+        ])
+        return browser
+    }
+
+    /// Hides or shows every view that belongs to image mode. One list, so a view added to image
+    /// mode later cannot be forgotten here and float over the gallery.
+    private func setImageModeViewsHidden(_ hidden: Bool) {
+        for chrome in [canvas as NSView, emptyState, errorLabel, bottomBar, drawer, minimap,
+                       toolDock, infoCard, floatingNavigation] {
+            chrome.isHidden = hidden
+        }
+    }
+
+    /// Whether image mode's views are off screen because the browser is up.
+    var isImageModeHidden: Bool { viewerMode == .folderBrowser }
+
+    /// The browser's layout and thumbnail size. Per window and per session rather than an app
+    /// preference: they describe what this window is showing, not how the app should behave.
+    private var galleryLayoutKindStorage: GalleryLayoutKind = .uniformGrid
+    private var galleryThumbnailSizeStorage: CGFloat = GalleryLayout.defaultThumbnailSize
+    /// In-flight gallery thumbnails, so leaving the browser cancels work nobody is waiting for.
+    private var galleryThumbnailTasks: [String: Task<Void, Never>] = [:]
+    /// The item whose bitmap is on screen. Used to decide whether returning from the folder browser
+    /// needs a decode at all — comparing against the *descriptor* asked the wrong question, because
+    /// a descriptor's source URL is not always set.
+    private var displayedItemURL: URL?
+
+    /// The folder browser, for tests and the acceptance runner.
+    var folderBrowserForTesting: FolderBrowserViewController? { folderBrowser }
+    var folderBrowserContainerForTesting: NSView { folderBrowserContainer }
 
     /// The canvas's right-click menu. Built from the declared item list, with one target and one
     /// action for every command in it.
@@ -1159,6 +1264,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // This is the load/change trigger; it is deliberately not driven by the decode
             // starting, which would show a readout for an image that has not arrived.
             noteImageChangedForInfoHUD()
+            displayedItemURL = head.descriptor.sourceURL ?? session.currentItem?.url
             viewerState.apply(head: head)
             displayedLevel = head.level
             inFlightLevel = nil
@@ -1549,6 +1655,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Chrome visibility
 
+    /// The shared chrome tick, for tests that check the surfaces share it.
+    var chromeTimerForTesting: Timer? { chromeTimer }
+
+    /// Stops the chrome tick. A closed viewer must not keep a repeating timer alive: it is
+    /// scheduled on the main run loop, which retains it, so without this every window this process
+    /// ever closed would leave a timer waking the run loop ten times a second forever. Measured in
+    /// the test suite, where a hundred viewers' worth of dead timers made late tests time out.
+    func stopChromeTimer() {
+        chromeTimer?.invalidate()
+        chromeTimer = nil
+    }
+
+    public override func viewWillDisappear() {
+        super.viewWillDisappear()
+        stopChromeTimer()
+    }
+
     private func startChromeTimer() {
         chromeTimer?.invalidate()
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -1729,6 +1852,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func applyChromeVisibility() {
         applyTitlebarVisibility()
+        // The folder browser is a mode, not an overlay: while it is up the image mode's chrome is
+        // off screen entirely, and the chrome timer — which keeps running — must not bring the dock
+        // or the HUD back over the gallery.
+        guard viewerMode == .image else { return }
         let snapshot = chrome.snapshot
         appliedChromeSnapshot = snapshot
         let immersive = chrome.immersive
@@ -2036,9 +2163,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .copyImage:
             copyImageToPasteboard()
         case .browseFolder:
-            // The folder-browser mode arrives with its own commit; the command exists now so the
-            // dock and the context menu can declare it in one place.
-            break
+            enterFolderBrowser()
         case .open, .close, .settings, .toggleFullScreen:
             // Handled by the app-level router.
             NSApp.sendAction(#selector(NSDocumentController.newDocument(_:)), to: nil, from: nil)
@@ -2240,6 +2365,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Key handling
 
     public override func keyDown(with event: NSEvent) {
+        // Escape is the browser's back key, and it takes precedence over the image mode's own
+        // Escape behaviour: leaving a mode is not the same gesture as leaving immersive mode, and
+        // the browser is the mode the user is in.
+        if event.keyCode == 53, viewerMode == .folderBrowser {
+            leaveFolderBrowser()
+            return
+        }
         if let command = ShortcutStore.shared.command(matching: event) {
             perform(command)
             return
@@ -2251,8 +2383,82 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 viewerState.toggleImmersive()
                 applyChromeVisibility()
             }
+        case 36: // Return opens the current item, which is what it means in the gallery.
+            if viewerMode == .folderBrowser { leaveFolderBrowser() }
         default:
             super.keyDown(with: event)
         }
+    }
+}
+
+
+// MARK: - Folder browser host
+
+/// The folder browser reaches the viewer through this, and through nothing else: it cannot see the
+/// canvas, the dock, the drawer or the chrome model. That is what "the two modes do not share a
+/// presentation hierarchy" means in code rather than in a comment.
+extension ViewerViewController: FolderBrowserHost {
+
+    var galleryLayoutKind: GalleryLayoutKind {
+        get { galleryLayoutKindStorage }
+        set { galleryLayoutKindStorage = newValue }
+    }
+
+    var galleryThumbnailSize: CGFloat {
+        get { galleryThumbnailSizeStorage }
+        set { galleryThumbnailSizeStorage = GalleryLayout.clampThumbnailSize(newValue) }
+    }
+
+    /// Asks the shared thumbnail pipeline for a gallery thumbnail, at the size the gallery asked
+    /// for. The drawer's own path is separate only in *which view* it fills; the pipeline and its
+    /// cache are the same actor, so a thumbnail decoded for one mode is a hit in the other.
+    func requestGalleryThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int,
+                                 completion: @escaping (Int, CGImage?) -> Void) {
+        galleryThumbnailTasks[item.url.path]?.cancel()
+        let task = Task { [weak self] in
+            let image = try? await self?.thumbnails.thumbnail(for: item.url,
+                                                              maxPixelSize: maxPixelSize)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.galleryThumbnailTasks[item.url.path] = nil
+                completion(index, image)
+            }
+        }
+        galleryThumbnailTasks[item.url.path] = task
+    }
+
+    func cancelGalleryThumbnails() {
+        for task in galleryThumbnailTasks.values { task.cancel() }
+        galleryThumbnailTasks.removeAll()
+    }
+
+    /// A folder was chosen in the tree: the gallery and the image viewer move to it together.
+    ///
+    /// This publishes a *directory*, so it cannot go through `open(url:)`, which takes a file and
+    /// scans its parent. It scans the chosen folder, hands the session the new list, and — because
+    /// the caller is the browser — leaves the mode alone.
+    func openFolder(_ url: URL) {
+        let directory = url.resolvingSymlinksInPath()
+        session.setDirectory(directory)
+        watcher.onChange = { [weak self] in
+            Task { @MainActor in await self?.rescanPreservingCurrent() }
+        }
+        watcher.start(watching: directory)
+        Task { [weak self] in
+            guard let self else { return }
+            let scanner = FolderScanner()
+            let items = (try? await scanner.scan(directory: directory)) ?? []
+            let sorted = await self.sortedItems(items)
+            // A folder change selects its first item, which is what makes the gallery show
+            // something and what the image mode will come back to.
+            self.session.setItems(sorted)
+            self.folderBrowser?.reload()
+        }
+    }
+
+    /// A gallery item was opened: back to the image mode, showing that item.
+    func openGalleryItem(at index: Int) {
+        session.select(index: index)
+        leaveFolderBrowser()
     }
 }

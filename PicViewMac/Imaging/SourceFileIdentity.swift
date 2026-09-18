@@ -79,6 +79,11 @@ public struct SourceFileIdentity: Hashable, Sendable {
     /// The value the tile cache compares. A string because the cache's map is keyed by path and
     /// this is the cheap "same file?" question asked per store; the identity itself is the type
     /// the thumbnail cache will share.
+    ///
+    /// Deliberately *not* a function of the path: the question this answers is "is the file at *this
+    /// path* still the file the tiles were decoded from", and the path is the map's key. Two
+    /// different files that happen to share a size, timestamps and inode number on different
+    /// volumes would share a token — and it would not matter, because they are never compared.
     public var versionToken: String {
         guard exists else { return "missing" }
         let inodePart = inode.map(String.init) ?? "-"
@@ -89,9 +94,12 @@ public struct SourceFileIdentity: Hashable, Sendable {
         return "\(fileSize)-\(changeTime)-\(modificationTime)-\(inodePart)-\(volumePart)"
     }
 
-    /// Same bytes, same metadata, same file.
+    /// Same bytes, same metadata, same file, however the path is spelled.
     public func refersToSameFile(as other: SourceFileIdentity) -> Bool {
         if path == other.path { return true }
+        // Two spellings of one path (`/var/...` and `/private/var/...`, or a path with `.` in it).
+        if canonicalPath == other.canonicalPath { return true }
+        // And the answer that does not depend on spelling at all.
         if let inode, let volumeIdentifier,
            let otherInode = other.inode, let otherVolume = other.volumeIdentifier {
             return inode == otherInode && volumeIdentifier == otherVolume

@@ -28,6 +28,7 @@ public struct FolderItem: Identifiable, Hashable, Sendable {
 
 public enum ImageSortKey: String, CaseIterable, Sendable, Codable {
     case filename
+    case fileExtension
     case modificationDate
     case creationDate
     case fileSize
@@ -36,11 +37,18 @@ public enum ImageSortKey: String, CaseIterable, Sendable, Codable {
     public var localizedName: String {
         switch self {
         case .filename: return "文件名"
+        case .fileExtension: return "扩展名"
         case .modificationDate: return "修改时间"
         case .creationDate: return "创建时间"
         case .fileSize: return "文件大小"
         case .dimensions: return "图像尺寸"
         }
+    }
+
+    /// The file's extension, lower-cased, from the display name. Computed rather than stored: a
+    /// sort key that needed a new field on `FolderItem` would have to be maintained by every scan.
+    static func fileExtension(of item: FolderItem) -> String {
+        (item.displayName as NSString).pathExtension.lowercased()
     }
 }
 
@@ -68,6 +76,12 @@ public enum ImageSort {
         switch key {
         case .filename:
             return lhs.displayName.localizedStandardCompare(rhs.displayName)
+        case .fileExtension:
+            let order = ImageSortKey.fileExtension(of: lhs).localizedStandardCompare(ImageSortKey.fileExtension(of: rhs))
+            // Within one extension the names still have to be in an order, or the list would
+            // reshuffle between scans for no reason the user can see.
+            return order != .orderedSame ? order
+                : lhs.displayName.localizedStandardCompare(rhs.displayName)
         case .modificationDate:
             return compare(lhs.modificationDate, rhs.modificationDate)
         case .creationDate:

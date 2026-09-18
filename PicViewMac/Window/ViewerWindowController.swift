@@ -133,6 +133,8 @@ public final class ViewerWindowController: NSWindowController {
 extension ViewerWindowController: NSWindowDelegate {
     public func windowWillClose(_ notification: Notification) {
         rememberContentSize()
+        // The viewer's repeating chrome tick belongs to the window it was started for.
+        viewerViewController.stopChromeTimer()
     }
 
     public func windowDidExitFullScreen(_ notification: Notification) {

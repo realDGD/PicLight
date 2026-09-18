@@ -73,6 +73,24 @@ public final class FolderSession {
         onCurrentChanged?()
     }
 
+    /// Re-applies the *shared* sort order to the items.
+    ///
+    /// There is one sort order for the whole app — `AppSettings.sortKey` / `sortDirection` — and
+    /// both modes read it. This exists so the gallery can ask for the list to be re-ordered after
+    /// the user changes it, without the session holding a second copy of the preference.
+    public func resortSharedOrder() {
+        let settings = AppSettings.shared
+        let sorted = ImageSort.sort(items, by: settings.sortKey, direction: settings.sortDirection)
+        guard sorted.map(\.id) != items.map(\.id) else { return }
+        setItems(sorted)
+    }
+
+    /// Replaces the list with the same files carrying more information, holding the current one.
+    /// Used when a lazy probe (dimensions) fills something in: the user must not be moved by it.
+    public func replaceItemsPreservingCurrent(_ newItems: [FolderItem]) {
+        setItems(newItems, preferredIdentity: currentItem?.id)
+    }
+
     @discardableResult
     public func select(index: Int) -> Bool {
         guard items.indices.contains(index) else { return false }
