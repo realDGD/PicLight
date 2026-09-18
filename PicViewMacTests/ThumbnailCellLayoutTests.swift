@@ -266,8 +266,64 @@ final class ThumbnailCellLayoutTests: XCTestCase {
         subject.layoutSubtreeIfNeeded()
         let tall = subject.selectionBackgroundView.frame.height
         XCTAssertGreaterThan(tall, wide, "the card must follow the new aspect after reuse")
-        XCTAssertEqual(subject.selectionBackgroundView.frame.width,
-                       subject.thumbnailImageView.frame.width + 2 * ThumbnailCellView.cardPadding,
-                       accuracy: 0.5)
+        // The card is the wider of the image box plus padding and the minimum filename width.
+        let expected = max(subject.thumbnailImageView.frame.width + 2 * ThumbnailCellView.cardPadding,
+                           120)
+        XCTAssertEqual(subject.selectionBackgroundView.frame.width, expected, accuracy: 0.5)
+    }
+
+    /// A portrait thumbnail's card is narrow, and the filename used to be bound to the cell: the
+    /// label hung outside the selection colour. Both edges must be inside the card now.
+    func testFilenameSitsInsideTheCardHorizontallyForPortraitShapes() {
+        let cases: [(name: String, width: Int, height: Int)] = [
+            ("2:3 portrait", 200, 300),
+            ("1:4 ultra tall", 100, 400),
+            ("1:5 ultra tall", 100, 500),
+            ("extremely narrow 1:10", 40, 400),
+            ("3:2 landscape", 300, 200),
+        ]
+        for entry in cases {
+            let subject = cell()
+            subject.configure(item: item(), image: nil, isCurrent: true, filenameMode: .always)
+            subject.layoutSubtreeIfNeeded()
+            subject.setThumbnail(image(width: entry.width, height: entry.height))
+            subject.layoutSubtreeIfNeeded()
+
+            let card = subject.selectionBackgroundView.frame
+            let label = subject.nameLabelView.frame
+            XCTAssertGreaterThanOrEqual(label.minX, card.minX - 0.5,
+                                        "\(entry.name): the filename escapes the card on the left")
+            XCTAssertLessThanOrEqual(label.maxX, card.maxX + 0.5,
+                                     "\(entry.name): the filename escapes the card on the right")
+            XCTAssertGreaterThanOrEqual(label.minY, card.minY - 0.5, entry.name)
+            XCTAssertLessThanOrEqual(label.maxY, card.maxY + 0.5, entry.name)
+            // An ultra-tall image must not shrink the card to a sliver around the thumbnail.
+            XCTAssertGreaterThanOrEqual(card.width, 120 - 0.5,
+                                        "\(entry.name): the card keeps a usable filename width")
+            XCTAssertLessThan(card.width, subject.bounds.width,
+                              "\(entry.name): and still does not span the row")
+        }
+    }
+
+    /// The card's geometry must not depend on whether the filename is shown.
+    func testCardGeometryIsIdenticalInEveryFilenameMode() {
+        let subject = cell()
+        let picture = image(width: 200, height: 300)
+        var frames: [CGRect] = []
+        for mode in [ThumbnailFilenameMode.always, .hover, .never] {
+            subject.configure(item: item(), image: picture, isCurrent: true, filenameMode: mode)
+            subject.layoutSubtreeIfNeeded()
+            frames.append(subject.selectionBackgroundView.frame)
+        }
+        for frame in frames.dropFirst() {
+            XCTAssertEqual(frame, frames[0],
+                           "the card must not move or resize when the filename mode changes")
+        }
+        // And hovering (which toggles the label) changes nothing either.
+        subject.filenameMode = .hover
+        subject.layoutSubtreeIfNeeded()
+        let hidden = subject.selectionBackgroundView.frame
+        subject.layoutSubtreeIfNeeded()
+        XCTAssertEqual(hidden, frames[0])
     }
 }

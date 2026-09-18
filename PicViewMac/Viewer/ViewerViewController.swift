@@ -619,6 +619,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                                  directionHint: hint) else {
             // The geometry is unusable for a plan, which is a reason to disable native detail, not
             // just to publish nothing: the previous plan and its pass would otherwise keep running.
+            warmPlanNilCleanups += 1
             clearNativeDetail()
             return
         }
@@ -643,6 +644,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let generation = detailPublicationGeneration
         let colorSpace = bitmap.colorSpace
         let orientation = SourceOrientation(descriptor.orientation)
+        detailLifecycleEpoch &+= 1
+        let lifecycleEpoch = detailLifecycleEpoch
         Task { [weak self] in
             guard let self else { return }
             if let hook = self.directRequestPauseHook { await hook() }
@@ -653,7 +656,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.recordRequestSnapshotForTesting(url, colorSpace, orientation)
             await self.nativeDetail.request(plan: plan, source: url,
                                             colorSpace: colorSpace,
-                                            orientation: orientation)
+                                            orientation: orientation,
+                                            epoch: lifecycleEpoch)
             guard generation == self.detailPublicationGeneration else {
                 self.staleDirectPublicationDiscards += 1
                 return
@@ -740,8 +744,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         submittedWarmKeys.removeAll()
         lastDetailVisibleRect = nil
         lastDetailDirectionHint = .zero
-        Task { await self.nativeDetail.stopAndPurge() }
+        nativeDetailClampedByBudget = false
+        // The clear takes the next lifecycle epoch, so a purge that arrives after a later request is
+        // ignored instead of wiping the pass that replaced this one.
+        detailLifecycleEpoch &+= 1
+        let epoch = detailLifecycleEpoch
+        Task { await self.nativeDetail.stopAndPurge(epoch: epoch) }
     }
+
+    /// Runs the real detail update for the current viewport, without going through the image load
+    /// (which clears unconditionally and would hide which branch was taken).
+    func updateNativeDetailForTesting() { updateNativeDetail() }
 
     /// Re-runs the image load with whatever the session currently holds — the way deleting the last
     /// item in a folder does. Nothing else about the viewer changes.
@@ -885,6 +898,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// screen and hand the renderer the previous resident set, bypassing the renderer's own
     /// stale-plan guard from above.
     private var detailPublicationGeneration: UInt64 = 0
+    /// Numbers every native-detail operation so the scheduler can tell a late cleanup from the
+    /// request that replaced it.
+    private var detailLifecycleEpoch: UInt64 = 0
+    /// Diagnostics: how many times the unusable-warm-plan branch disabled native detail. The test
+    /// that claimed to cover it went through `loadCurrentImage`, which clears unconditionally, so it
+    /// never reached this branch.
+    private(set) var warmPlanNilCleanups = 0
 
     /// Test-only: awaited inside a publication between the scheduler reads and the apply, so a test
     /// can change the plan while a publication is in flight without depending on real timing.

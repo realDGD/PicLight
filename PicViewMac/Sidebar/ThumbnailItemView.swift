@@ -64,10 +64,13 @@ final class ThumbnailCellView: NSTableCellView {
             // The selection card wraps the thumbnail and the filename slot, not the whole row. The
             // row is 168 pt tall by design, so binding the card to the cell painted the selection
             // colour over a large empty band under a wide image.
-            selectionBackground.leadingAnchor.constraint(equalTo: imageView2.leadingAnchor,
-                                                         constant: -Self.cardPadding),
-            selectionBackground.trailingAnchor.constraint(equalTo: imageView2.trailingAnchor,
-                                                          constant: Self.cardPadding),
+            // Centred on the image and at least as wide as it, but never *pushing* it: an equality
+            // on both edges would fight the image's aspect constraint, and a minimum width alone
+            // would have to break the aspect to be satisfied (measured: a 2:3 thumbnail came out
+            // 0.79 instead of 0.67). The card takes a lower bound from the image instead.
+            selectionBackground.centerXAnchor.constraint(equalTo: imageView2.centerXAnchor),
+            selectionBackground.widthAnchor.constraint(greaterThanOrEqualTo: imageView2.widthAnchor,
+                                                       constant: 2 * Self.cardPadding),
             selectionBackground.topAnchor.constraint(equalTo: imageView2.topAnchor,
                                                      constant: -Self.cardPadding),
             selectionBackground.bottomAnchor.constraint(equalTo: imageView2.bottomAnchor,
@@ -85,8 +88,15 @@ final class ThumbnailCellView: NSTableCellView {
             selectionBorder.heightAnchor.constraint(equalTo: imageView2.heightAnchor, constant: 8),
 
             nameLabel.topAnchor.constraint(equalTo: imageView2.bottomAnchor, constant: 4),
-            nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            // Bound to the card, not to the cell: a portrait thumbnail's card is narrow, and a label
+            // spanning the whole row would hang outside the selection colour.
+            nameLabel.leadingAnchor.constraint(equalTo: selectionBackground.leadingAnchor,
+                                               constant: 6),
+            nameLabel.trailingAnchor.constraint(equalTo: selectionBackground.trailingAnchor,
+                                                constant: -6),
+            // And the card keeps a usable filename width even for an ultra-tall image, instead of
+            // collapsing to a sliver around it.
+            selectionBackground.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
         ])
         // The box wants to be as large as the two caps allow; the aspect constraint below decides
         // how the size is split between width and height. The priority has to beat NSImageView's own

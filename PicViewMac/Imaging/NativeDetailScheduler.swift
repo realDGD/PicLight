@@ -30,6 +30,8 @@ public actor NativeDetailScheduler {
     /// How the file's pixels relate to canonical source space.
     private var orientation: SourceOrientation = .up
     private var runningSource: URL?
+    /// The plan the scheduler is currently running a pass for, for tests of the lifecycle contract.
+    var runningPlanForTesting: NativeTilePlan? { runningPlan }
     private var inFlightKeys: Set<NativeTileKey> = []
     private var stats = NativeDetailStats()
 
@@ -55,9 +57,40 @@ public actor NativeDetailScheduler {
     }
 
     /// Asks for the tiles a viewport needs. Safe to call on every geometry change.
+    /// Numbered by the viewer: every clear and every request takes the next value, and the scheduler
+    /// applies an operation only when it is newer than the last one it applied.
+    ///
+    /// Without it an unstructured `stopAndPurge` task — created by a clear, delivered only after a
+    /// later request — wiped the pass that had replaced it, because the actor sees two unrelated
+    /// messages with no way to tell which belongs to the newer plan.
+    private var lifecycleEpoch: UInt64 = 0
+    /// Operations dropped because a newer one had already been applied.
+    private(set) var lifecycleIgnoredStale = 0
+
+    public func request(plan: NativeTilePlan, source: URL, pageIndex: Int = 0,
+                        colorSpace: CGColorSpace? = nil,
+                        orientation: SourceOrientation = .up, epoch: UInt64) {
+        guard epoch > lifecycleEpoch else {
+            lifecycleIgnoredStale += 1
+            return
+        }
+        lifecycleEpoch = epoch
+        applyRequest(plan: plan, source: source, pageIndex: pageIndex,
+                     colorSpace: colorSpace, orientation: orientation)
+    }
+
+    /// Unnumbered request: takes the next epoch itself, so callers that do not track the lifecycle
+    /// (tests, one-off probes) keep the old behaviour.
     public func request(plan: NativeTilePlan, source: URL, pageIndex: Int = 0,
                         colorSpace: CGColorSpace? = nil,
                         orientation: SourceOrientation = .up) {
+        lifecycleEpoch += 1
+        applyRequest(plan: plan, source: source, pageIndex: pageIndex,
+                     colorSpace: colorSpace, orientation: orientation)
+    }
+
+    private func applyRequest(plan: NativeTilePlan, source: URL, pageIndex: Int,
+                              colorSpace: CGColorSpace?, orientation: SourceOrientation) {
         self.colorSpace = colorSpace
         self.orientation = orientation
         let visibleKeys = Set(plan.visible.map {
@@ -84,8 +117,24 @@ public actor NativeDetailScheduler {
         start(plan: plan, source: source, pageIndex: pageIndex)
     }
 
+    /// Numbered clear: ignored when a newer operation has already been applied, which is what keeps
+    /// a late cleanup from killing the pass that replaced it.
+    public func stopAndPurge(epoch: UInt64) {
+        guard epoch > lifecycleEpoch else {
+            lifecycleIgnoredStale += 1
+            return
+        }
+        lifecycleEpoch = epoch
+        applyStopAndPurge()
+    }
+
     /// Drops native detail entirely: zoomed out, animated, or the image changed.
     public func stopAndPurge() {
+        lifecycleEpoch += 1
+        applyStopAndPurge()
+    }
+
+    private func applyStopAndPurge() {
         generation += 1
         passTask?.cancel()
         passTask = nil
