@@ -319,9 +319,9 @@ try SharedSettingsScope.preservingSort {
 
     // MARK: - The folder tree
 
-    /// The tree shows the current folder inside its parent's context, and the current folder is
-    /// highlighted.
-    func testTheTreeShowsTheCurrentFolderInContext() throws {
+    /// The tree is rooted at the current folder — the folder being browsed — and the current folder
+    /// is highlighted. Its parent folders are deliberately not part of the tree.
+    func testTheTreeIsRootedAtTheCurrentFolder() throws {
         let (directory, controller, viewer) = try makeFolder(3, subfolders: 2)
         defer { cleanup(directory, controller) }
         viewer.perform(.browseFolder)
@@ -333,9 +333,11 @@ try SharedSettingsScope.preservingSort {
         XCTAssertEqual(sidebar.selectedPath, directory.resolvingSymlinksInPath().path,
                        "the current folder is the highlighted row")
         let names = (0..<sidebar.visibleRowCount).compactMap { sidebar.renderedName(at: $0) }
-        XCTAssertTrue(names.contains(directory.lastPathComponent), "and it is in the list")
-        XCTAssertTrue(names.contains(directory.deletingLastPathComponent().lastPathComponent),
-                      "with its parent above it")
+        XCTAssertEqual(names.first, directory.lastPathComponent,
+                       "and it is the root of the tree")
+        XCTAssertTrue(names.contains("sub0"), "with the folders inside it listed")
+        XCTAssertFalse(names.contains(directory.deletingLastPathComponent().lastPathComponent),
+                       "its parent folders are not rows")
     }
 
     /// Clicking a folder moves the gallery and the image viewer to it, and the browser stays open.

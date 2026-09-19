@@ -446,12 +446,13 @@ It no longer shows image thumbnails.
 
 It becomes a folder tree/navigator similar to the reference screenshots:
 
-- current folder highlighted
-- parent folder context
-- child folders
-- expand/collapse
+- rooted at the image's own folder: the current folder is the root row and is highlighted
+- child folders, expand/collapse
 - lazy-load children on expansion
 - clicking a folder updates the gallery
+
+The folders *above* the current one are deliberately not shown: the sidebar is for moving around
+inside the folder that is open, not for displaying the path it lives on.
 
 Do not recursively scan the entire disk.
 

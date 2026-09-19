@@ -48,50 +48,62 @@ final class FolderTreeTests: XCTestCase {
 
     // MARK: - Laziness
 
-    /// Focusing on a folder reads its ancestors' children (needed to show the path) and nothing else.
-    func testFocusingDoesNotReadBelowTheCurrentFolder() {
+    /// Focusing on a folder reads that folder and nothing else: no ancestor is listed, and nothing
+    /// below the focused folder is shown.
+    func testFocusingReadsOnlyTheFocusedFolder() {
         let (tree, counts) = model()
         tree.focus(on: URL(fileURLWithPath: "/a/a1/x"))
 
-        let afterFocus = counts()
-        // The folders *on the path* were listed; the ones below the focused folder were not.
-        let visible = tree.visibleNodes.map(\.url.path)
-        XCTAssertTrue(visible.contains("/"), "the root is the top of the chain")
-        for path in ["/a", "/a/a1", "/a/a1/x"] {
-            XCTAssertTrue(visible.contains(path), "\(path) is on the spine")
-        }
-        XCTAssertFalse(visible.contains(where: { $0.hasPrefix("/a/a1/x/") }),
-                       "nothing below the focused folder is shown…")
-        XCTAssertFalse(visible.contains(where: { $0.hasPrefix("/b/") }),
-                       "…nor below a collapsed sibling")
-
-        // The cost is one listing per level of the path, not one per folder in the tree.
-        XCTAssertLessThanOrEqual(afterFocus.children, 4,
-                                 "at most one listing per level on the way down")
-        XCTAssertEqual(visible.count, 6,
-                       "the spine plus the siblings of the expanded folders")
+        XCTAssertEqual(counts().children, 1,
+                       "exactly one listing: the folder the gallery is showing")
+        XCTAssertEqual(tree.visibleNodes.map(\.url.path), ["/a/a1/x"],
+                       "a leaf folder is a one-row tree")
     }
 
-    /// A collapsed sibling's children are never enumerated.
-    func testACollapsedSiblingIsNeverRead() {
+    /// The folders inside the current folder are listed without being read themselves.
+    func testFocusingShowsTheFoldersInsideTheCurrentFolder() {
         let (tree, counts) = model()
-        tree.focus(on: URL(fileURLWithPath: "/a/a1"))
-        let before = counts().children
+        tree.focus(on: URL(fileURLWithPath: "/a"))
 
-        // Everything in the visible list is on the expanded spine; /a/a2 is a leaf here, and /b is
-        // not on the spine at all.
-        let visible = tree.visibleNodes.map(\.url.path)
-        XCTAssertTrue(visible.contains("/b"), "the sibling is shown…")
-        XCTAssertFalse(visible.contains(where: { $0.hasPrefix("/b/") }),
-                       "…but its children are not")
-        XCTAssertGreaterThanOrEqual(counts().children, before)
+        XCTAssertEqual(counts().children, 1, "one listing: /a itself")
+        XCTAssertEqual(tree.visibleNodes.map(\.url.path), ["/a", "/a/a1", "/a/a2"],
+                       "the current folder and its immediate subfolders")
+        XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
+                       "a collapsed child's contents are not shown…")
+        XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/b"),
+                       "…and siblings of the current folder are not part of this tree at all")
+    }
+
+    /// The reported bug: the tree used to be rooted above the browsed folder, so the sidebar filled
+    /// up with the path the image happens to live on.
+    func testTheTreeNeverShowsTheFoldersAboveTheCurrentOne() {
+        let (tree, _) = model()
+        tree.focus(on: URL(fileURLWithPath: "/a/a1/x"))
+        let visible = Set(tree.visibleNodes.map(\.url.path))
+        XCTAssertFalse(visible.contains("/"), "the volume is not a row")
+        XCTAssertFalse(visible.contains("/a"), "nor is the parent folder")
+        XCTAssertFalse(visible.contains("/a/a1"), "nor the grandparent")
+        XCTAssertTrue(visible.contains("/a/a1/x"), "the browsed folder is the root")
+
+        tree.focus(on: URL(fileURLWithPath: "/a/a1"))
+        let next = Set(tree.visibleNodes.map(\.url.path))
+        XCTAssertEqual(next, ["/a/a1", "/a/a1/x"], "re-rooting on another folder replaces the tree")
+    }
+
+    /// A folder whose path does not exist in the tree is handled without inventing nodes.
+    func testAnUnknownFolderDoesNotInventNodes() {
+        let (tree, _) = model()
+        tree.focus(on: URL(fileURLWithPath: "/nope/nothing"))
+        XCTAssertEqual(tree.visibleNodes.map(\.url.path), ["/nope/nothing"],
+                       "the folder is the root even when the file system has nothing at it")
+        XCTAssertEqual(tree.currentFolderPath, "/nope/nothing")
     }
 
     /// Expanding reads exactly one more level, and only once — collapsing and expanding again comes
     /// from the cache.
     ///
     /// The node toggled is a *visible* one, which is the only kind a user can click: a tree row
-    /// exists only when its parent has been read.
+    /// exists only when its parent — here the root — has been read.
     func testExpandingReadsOneLevelAndCachesIt() {
         let (tree, counts) = model()
         tree.focus(on: URL(fileURLWithPath: "/a"))
@@ -99,72 +111,52 @@ final class FolderTreeTests: XCTestCase {
         XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
                        "a collapsed folder's contents are not shown…")
 
-        tree.toggle(URL(fileURLWithPath: "/a"))
+        tree.toggle(URL(fileURLWithPath: "/a/a1"))
         let afterExpand = counts().children
         XCTAssertGreaterThan(afterExpand, before, "…and are read when it is expanded")
-        XCTAssertTrue(tree.visibleNodes.map(\.url.path).contains("/a/a1"),
+        XCTAssertTrue(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
                       "its children are now on screen")
 
-        tree.toggle(URL(fileURLWithPath: "/a"))
-        XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/a/a1"),
+        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
                        "collapsing hides them again")
-        tree.toggle(URL(fileURLWithPath: "/a"))
+        tree.toggle(URL(fileURLWithPath: "/a/a1"))
         XCTAssertEqual(counts().children, afterExpand,
                        "a second expansion must come from the cache, not from the disk")
     }
 
-    /// The number of enumerations is bounded by the levels on screen, not by the size of the tree.
-    func testTheReadCountIsBoundedByTheVisibleSpine() {
+    /// The number of enumerations is bounded by the tree's visible levels, not by the folder's size:
+    /// focusing is one listing, and each expansion is one more.
+    func testTheReadCountIsBoundedByTheVisibleLevels() {
         let (tree, counts) = model()
-        tree.focus(on: URL(fileURLWithPath: "/a/a1/x"))
-        XCTAssertLessThanOrEqual(counts().children, 4,
-                                 "four folders on the path, so at most four listings")
+        tree.focus(on: URL(fileURLWithPath: "/a"))
+        XCTAssertEqual(counts().children, 1, "focusing lists the current folder only")
+
+        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        XCTAssertEqual(counts().children, 2, "expanding a child lists that child, once")
+        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        XCTAssertEqual(counts().children, 2, "and a re-expansion comes from the cache")
     }
 
     // MARK: - Structure
 
-    /// The root is the top of the ancestor chain, so the focused folder has context.
-    func testTheRootIsTheTopOfTheChain() {
+    /// The root is the folder the gallery is showing, so the tree is that folder's contents.
+    func testTheRootIsTheFocusedFolder() {
         let (tree, _) = model()
         tree.focus(on: URL(fileURLWithPath: "/a/a1/x"))
-        XCTAssertEqual(tree.root?.url.path, "/")
+        XCTAssertEqual(tree.root?.url.path, "/a/a1/x")
         XCTAssertEqual(tree.currentFolderPath, "/a/a1/x", "and the focused folder is remembered")
     }
 
-    /// The current folder's ancestors are expanded, so it is visible without any clicking.
-    func testTheSpineToTheCurrentFolderIsExpanded() {
+    /// The current folder is expanded, so what is inside it is visible without any clicking.
+    func testTheCurrentFolderIsExpanded() {
         let (tree, _) = model()
-        tree.focus(on: URL(fileURLWithPath: "/a/a1/x"))
+        tree.focus(on: URL(fileURLWithPath: "/a/a1"))
         let visible = Set(tree.visibleNodes.map(\.url.path))
-        for path in ["/", "/a", "/a/a1", "/a/a1/x"] {
-            XCTAssertTrue(visible.contains(path), "\(path) must be on screen")
-        }
-        XCTAssertFalse(visible.contains("/a/a2/x"), "and nothing off the spine")
-    }
-
-    /// A folder whose path does not exist in the tree is handled without inventing nodes.
-    func testAnUnknownFolderDoesNotInventNodes() {
-        let (tree, _) = model()
-        tree.focus(on: URL(fileURLWithPath: "/nope/nothing"))
-        // The chain is built from the path, so the nodes exist as *paths*; the point is that the
-        // walk stops where the tree stops rather than crashing or looping.
-        XCTAssertFalse(tree.visibleNodes.isEmpty)
-        XCTAssertEqual(tree.currentFolderPath, "/nope/nothing")
-    }
-
-    /// The ancestor chain is bounded: a deep path does not produce an unbounded chain.
-    func testTheAncestorChainIsBounded() {
-        let deep = URL(fileURLWithPath: "/a/b/c/d/e/f/g/h/i/j/k/l")
-        let chain = FolderTreeModel.ancestorChain(of: deep, upTo: nil)
-        XCTAssertLessThanOrEqual(chain.count, 6, "a handful of levels of context is enough")
-        XCTAssertEqual(chain.last, deep, "and the focused folder is the last one")
-    }
-
-    /// The chain stops at a supplied limit, which is how a shallow tree is requested.
-    func testTheChainStopsAtALimit() {
-        let chain = FolderTreeModel.ancestorChain(of: URL(fileURLWithPath: "/a/b/c"),
-                                                 upTo: URL(fileURLWithPath: "/a"))
-        XCTAssertEqual(chain.map(\.path), ["/a", "/a/b", "/a/b/c"])
+        XCTAssertTrue(visible.contains("/a/a1"), "the folder itself is the root row")
+        XCTAssertTrue(visible.contains("/a/a1/x"), "with what is inside it on screen")
+        XCTAssertFalse(visible.contains("/a"), "and nothing above it")
     }
 
     // MARK: - Real file system

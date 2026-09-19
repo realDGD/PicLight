@@ -1,11 +1,11 @@
 import Foundation
 
-/// The folder browser's sidebar, as a lazy tree.
+/// The folder browser's sidebar, as a lazy tree rooted at the folder the gallery is showing.
 ///
 /// The spec is explicit that the whole disk must not be walked: children are enumerated when a node
-/// is first expanded and then kept, and nothing below a collapsed node is ever read. A node's
-/// parent chain is built from the path rather than searched for, so "parent context" costs one
-/// enumeration of each ancestor rather than a scan.
+/// is first expanded and then kept, and nothing below a collapsed node is ever read. The tree is
+/// rooted at the image's own folder — its parent folders are not part of it, so the sidebar shows
+/// the folder being browsed and what is inside it, not the path it happens to live on.
 @MainActor
 public final class FolderTreeModel {
 
@@ -78,65 +78,19 @@ public final class FolderTreeModel {
 
     // MARK: - Building
 
-    /// Points the tree at `folder`, building the ancestor chain above it so the current folder can
-    /// be highlighted inside its parent's context. Only the ancestors' own children are enumerated.
+    /// Points the tree at `folder`: the folder itself is the root, expanded, so the sidebar lists the
+    /// directory the gallery is showing and the folders inside it.
     ///
-    /// The root is the *top* of the chain, not the folder itself: a tree rooted at the current
-    /// folder shows no context, which is the opposite of what a folder navigator is for.
-    public func focus(on folder: URL, upTo limit: URL? = nil) {
+    /// The ancestors are deliberately not built. A tree rooted above the current folder fills the
+    /// sidebar with the path the image happens to live on — `/`, `Users`, `dgd`, … — which is not
+    /// what the navigator is for: it is for moving around *inside* the folder that is open.
+    public func focus(on folder: URL) {
         let standardized = URL(fileURLWithPath: folder.resolvingSymlinksInPath().path)
         currentFolder = standardized
-        let chain = Self.ancestorChain(of: standardized,
-                                       upTo: limit.map { URL(fileURLWithPath: $0.resolvingSymlinksInPath().path) })
-        root = Self.build(from: chain, load: loadNode, expand: expand)
-    }
-
-    /// Builds the visible spine top-down: each node on the chain is expanded and its child on the
-    /// chain replaced by the subtree below it.
-    ///
-    /// Written recursively because `Node` is a value type: expanding a *copy* of a node and then
-    /// walking into that copy leaves the tree itself untouched, which is exactly what happened
-    /// first — the root came out expanded and every level under it collapsed.
-    static func build(from chain: [URL],
-                      load: (URL) -> Node,
-                      expand: (inout Node) -> Void) -> Node? {
-        guard let first = chain.first else { return nil }
-        var node = load(first)
-        let rest = Array(chain.dropFirst())
-        guard !rest.isEmpty else { return node }
-
+        var node = loadNode(at: standardized)
         node.isExpanded = true
         expand(&node)
-        guard var children = node.children,
-              let index = children.firstIndex(where: { $0.url.path == rest[0].path }),
-              let subtree = build(from: rest, load: load, expand: expand) else {
-            // The chain and the file system disagree — a folder that vanished mid-scan. Showing the
-            // level we do have, collapsed, is better than showing a lie about expansion.
-            node.isExpanded = false
-            return node
-        }
-        children[index] = subtree
-        node.children = children
-        return node
-    }
-
-    /// The ancestors from the top of the chain down to `folder`, outermost first.
-    static func ancestorChain(of folder: URL, upTo limit: URL?) -> [URL] {
-        var chain: [URL] = []
-        var cursor = folder
-        while true {
-            chain.append(cursor)
-            if let limit, cursor == limit { break }
-            // Rebuilt from the path so the spelling matches the providers': `deletingLastPathComponent`
-            // leaves a trailing slash on the result, and `URL(fileURLWithPath: "/a/")` is not equal to
-            // `URL(fileURLWithPath: "/a")` — which silently stopped the walk at the first level.
-            let parentPath = cursor.deletingLastPathComponent().resolvingSymlinksInPath().path
-            let parent = URL(fileURLWithPath: parentPath)
-            if parent == cursor { break }
-            if limit == nil, chain.count >= 6 { break }   // a handful of levels of context is enough
-            cursor = parent
-        }
-        return chain.reversed()
+        root = node
     }
 
     private func loadNode(at url: URL) -> Node {
