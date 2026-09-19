@@ -350,9 +350,11 @@ final class FolderBrowserModeTests: XCTestCase {
         XCTAssertTrue(browser.view.isOpaque, "the browser view fills its own background")
         XCTAssertTrue(browser.view.galleryScrollView.drawsBackground,
                       "the gallery's scroll view is not a window onto the image behind it")
-        let sidebarBackground = try XCTUnwrap(browser.view.treeSidebar.outlineView.backgroundColor)
-        XCTAssertGreaterThan(sidebarBackground.alphaComponent, 0.99,
-                             "the folder tree is opaque too")
+        // The sidebar is a native source list: vibrant material over the browser's opaque
+        // background, with a clear outline on top — the material is what keeps it from showing the
+        // image behind, not an opaque outline colour.
+        XCTAssertTrue(browser.view.treeSidebar.usesSidebarMaterialForTesting,
+                      "the folder tree draws over a sidebar material")
     }
 
     func testEscapeLeavesTheBrowserAndKeepsTheSelection() throws {
@@ -417,11 +419,85 @@ try SharedSettingsScope.preservingSort {
         XCTAssertEqual(sidebar.selectedPath, directory.resolvingSymlinksInPath().path,
                        "the current folder is the highlighted row")
         let names = (0..<sidebar.visibleRowCount).compactMap { sidebar.renderedName(at: $0) }
-        XCTAssertEqual(names.first, directory.lastPathComponent,
-                       "and it is the root of the tree")
+        XCTAssertEqual(names.first, "上一级",
+                       "the only way up is the one row that leads back to the parent")
+        XCTAssertEqual(sidebar.upRowPath, directory.deletingLastPathComponent().path)
+        XCTAssertEqual(names.dropFirst().first, directory.lastPathComponent,
+                       "and the browsed folder is the root of the tree below it")
         XCTAssertTrue(names.contains("sub0"), "with the folders inside it listed")
         XCTAssertFalse(names.contains(directory.deletingLastPathComponent().lastPathComponent),
-                       "its parent folders are not rows")
+                       "the parent itself is not a row")
+    }
+
+    /// The tree is rooted at the folder being browsed, so the one row that leads back to where it
+    /// came from is the way up.
+    func testTheUpRowNavigatesToTheParentFolder() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        let sub = directory.appendingPathComponent("sub0")
+        try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                         to: sub.appendingPathComponent("only.png"))
+
+        // Browse the subfolder, so the parent is one level up.
+        viewer.open(url: sub.appendingPathComponent("only.png"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.session.currentItem?.url != sub.appendingPathComponent("only.png").resolvingSymlinksInPath(),
+              Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let sidebar = browser.view.treeSidebar
+        XCTAssertEqual(sidebar.renderedName(at: 0), "上一级")
+        XCTAssertEqual(sidebar.upRowPath, directory.resolvingSymlinksInPath().path)
+        XCTAssertEqual(viewer.session.directory?.resolvingSymlinksInPath().path,
+                       sub.resolvingSymlinksInPath().path, "precondition: the subfolder is browsed")
+
+        // Click it, which is what a user does.
+        sidebar.outlineView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        let upDeadline = Date().addingTimeInterval(10)
+        while viewer.session.directory?.resolvingSymlinksInPath().path
+                != directory.resolvingSymlinksInPath().path,
+              Date() < upDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertEqual(viewer.session.directory?.resolvingSymlinksInPath().path,
+                       directory.resolvingSymlinksInPath().path,
+                       "the up row opens the parent folder")
+    }
+
+    /// The merged top bar is exactly the titlebar's height, not a thicker band with the controls
+    /// near its top edge.
+    func testTheMergedTopBarIsAsTallAsTheTitlebar() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        controller.window?.layoutIfNeeded()
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        XCTAssertGreaterThan(titlebarHeight, 0)
+        XCTAssertEqual(browser.view.toolbarHeightForTesting ?? -1, titlebarHeight, accuracy: 0.5,
+                       "the bar is the titlebar's height")
+        XCTAssertEqual(browser.view.toolbarVerticalOffsetForTesting ?? -1, 0, accuracy: 0.5,
+                       "so there is nothing left to offset")
+    }
+
+    /// The dock carries the folder-browser control, with the icon the design names.
+    func testTheDockCarriesTheFolderBrowserControl() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
+        XCTAssertTrue(dock.commands.contains(.browseFolder))
+        let button = try XCTUnwrap(dock.commandButtons.first { $0.toolTip == "浏览文件夹" })
+        XCTAssertEqual(button.symbolName, ViewerToolDockView.browserSymbol)
+        XCTAssertEqual(ViewerToolDockView.browserSymbol, "square.grid.3x3.square")
+
+        button.performClick(nil)
+        settle(0.6)
+        XCTAssertEqual(viewer.viewerMode, .folderBrowser, "and it enters the browser")
     }
 
     /// Clicking a folder moves the gallery and the image viewer to it, and the browser stays open.

@@ -32,6 +32,9 @@ public struct TitlebarVisibilityModel: Sendable {
         case sheet
         /// Native full screen. The system owns the top strip there.
         case fullScreen
+        /// The viewer's left column — the thumbnail drawer — is open. An open column is a working
+        /// state, and the bar that carries its control belongs on screen with it.
+        case leftColumnOpen
     }
 
     public struct Timing: Sendable {
@@ -59,6 +62,18 @@ public struct TitlebarVisibilityModel: Sendable {
         // Always-visible mode is the standard window: the titlebar is simply there.
         if !value { state = .full }
         exitedAt = nil
+    }
+
+    /// Shows the whole bar now, whatever the pointer is doing.
+    ///
+    /// Used when something the user just opened brings its own control with it — the thumbnail
+    /// drawer lives in the titlebar, so opening the column shows the bar rather than leaving the
+    /// user with a column and no visible way to close it. `exitedAt` is deliberately left alone:
+    /// once the reason to stay lifts, the hide delay is measured from when the pointer actually
+    /// left, not from the reveal.
+    public mutating func reveal() {
+        guard isAutoHiding else { return }   // always-visible mode is already showing everything
+        state = .full
     }
 
     /// Adds or removes a reason not to hide.

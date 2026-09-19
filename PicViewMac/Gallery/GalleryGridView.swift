@@ -345,6 +345,11 @@ final class GalleryGridView: NSView {
     }
 
     private func recycle(_ cell: GalleryItemView) {
+        // Out of the hierarchy, not just out of the bookkeeping: `rebuild` recycles every visible
+        // cell and then lays the new list out, and a recycled cell left in the view went on drawing
+        // the folder it belonged to — measured as two grids overlapping after a folder was opened
+        // from the tree.
+        cell.removeFromSuperview()
         cell.representedURL = nil
         reusePool.append(cell)
     }

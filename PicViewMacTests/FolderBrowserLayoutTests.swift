@@ -45,6 +45,26 @@ final class FolderBrowserLayoutTests: XCTestCase {
         XCTAssertEqual(size.height, 160 + GalleryLayout.filenameSlotHeight, "the slot plus its label")
     }
 
+    /// Every row starts at the leading edge, including a short final one: centred rows made the
+    /// grid look like unrelated lines of pictures.
+    func testUniformRowsStartAtTheLeadingEdge() {
+        let aspects = Array(repeating: CGFloat(1.5), count: 7)
+        let rows = GalleryLayout.uniformRows(aspects: aspects, containerWidth: 700,
+                                             thumbnailSize: 160)
+        XCTAssertGreaterThan(rows.count, 1, "the fixture needs more than one row")
+        for (index, row) in rows.enumerated() {
+            let firstX = row.cells.first?.frame.minX ?? -1
+            XCTAssertEqual(firstX, GalleryLayout.contentInset, accuracy: 0.5,
+                           "row \(index) starts at the leading edge")
+        }
+        // A final row that does not fill the width is left-aligned too, not centred under the row
+        // above it.
+        if let last = rows.last, last.cells.count < (rows.first?.cells.count ?? 0) {
+            let firstX = last.cells.first?.frame.minX ?? -1
+            XCTAssertEqual(firstX, GalleryLayout.contentInset, accuracy: 0.5)
+        }
+    }
+
     /// The image is aspect-fitted inside its slot, centred, never cropped and never stretched.
     func testUniformGridAspectFitsInsideTheIdenticalSlot() {
         let aspects: [CGFloat] = [1, 1.5, 10, 0.1]

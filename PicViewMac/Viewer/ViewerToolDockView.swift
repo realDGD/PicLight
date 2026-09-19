@@ -93,6 +93,7 @@ public final class ViewerToolDockView: MaterialHostView {
         .command(symbol: mirrorSymbol, command: .toggleMirror, tooltip: "水平镜像"),
         .command(symbol: trashSymbol, command: .moveToTrash, tooltip: "移到废纸篓"),
         .separator,
+        .command(symbol: browserSymbol, command: .browseFolder, tooltip: "浏览文件夹"),
         .command(symbol: drawerSymbol, command: .toggleThumbnailDrawer,
                  tooltip: "显示 / 隐藏缩略图抽屉"),
         .command(symbol: infoSymbol, command: .showImageInfo, tooltip: "图像信息"),

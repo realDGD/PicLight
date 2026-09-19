@@ -533,7 +533,7 @@ enum SelfTest {
               dock.commands == [.zoomOut, .zoomIn, .zoomToFit, .zoomToFitWidth,
                                 .zoomActualPixels, .previousImage, .nextImage,
                                 .rotateClockwise, .toggleMirror, .moveToTrash,
-                                .toggleThumbnailDrawer, .showImageInfo],
+                                .browseFolder, .toggleThumbnailDrawer, .showImageInfo],
               "\(dock.commands.count) commands")
         let pairIndexes = dock.commands.indices.filter {
             [.previousImage, .nextImage].contains(dock.commands[$0])

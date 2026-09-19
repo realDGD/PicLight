@@ -53,6 +53,8 @@ final class ToolDockLayoutTests: XCTestCase {
         ])
         XCTAssertEqual(Array(items[14...]), [
             .separator,
+            .command(symbol: ViewerToolDockView.browserSymbol, command: .browseFolder,
+                     tooltip: "浏览文件夹"),
             .command(symbol: ViewerToolDockView.drawerSymbol, command: .toggleThumbnailDrawer,
                      tooltip: "显示 / 隐藏缩略图抽屉"),
             .command(symbol: ViewerToolDockView.infoSymbol, command: .showImageInfo,
@@ -109,7 +111,7 @@ final class ToolDockLayoutTests: XCTestCase {
             if case let .command(_, command, _) = $0 { return command }
             return nil
         })
-        XCTAssertEqual(dock.commandButtons.count, 12)
+        XCTAssertEqual(dock.commandButtons.count, 13)
         XCTAssertFalse(dock.commands.contains(.togglePlayback), "playback is not a ViewerCommand")
         XCTAssertEqual(dock.allButtons.count, dock.commandButtons.count + 2,
                        "plus the playback button and the pin")

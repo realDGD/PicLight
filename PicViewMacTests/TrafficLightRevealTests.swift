@@ -228,6 +228,36 @@ final class TrafficLightRevealTests: XCTestCase {
         XCTAssertFalse(button.isHidden)
     }
 
+    /// An open left column brings the bar with it: the column's own control lives in the titlebar,
+    /// so the bar cannot hide while the column is open.
+    func testAnOpenDrawerKeepsTheTitlebarUp() throws {
+        let (controller, viewer, window) = try makeViewer()
+        defer { controller.close() }
+        // Pointer away first, so the bar starts from its hidden state.
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        settle(TitlebarVisibilityModel.Timing().hideDelay + 0.4)
+        XCTAssertEqual(window.titlebarState, .hidden, "precondition: the bar is away")
+
+        viewer.setDrawerOpen(true)
+        settle(0.4)
+        XCTAssertTrue(viewer.isDrawerOpen)
+        XCTAssertEqual(window.titlebarState, .full,
+                       "opening the column shows the bar that carries its control")
+
+        // Idle with the pointer away: the open column holds the bar.
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
+        XCTAssertNotEqual(window.titlebarState, .hidden, "the bar stays while the column is open")
+
+        viewer.setDrawerOpen(false)
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
+        XCTAssertEqual(window.titlebarState, .hidden, "and leaves once the column is closed")
+    }
+
     /// Nothing viewer-owned is a titlebar, and nothing draws a replacement control.
     func testThereIsNoViewerOwnedTitlebarOrFakeControl() throws {
         let (controller, viewer, _) = try makeViewer()

@@ -123,6 +123,36 @@ final class GalleryAuditTests: XCTestCase {
         }
     }
 
+    /// Opening a folder from the tree must leave nothing of the folder that was there: the grid
+    /// rebuilt its list but left the old cells in the view, so two folders drew on top of each
+    /// other.
+    func testRebuildingForAnotherFolderLeavesNoCellsFromTheOldOne() throws {
+        let host = GalleryAuditHost(items: (0..<12).map { auditItem($0, folder: "gallery-a") },
+                                    directory: URL(fileURLWithPath: "/tmp/gallery-a"))
+        host.autoDeliver = { _, _ in solidImage(width: 64, height: 64, red: 0.8) }
+        let browser = FolderBrowserViewController(host: host)
+        let window = presentOffScreen(browser.view)
+        defer { window.close() }
+        browser.reload()
+        pump(0.3)
+        let grid = browser.view.gallery
+        XCTAssertGreaterThan(grid.materializedCellCount, 0, "precondition: folder A is on screen")
+
+        let itemsB = (0..<12).map { auditItem($0, folder: "gallery-b") }
+        host.session.setItems(itemsB)
+        browser.reload()
+        pump(0.3)
+
+        let cellsInView = grid.subviews.compactMap { $0 as? GalleryItemView }
+        XCTAssertEqual(cellsInView.count, grid.materializedCellCount,
+                       "every cell in the view is one the grid is tracking — no leftovers")
+        for cell in cellsInView {
+            let url = try XCTUnwrap(cell.representedURL, "a live cell shows something")
+            XCTAssertTrue(url.path.contains("gallery-b"),
+                          "and what it shows belongs to the folder on screen (\(url.path))")
+        }
+    }
+
     /// B: after scrolling through the whole folder, what does the gallery still hold?
     func testScrollingThroughTheFolderDoesNotRetainEveryThumbnail() throws {
         let count = 2_000

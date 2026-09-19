@@ -10,14 +10,30 @@ final class FolderTreeSidebarView: NSView {
     var onFolderToggled: ((URL) -> Void)?
 
     private let scrollView = NSScrollView()
+    private let material = NSVisualEffectView()
     private let outline = NSOutlineView()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
     private var nodes: [FolderTreeModel.Node] = []
     private var currentPath: String?
+    /// The synthetic "up one level" row, when the current folder has a parent in the tree.
+    ///
+    /// The tree is rooted at the folder being browsed, so descending into a child re-roots it —
+    /// and without this row there was no way back up: the parent was deliberately not a row.
+    private var upRow: FolderTreeModel.Node?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
+
+        // A native sidebar look: vibrancy over the browser's own background, the source-list style
+        // (rounded selection, proper disclosure triangles) and the standard row metrics. The plain
+        // outline with 12 pt labels and a 14 pt icon read as a small, foreign list next to the
+        // rest of the window.
+        material.material = .sidebar
+        material.blendingMode = .withinWindow
+        material.state = .followsWindowActiveState
+        material.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(material)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.drawsBackground = false
@@ -28,23 +44,28 @@ final class FolderTreeSidebarView: NSView {
         column.resizingMask = .autoresizingMask
         outline.addTableColumn(column)
         outline.headerView = nil
-        // Opaque, like the rest of the browser: a clear outline let whatever was behind the
-        // browser show through, which is where remnants of the previous image appeared.
-        outline.backgroundColor = .windowBackgroundColor
-        outline.rowSizeStyle = .default
-        outline.indentationPerLevel = 14
-        outline.style = .plain
-        outline.selectionHighlightStyle = .regular
+        // Clear over the sidebar material: that is what a native sidebar's outline does. The
+        // material itself sits on the browser's opaque background, so nothing shows through from
+        // the image mode.
+        outline.backgroundColor = .clear
+        outline.style = .sourceList
+        outline.selectionHighlightStyle = .sourceList
+        outline.rowHeight = 22
+        outline.indentationPerLevel = 12
         outline.dataSource = self
         outline.delegate = self
         outline.autoresizesOutlineColumn = false
         scrollView.documentView = outline
-        addSubview(scrollView)
+        material.addSubview(scrollView)
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            material.leadingAnchor.constraint(equalTo: leadingAnchor),
+            material.trailingAnchor.constraint(equalTo: trailingAnchor),
+            material.topAnchor.constraint(equalTo: topAnchor),
+            material.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: material.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: material.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: material.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: material.bottomAnchor),
         ])
     }
 
@@ -58,11 +79,25 @@ final class FolderTreeSidebarView: NSView {
     private var isApplyingModelState = false
 
     func update(nodes: [FolderTreeModel.Node], currentPath: String?) {
-        self.nodes = nodes
         self.currentPath = currentPath
+        // A folder that has a parent gets an "up one level" row: the tree is rooted at the folder
+        // being browsed, so this is the only way back to where it came from.
+        if let currentPath {
+            let folder = URL(fileURLWithPath: currentPath)
+            let parent = folder.deletingLastPathComponent()
+            if parent.path != folder.path {
+                upRow = FolderTreeModel.Node(url: parent, hasChildren: false,
+                                             isExpanded: false, children: nil)
+            } else {
+                upRow = nil
+            }
+        } else {
+            upRow = nil
+        }
+        self.nodes = (upRow.map { [$0] } ?? []) + nodes
         outline.reloadData()
         isApplyingModelState = true
-        for node in nodes {
+        for node in self.nodes {
             // Expanding is the model's business, so the triangle state is mirrored from it rather
             // than owned here.
             if node.isExpanded, outline.isItemExpanded(node) == false {
@@ -76,12 +111,20 @@ final class FolderTreeSidebarView: NSView {
         // clicking a folder: that mistake made the browser rescan the folder it was already in and
         // discard the one the user had just chosen.
         isApplyingModelState = true
-        if let currentPath, let index = nodes.firstIndex(where: { $0.url.path == currentPath }) {
+        if let currentPath, let index = self.nodes.firstIndex(where: { $0.url.path == currentPath }) {
             outline.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         } else {
             outline.deselectAll(nil)
         }
         isApplyingModelState = false
+    }
+
+    /// The row the user can click to go back up, for tests.
+    var upRowPath: String? { upRow?.url.path }
+
+    /// The label a synthetic row renders, if it is the up row.
+    private func displayName(for node: FolderTreeModel.Node) -> String {
+        node.url == upRow?.url ? "上一级" : node.name
     }
 
     var visibleRowCount: Int { nodes.count }
@@ -91,10 +134,16 @@ final class FolderTreeSidebarView: NSView {
 
     var outlineView: NSOutlineView { outline }
 
+    /// Whether the tree draws over the native sidebar material, for tests.
+    var usesSidebarMaterialForTesting: Bool {
+        material.material == .sidebar && material.blendingMode == .withinWindow
+            && material.superview === self
+    }
+
     /// The rendered label for a row, for tests that check the tree shows what it should.
     func renderedName(at row: Int) -> String? {
         guard nodes.indices.contains(row) else { return nil }
-        return nodes[row].name
+        return displayName(for: nodes[row])
     }
 }
 
@@ -126,7 +175,10 @@ extension FolderTreeSidebarView: NSOutlineViewDelegate {
         let identifier = NSUserInterfaceItemIdentifier("FolderTreeCell")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? FolderTreeCellView
             ?? FolderTreeCellView(identifier: identifier)
-        cell.configure(name: node.name, isCurrent: node.url.path == currentPath)
+        let isUpRow = node.url == upRow?.url
+        cell.configure(name: displayName(for: node),
+                       isCurrent: !isUpRow && node.url.path == currentPath,
+                       symbol: isUpRow ? "arrow.up" : "folder")
         return cell
     }
 
@@ -163,18 +215,19 @@ final class FolderTreeCellView: NSTableCellView {
 
         icon.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         icon.contentTintColor = .secondaryLabelColor
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
         icon.translatesAutoresizingMaskIntoConstraints = false
 
-        label.font = .systemFont(ofSize: 12)
+        label.font = .systemFont(ofSize: 13)
         label.lineBreakMode = .byTruncatingMiddle
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
         addSubview(label)
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 14),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 4),
+            icon.widthAnchor.constraint(equalToConstant: 16),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 5),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -182,10 +235,12 @@ final class FolderTreeCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func configure(name: String, isCurrent: Bool) {
+    func configure(name: String, isCurrent: Bool, symbol: String = "folder") {
         label.stringValue = name
-        label.font = .systemFont(ofSize: 12, weight: isCurrent ? .semibold : .regular)
+        label.font = .systemFont(ofSize: 13, weight: isCurrent ? .semibold : .regular)
         label.textColor = isCurrent ? .controlAccentColor : .labelColor
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
         icon.contentTintColor = isCurrent ? .controlAccentColor : .secondaryLabelColor
     }
 

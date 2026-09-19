@@ -161,9 +161,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public func setDrawerOpen(_ open: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
         chrome.setDrawerOpen(open, at: now)
+        // An open left column keeps the titlebar and shows it: the column's control lives there, and
+        // a bar that hid while the column was open left a column with no visible way to close it.
+        chrome.titlebar.setBlocked(.leftColumnOpen, open, at: now)
+        if open { chrome.titlebar.reveal() }
         chrome.update(at: now)
         applyChromeVisibility()
+        applyTitlebarVisibility()
         onDrawerOpenChanged?(chrome.drawerOpen)
+        onLeftColumnChanged?(chrome.drawerOpen)
     }
 
     public func toggleDrawer() {

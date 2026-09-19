@@ -104,11 +104,10 @@ public enum GalleryLayout {
             let firstIndex = row * columns
             let lastIndex = min(firstIndex + columns, aspects.count) - 1
             let originY = contentInset + CGFloat(row) * (slot + filenameSlotHeight + rowSpacing)
-            // Centre the row's items so a short final row still lines up with the ones above it
-            // rather than hugging the left edge.
-            let itemsInRow = lastIndex - firstIndex + 1
-            let rowWidth = CGFloat(itemsInRow) * slot + CGFloat(itemsInRow - 1) * itemSpacing
-            let startX = contentInset + max(0, (usable - rowWidth) / 2)
+            // Every row starts at the leading edge, including a short final one. Centring them made
+            // the grid look like unrelated lines of pictures, with each row floating away from the
+            // one above it.
+            let startX = contentInset
 
             for index in firstIndex...lastIndex {
                 let rect = CGRect(x: startX + CGFloat(index - firstIndex) * (slot + itemSpacing),

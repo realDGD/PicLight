@@ -85,9 +85,10 @@ public final class FolderBrowserView: NSView {
 
     public override var isOpaque: Bool { true }
 
-    /// Height of the browser's top bar. The merged row aligns its content against the titlebar,
-    /// which is what this is measured with.
-    static let toolbarHeight: CGFloat = 44
+    /// Height of the browser's top bar before it is merged with the titlebar. In the merged row it
+    /// becomes exactly as tall as the titlebar, so the row reads as a titlebar instead of as a
+    /// thicker band with the controls near its top edge.
+    static let defaultToolbarHeight: CGFloat = 44
 
     // MARK: - Construction
 
@@ -136,6 +137,10 @@ public final class FolderBrowserView: NSView {
         leading.spacing = 8
         leading.alignment = .centerY
 
+        let toolbarHeight = toolbar.heightAnchor.constraint(
+            equalToConstant: Self.defaultToolbarHeight)
+        toolbarHeightConstraint = toolbarHeight
+        self.toolbarHeightForBody = toolbarHeight
         let stack = NSStackView(views: [leading, titleLabel, sortKeyPopup, sortDirectionButton])
         stack.orientation = .horizontal
         stack.spacing = 12
@@ -157,6 +162,10 @@ public final class FolderBrowserView: NSView {
 
     private var toolbarStackLeadingConstraint: NSLayoutConstraint?
     private var toolbarStackCenterConstraint: NSLayoutConstraint?
+    private var toolbarHeightConstraint: NSLayoutConstraint?
+    /// The same constraint, kept for `buildBody` (both builders run in `init`, and the toolbar's
+    /// height belongs to the body's layout).
+    private var toolbarHeightForBody: NSLayoutConstraint?
 
     /// How far the toolbar's own controls start from the window's leading edge.
     ///
@@ -173,25 +182,30 @@ public final class FolderBrowserView: NSView {
         toolbarStackLeadingConstraint.map { $0.constant - 12 }
     }
 
-    /// Centres the toolbar's controls on the titlebar's own centre line.
+    /// Makes the top bar exactly as tall as the titlebar it is merged with.
     ///
-    /// The merged row is the titlebar: the traffic lights and the drawer button sit on that line,
-    /// and the browser's controls have to sit on it too. Centring them in the taller toolbar left
-    /// them about six points lower than the native controls (measured: lights and drawer at
-    /// y = 664, back button at 658.5 in a window with a 32 pt bar), which reads as two rows that
-    /// do not line up.
+    /// The merged row *is* the titlebar, so it should be the titlebar's height: at the default
+    /// 44 pt the band was visibly thicker than a titlebar, with the controls sitting near its top
+    /// edge and dead space under them. With the bar at the titlebar's own height there is nothing
+    /// to offset — the controls centre on the same line as the traffic lights and the drawer
+    /// button, which is what the measurements below were for.
     func alignToolbarContent(withTitlebarHeight height: CGFloat) {
         guard height > 0 else {
+            toolbarHeightConstraint?.constant = Self.defaultToolbarHeight
             toolbarStackCenterConstraint?.constant = 0
+            needsLayout = true
             return
         }
-        // Measured, not derived: a positive constant on this centre constraint moves the stack
-        // *down* in the toolbar's coordinate space (verified by probing the frames — +6 put the
-        // controls at 652.5 where the lights are at 664), so the offset that lifts the controls
-        // onto the titlebar's centre line is the titlebar's half-height minus the bar's.
-        toolbarStackCenterConstraint?.constant = height / 2 - Self.toolbarHeight / 2
+        // Measured when the bar and the toolbar had different heights: a positive constant on this
+        // centre constraint moves the stack *down* in the toolbar's coordinate space. With the
+        // heights equal the offset is zero, and the constraint is kept for the general case.
+        toolbarHeightConstraint?.constant = height
+        toolbarStackCenterConstraint?.constant = 0
         needsLayout = true
     }
+
+    /// The height the top bar is currently using, for tests.
+    var toolbarHeightForTesting: CGFloat? { toolbarHeightConstraint?.constant }
 
     /// The alignment offset in force, for tests.
     var toolbarVerticalOffsetForTesting: CGFloat? { toolbarStackCenterConstraint?.constant }
@@ -230,7 +244,8 @@ public final class FolderBrowserView: NSView {
             toolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
             toolbar.topAnchor.constraint(equalTo: topAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: 44),
+            toolbarHeightForBody ?? toolbar.heightAnchor.constraint(
+                equalToConstant: Self.defaultToolbarHeight),
 
             sidebarVisible,
             sidebarWidth,

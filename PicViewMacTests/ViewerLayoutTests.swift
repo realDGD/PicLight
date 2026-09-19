@@ -88,7 +88,7 @@ final class ViewerLayoutTests: XCTestCase {
                        [.zoomOut, .zoomIn, .zoomToFit, .zoomToFitWidth, .zoomActualPixels,
                         .previousImage, .nextImage,
                         .rotateClockwise, .toggleMirror, .moveToTrash,
-                        .toggleThumbnailDrawer, .showImageInfo])
+                        .browseFolder, .toggleThumbnailDrawer, .showImageInfo])
     }
 
     /// Adjustments first, then moving through the folder, then the zoom and file
