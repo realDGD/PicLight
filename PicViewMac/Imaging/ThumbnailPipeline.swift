@@ -7,14 +7,21 @@ import ImageIO
 public actor ThumbnailPipeline {
     private let cache = NSCache<NSString, CGImageBox>()
     private var inFlight: [String: Task<CGImage?, Never>] = [:]
+    /// The cache's real occupancy — `NSCache` does not report it, so the delegate is counted.
+    private let accounting = ThumbnailCacheAccounting()
 
     public init(cacheLimit: Int = 600) {
         cache.countLimit = cacheLimit
         cache.totalCostLimit = 48 * 1024 * 1024
+        cache.delegate = accounting
     }
 
     public func thumbnail(for url: URL, maxPixelSize: Int) async throws -> CGImage {
-        let key = "\(url.path)|\(maxPixelSize)" as NSString
+        // The cache key is the file's identity, not its path: a file replaced at the same path is
+        // a different file, and the old pixels must never be served for it. The identity is one
+        // `stat`; the decode it guards is orders of magnitude more expensive.
+        let identity = SourceFileIdentity.read(at: url)
+        let key = "\(identity.versionToken)|\(maxPixelSize)" as NSString
         if let cached = cache.object(forKey: key) { return cached.image }
 
         if let existing = inFlight[key as String] {
@@ -28,7 +35,9 @@ public actor ThumbnailPipeline {
         let image = await task.value
         inFlight[key as String] = nil
         guard let image else { throw ImageDecodeError.noDisplayableImage }
-        cache.setObject(CGImageBox(image), forKey: key, cost: image.bytesPerRow * image.height)
+        let cost = image.bytesPerRow * image.height
+        cache.setObject(CGImageBox(image), forKey: key, cost: cost)
+        accounting.noteInsert(cost: cost)
         return image
     }
 
@@ -63,7 +72,14 @@ public actor ThumbnailPipeline {
 
     public func purge() {
         cache.removeAllObjects()
+        accounting.reset()
     }
+
+    /// How many thumbnails the cache is actually holding right now. The effective-memory audit:
+    /// the pipeline is the bounded cache authority, and this is its real occupancy.
+    public var retainedImageCount: Int { accounting.snapshot.count }
+    /// The real cost (bytes) the cache is currently holding.
+    public var retainedImageBytes: Int { accounting.snapshot.cost }
 
     static func makeThumbnail(url: URL, maxPixelSize: Int) -> CGImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -82,6 +98,40 @@ public actor ThumbnailPipeline {
 final class CGImageBox: @unchecked Sendable {
     let image: CGImage
     init(_ image: CGImage) { self.image = image }
+}
+
+/// Counts what `NSCache` is actually holding. `NSCache` evicts lazily and silently, so the
+/// effective-memory numbers come from its delegate: every eviction is counted back out. The
+/// delegate is called from whichever thread evicts, so the counters are locked.
+final class ThumbnailCacheAccounting: NSObject, NSCacheDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    nonisolated(unsafe) private var count = 0
+    nonisolated(unsafe) private var cost = 0
+
+    func noteInsert(cost: Int) {
+        lock.lock(); defer { lock.unlock() }
+        count += 1
+        self.cost += cost
+    }
+
+    func reset() {
+        lock.lock(); defer { lock.unlock() }
+        count = 0
+        cost = 0
+    }
+
+    func cache(_ cache: NSCache<AnyObject, AnyObject>, willEvictObject obj: Any) {
+        lock.lock(); defer { lock.unlock() }
+        count = max(0, count - 1)
+        if let box = obj as? CGImageBox {
+            cost = max(0, cost - box.image.bytesPerRow * box.image.height)
+        }
+    }
+
+    var snapshot: (count: Int, cost: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (count, cost)
+    }
 }
 
 /// Counting seams for the large-image tests and diagnostics.

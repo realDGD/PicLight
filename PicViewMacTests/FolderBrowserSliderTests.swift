@@ -27,6 +27,12 @@ final class FolderBrowserSliderTests: XCTestCase {
         let controller = ViewerWindowController()
         TestAppKit.presentOffScreen(controller)
         let viewer = controller.viewerViewController
+        // A deterministic window: the placement store persists frames across tests in this
+        // process, and the gallery's request scope is a function of the viewport. A narrow
+        // inherited frame would leave some of the `count` items outside the initial window, and
+        // the drag legitimately asking for the newly materialized cells would then look like a
+        // violation of "the reflow requests nothing".
+        controller.window?.setFrame(NSRect(x: 0, y: 0, width: 1000, height: 800), display: false)
         controller.showWindow(nil)
         _ = viewer.view
         viewer.open(url: directory.appendingPathComponent("img0.png"))

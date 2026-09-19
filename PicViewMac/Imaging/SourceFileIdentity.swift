@@ -1,5 +1,26 @@
 import Foundation
 
+/// A file timestamp that keeps both fields as integers.
+///
+/// Deliberately not a `TimeInterval`: a `Double` at current epoch seconds (~1.7e9) cannot
+/// represent a nanosecond — its ulp there is ≈238 ns — so two files changed within one clock tick
+/// would collapse into one value and the identity would silently stop distinguishing them. Keeping
+/// `seconds` and `nanoseconds` apart preserves exactly what `stat(2)` reported.
+public struct FileTimestamp: Hashable, Sendable, CustomStringConvertible {
+    public let seconds: Int64
+    /// 0 ..< 1_000_000_000, as `timespec` reports it.
+    public let nanoseconds: Int64
+
+    public init(seconds: Int64, nanoseconds: Int64) {
+        self.seconds = seconds
+        self.nanoseconds = nanoseconds
+    }
+
+    public var description: String {
+        String(format: "%lld.%09lld", seconds, nanoseconds)
+    }
+}
+
 /// Which file a decode belongs to.
 ///
 /// A path is not an identity: an editor that saves over `photo.png` keeps the path and changes
@@ -29,16 +50,16 @@ public struct SourceFileIdentity: Hashable, Sendable {
     public let canonicalPath: String
     /// `-1` when the file is missing, so `exists` stays the single question callers ask.
     public let fileSize: Int64
-    public let modificationTime: TimeInterval
+    public let modificationTime: FileTimestamp
     /// The inode's change time. Not the creation time: this is the field that moves when a file
     /// is replaced by another one at the same path.
-    public let changeTime: TimeInterval
+    public let changeTime: FileTimestamp
     public let inode: UInt64?
     public let volumeIdentifier: UInt64?
     public let exists: Bool
 
     public init(path: String, canonicalPath: String, fileSize: Int64,
-                modificationTime: TimeInterval, changeTime: TimeInterval,
+                modificationTime: FileTimestamp, changeTime: FileTimestamp,
                 inode: UInt64?, volumeIdentifier: UInt64?, exists: Bool) {
         self.path = path
         self.canonicalPath = canonicalPath
@@ -58,25 +79,28 @@ public struct SourceFileIdentity: Hashable, Sendable {
         var info = stat()
         guard stat(url.path, &info) == 0 else {
             return SourceFileIdentity(path: url.path, canonicalPath: canonical,
-                                      fileSize: -1, modificationTime: -1, changeTime: -1,
+                                      fileSize: -1,
+                                      modificationTime: FileTimestamp(seconds: -1, nanoseconds: 0),
+                                      changeTime: FileTimestamp(seconds: -1, nanoseconds: 0),
                                       inode: nil, volumeIdentifier: nil, exists: false)
         }
         return SourceFileIdentity(
             path: url.path,
             canonicalPath: canonical,
             fileSize: Int64(info.st_size),
-            modificationTime: Self.seconds(info.st_mtimespec),
-            changeTime: Self.seconds(info.st_ctimespec),
+            modificationTime: Self.timestamp(info.st_mtimespec),
+            changeTime: Self.timestamp(info.st_ctimespec),
             inode: UInt64(info.st_ino),
             volumeIdentifier: UInt64(info.st_dev),
             exists: true)
     }
 
-    private static func seconds(_ time: timespec) -> TimeInterval {
-        TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1_000_000_000
+    /// `timespec` → `FileTimestamp`, field for field, so nothing is lost on the way.
+    private static func timestamp(_ time: timespec) -> FileTimestamp {
+        FileTimestamp(seconds: Int64(time.tv_sec), nanoseconds: Int64(time.tv_nsec))
     }
 
-    /// The value the tile cache compares. A string because the cache's map is keyed by path and
+    /// The value the cache compares. A string because the cache's map is keyed by path and
     /// this is the cheap "same file?" question asked per store; the identity itself is the type
     /// the thumbnail cache will share.
     ///
@@ -88,22 +112,31 @@ public struct SourceFileIdentity: Hashable, Sendable {
         guard exists else { return "missing" }
         let inodePart = inode.map(String.init) ?? "-"
         let volumePart = volumeIdentifier.map(String.init) ?? "-"
-        // Nanosecond-resolution times: `TimeInterval` is a Double, and at 1.7e9 seconds a
-        // nanosecond is below its resolution, so the raw seconds are formatted separately from
-        // the nanosecond field rather than summed.
+        // The timestamps keep seconds and nanoseconds as integers (`FileTimestamp`), so the token
+        // preserves the full precision `stat(2)` reported — a Double could not at epoch scale.
         return "\(fileSize)-\(changeTime)-\(modificationTime)-\(inodePart)-\(volumePart)"
     }
 
-    /// Same bytes, same metadata, same file, however the path is spelled.
+    /// Same bytes, same metadata, same file, however the path is spelled. Two spellings of one
+    /// path (`/var/…` and `/private/var/…`) stat the same file and so are the same file; a
+    /// replacement at a path changes the metadata and is a different file. Deliberately compares
+    /// the file's own fields, not the path: the path is where the file sits, not what it is.
+    /// (A missing file has nothing to compare, so the answer falls back to location.)
     public func refersToSameFile(as other: SourceFileIdentity) -> Bool {
+        guard exists, other.exists else { return refersToSameLocation(as: other) }
+        return fileSize == other.fileSize
+            && modificationTime == other.modificationTime
+            && changeTime == other.changeTime
+            && inode == other.inode
+            && volumeIdentifier == other.volumeIdentifier
+    }
+
+    /// The same place on disk, however it is spelled: same path or same canonical path. This is a
+    /// *location* question — `/var/x.png` and `/private/var/x.png` are one location — and it
+    /// deliberately knows nothing about whether the file at that location is still the same file.
+    public func refersToSameLocation(as other: SourceFileIdentity) -> Bool {
         if path == other.path { return true }
-        // Two spellings of one path (`/var/...` and `/private/var/...`, or a path with `.` in it).
         if canonicalPath == other.canonicalPath { return true }
-        // And the answer that does not depend on spelling at all.
-        if let inode, let volumeIdentifier,
-           let otherInode = other.inode, let otherVolume = other.volumeIdentifier {
-            return inode == otherInode && volumeIdentifier == otherVolume
-        }
         return false
     }
 }

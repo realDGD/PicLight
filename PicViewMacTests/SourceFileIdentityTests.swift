@@ -33,8 +33,10 @@ final class SourceFileIdentityTests: XCTestCase {
         let identity = SourceFileIdentity.read(at: file)
         XCTAssertTrue(identity.exists)
         XCTAssertGreaterThan(identity.fileSize, 0)
-        XCTAssertGreaterThan(identity.modificationTime, 0)
-        XCTAssertGreaterThan(identity.changeTime, 0)
+        XCTAssertGreaterThan(identity.modificationTime.seconds, 0)
+        XCTAssertGreaterThan(identity.changeTime.seconds, 0)
+        XCTAssertTrue(identity.modificationTime.nanoseconds >= 0)
+        XCTAssertTrue(identity.changeTime.nanoseconds >= 0)
         XCTAssertNotNil(identity.inode, "the inode is what tells a replacement from a rewrite")
         XCTAssertNotNil(identity.volumeIdentifier, "and the volume id what tells a move from a copy")
         XCTAssertEqual(identity.path, file.path,
@@ -99,7 +101,8 @@ final class SourceFileIdentityTests: XCTestCase {
     /// The path is deliberately not one of them — it is the cache map's key, so the question the
     /// token answers is "is the file *at this path* still the file the tiles were decoded from".
     func testTheVersionTokenMovesWithEveryFieldOfTheFile() {
-        func identity(size: Int64 = 10, modified: TimeInterval = 100, changed: TimeInterval = 200,
+        func identity(size: Int64 = 10, modified: FileTimestamp = FileTimestamp(seconds: 100, nanoseconds: 0),
+                      changed: FileTimestamp = FileTimestamp(seconds: 200, nanoseconds: 0),
                       inode: UInt64 = 5, volume: UInt64 = 7) -> SourceFileIdentity {
             SourceFileIdentity(path: "/tmp/a.png", canonicalPath: "/tmp/a.png", fileSize: size,
                                modificationTime: modified, changeTime: changed, inode: inode,
@@ -108,8 +111,10 @@ final class SourceFileIdentityTests: XCTestCase {
         let base = identity()
         let variants: [(String, SourceFileIdentity)] = [
             ("size", identity(size: 11)),
-            ("modification time", identity(modified: 101)),
-            ("change time", identity(changed: 201)),
+            ("modification time", identity(modified: FileTimestamp(seconds: 101, nanoseconds: 0))),
+            ("modification nanoseconds", identity(modified: FileTimestamp(seconds: 100, nanoseconds: 1))),
+            ("change time", identity(changed: FileTimestamp(seconds: 201, nanoseconds: 0))),
+            ("change nanoseconds", identity(changed: FileTimestamp(seconds: 200, nanoseconds: 1))),
             ("inode", identity(inode: 6)),
             ("volume", identity(volume: 8)),
         ]
@@ -121,9 +126,9 @@ final class SourceFileIdentityTests: XCTestCase {
                        "and an unchanged file keeps it")
     }
 
-    /// Two spellings of one file are one file. `/private/var/...` and `/var/...` are the same file
-    /// to the file system (`/var` is a symlink), and the identity has to agree.
-    func testTwoSpellingsOfOnePathReferToTheSameFile() throws {
+    /// Two spellings of one path are one location. `/private/var/...` and `/var/...` are the same
+    /// file to the file system (`/var` is a symlink), and the location identity has to agree.
+    func testTwoSpellingsOfOnePathReferToTheSameLocation() throws {
         let directory = try makeTemporaryDirectory()
         let file = directory.appendingPathComponent("photo.png")
         try write(0x11, to: file)
@@ -134,9 +139,53 @@ final class SourceFileIdentityTests: XCTestCase {
         }
         let indirect = SourceFileIdentity.read(at: otherSpelling)
 
+        XCTAssertTrue(direct.refersToSameLocation(as: indirect),
+                      "the two spellings are one location")
         XCTAssertTrue(direct.refersToSameFile(as: indirect),
-                      "the inode and the volume say this is one file, whatever the spelling")
+                      "and stat agrees they are the very same file: every field matches")
         XCTAssertNotEqual(direct.path, indirect.path, "…and the spellings really are different")
+    }
+
+    /// Two generations of one path are NOT the same file. The path can stay identical while the
+    /// file at it changes; identity is about the file, not the path.
+    func testSamePathDifferentGenerationIsNotTheSameFile() throws {
+        let directory = try makeTemporaryDirectory()
+        let file = directory.appendingPathComponent("photo.png")
+        try write(0x11, to: file)
+        let first = SourceFileIdentity.read(at: file)
+        try write(0x22, to: file, length: 8_192)
+        let second = SourceFileIdentity.read(at: file)
+
+        XCTAssertEqual(first.path, second.path, "precondition: the path is unchanged")
+        XCTAssertTrue(first.refersToSameLocation(as: second),
+                      "the location is the same, even though the file is not")
+        XCTAssertFalse(first.refersToSameFile(as: second),
+                       "the replaced file must not count as the same file")
+        XCTAssertNotEqual(first.versionToken, second.versionToken)
+    }
+
+    /// The timestamps keep the full `stat` precision: two times in one second that differ only in
+    /// nanoseconds must not collapse (a `TimeInterval` would collapse them at epoch scale).
+    func testTimestampsPreserveNanosecondPrecision() {
+        let base = SourceFileIdentity(path: "/tmp/a.png", canonicalPath: "/tmp/a.png",
+                                      fileSize: 10,
+                                      modificationTime: FileTimestamp(seconds: 1_700_000_000,
+                                                                       nanoseconds: 500_000_000),
+                                      changeTime: FileTimestamp(seconds: 1_700_000_000,
+                                                                nanoseconds: 500_000_000),
+                                      inode: 5, volumeIdentifier: 7, exists: true)
+        let oneNanosecondLater = SourceFileIdentity(path: "/tmp/a.png", canonicalPath: "/tmp/a.png",
+                                                    fileSize: 10,
+                                                    modificationTime: FileTimestamp(seconds: 1_700_000_000,
+                                                                                     nanoseconds: 500_000_001),
+                                                    changeTime: FileTimestamp(seconds: 1_700_000_000,
+                                                                              nanoseconds: 500_000_001),
+                                                    inode: 5, volumeIdentifier: 7, exists: true)
+        XCTAssertNotEqual(base, oneNanosecondLater,
+                          "a one-nanosecond difference must survive the identity")
+        XCTAssertNotEqual(base.versionToken, oneNanosecondLater.versionToken,
+                          "and the version token must carry it")
+        XCTAssertNotEqual(base.changeTime.description, oneNanosecondLater.changeTime.description)
     }
 
     /// Reading the identity must not read the file. A file whose *contents* are unreadable is still

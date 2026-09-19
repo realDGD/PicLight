@@ -46,8 +46,6 @@ final class FolderBrowserViewController {
     /// Requests dropped because the drag had moved on before they were issued.
     private(set) var thumbnailRequestsCoalesced = 0
     private var pendingResolutionWorkItem: DispatchWorkItem?
-    /// In-flight requests, so the same item is not asked for twice.
-    private var inFlight: Set<String> = []
 
     init(host: FolderBrowserHost) {
         self.host = host
@@ -124,6 +122,12 @@ final class FolderBrowserViewController {
     /// any change to the folder or the sort.
     func reload() {
         guard let host else { return }
+        // A new list — new folder or re-sort — invalidates every request made against the old one.
+        // The generation bump makes every pending completion's guard fail, and the host cancels the
+        // decode tasks, so nothing from before this line can land in the gallery after it.
+        folderGeneration += 1
+        pending.removeAll()
+        host.cancelGalleryThumbnails()
         let items = host.session.items
         let aspects = items.map { item -> CGFloat in
             guard let size = item.pixelSize, size.height > 0 else { return 1 }
@@ -217,47 +221,91 @@ final class FolderBrowserViewController {
 
     // MARK: - Thumbnails
 
-    /// Asks for a thumbnail for one item, if it is not already on screen or in flight.
+    /// One in-flight request: its generation and the resolution it asked for. The generation is
+    /// what makes a stale completion detectable — an older, lower-resolution request superseded by
+    /// the slider, or any request from a previous folder, must apply nothing.
+    private struct PendingRequest {
+        let generation: Int
+        let maxPixelSize: Int
+    }
+
+    /// In-flight requests by path, so the same item is not asked for twice at a given resolution.
+    private var pending: [String: PendingRequest] = [:]
+    /// Monotonic per-request generation; a completion applies only if it is the newest request
+    /// for its path.
+    private var requestGeneration = 0
+    /// Bumped on every reload. A completion captured before a reload can never land after it.
+    private var folderGeneration = 0
+
+    /// Asks for a thumbnail for one item, if the gallery's window does not already have something
+    /// good enough (same source version, sharp enough for the current slider).
     private func requestThumbnail(for item: FolderItem, index: Int) {
         guard let host else { return }
-        guard !inFlight.contains(item.url.path) else { return }
-        guard view.gallery.hasThumbnailForTesting(item.url) == false else { return }
-        inFlight.insert(item.url.path)
-        thumbnailRequestCount += 1
         let pixels = Int(GalleryLayout.clampThumbnailSize(host.galleryThumbnailSize) * 2)
-        host.requestGalleryThumbnail(for: item, index: index, maxPixelSize: pixels) {
-            [weak self] index, image in
+        requestThumbnail(for: item, index: index, maxPixelSize: pixels)
+    }
+
+    private func requestThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int) {
+        guard let host else { return }
+        let path = item.url.path
+        let identity = SourceFileIdentity.read(at: item.url)
+        // Good enough already: the same file, decoded at a resolution at least this sharp.
+        if let delivered = view.gallery.deliveredThumbnail(for: item.url),
+           delivered.pixelSize >= maxPixelSize, delivered.versionToken == identity.versionToken {
+            return
+        }
+        // Stale (the file changed) or too small (the slider grew): it must never be served again,
+        // so forget it and ask for a fresh, sharper one.
+        view.gallery.dropDelivered(for: item.url)
+        if let inFlight = pending[path], inFlight.maxPixelSize >= maxPixelSize { return }
+        requestGeneration += 1
+        let generation = requestGeneration
+        let folderGenerationAtRequest = folderGeneration
+        pending[path] = PendingRequest(generation: generation, maxPixelSize: maxPixelSize)
+        thumbnailRequestCount += 1
+        host.requestGalleryThumbnail(for: item, index: index, maxPixelSize: maxPixelSize) {
+            [weak self] _, image in
             guard let self else { return }
-            self.inFlight.remove(item.url.path)
+            // Only the newest request for this file may apply. A lower-resolution completion that
+            // arrives after the slider moved on, or any completion from a previous folder, is
+            // dropped — it must not overwrite the sharper or newer pixels.
+            guard self.folderGeneration == folderGenerationAtRequest,
+                  self.pending[path]?.generation == generation else { return }
+            self.pending[path] = nil
             guard let image else { return }
-            self.view.gallery.noteDelivered(image, for: item.url)
+            self.view.gallery.noteDelivered(image, pixelSize: maxPixelSize,
+                                            versionToken: identity.versionToken, for: item.url)
             self.view.gallery.updateThumbnail(for: item.url, image: image)
-            _ = index
         }
     }
 
-    /// Asks for the visible items. Called once per rebuild rather than per scroll event: the
-    /// collection view asks for a cell when it materializes one, and that request is what drives
-    /// the decode, so scrolling into new territory requests exactly the cells that appeared.
+    /// Asks for the thumbnails the visible window needs: the cells on screen plus a small prefetch
+    /// band above and below. Called once per rebuild rather than per scroll event: scrolling into
+    /// new territory materializes the cells that appeared, and each materialized cell asks for its
+    /// own thumbnail. The request count is a function of the viewport, never of the folder size.
     private func requestVisibleThumbnails() {
         guard let host else { return }
-        for (index, item) in host.session.items.enumerated() {
-            requestThumbnail(for: item, index: index)
+        let pixels = Int(GalleryLayout.clampThumbnailSize(host.galleryThumbnailSize) * 2)
+        let items = view.gallery.items
+        for index in view.gallery.thumbnailWindowIndexes.sorted()
+        where items.indices.contains(index) {
+            requestThumbnail(for: items[index], index: index, maxPixelSize: pixels)
         }
     }
 
     /// The slider settled. A sharper thumbnail is worth requesting only now, and only for the
     /// visible items — a decode per slider pixel would be the "full decode on every mouse move" the
-    /// spec forbids.
+    /// spec forbids. Items already delivered at a sharp-enough tier are not asked for again, and
+    /// items requested at a lower tier are superseded: their pending completion is replaced, so it
+    /// can never overwrite the sharper result.
     private func scheduleThumbnailResolution(for size: CGFloat) {
         pendingResolutionWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                // Anything already requested at a lower resolution is superseded; the gallery keeps
-                // what it has and the visible items are asked for again at the new size.
+                // Whatever was in flight at the old tier is superseded; the window is asked for
+                // again at the new size, and per-item tier guards decide who actually re-decodes.
                 self.thumbnailRequestsCoalesced += 1
-                self.inFlight.removeAll()
                 self.requestVisibleThumbnails()
                 _ = size
             }
@@ -273,7 +321,7 @@ final class FolderBrowserViewController {
         pendingResolutionWorkItem = nil
         dimensionsWorkItem?.cancel()
         dimensionsWorkItem = nil
-        inFlight.removeAll()
+        pending.removeAll()
         host?.cancelGalleryThumbnails()
     }
 

@@ -74,6 +74,20 @@ final class GalleryItemView: NSView {
     var imageSurface: NSView { imageView2 }
     var nameSurface: NSTextField { nameLabel }
     var selectionSurface: NSView { selectionRing }
+    /// The thumbnail this cell is currently showing, for tests.
+    var imageForTesting: NSImage? { imageView2.image }
+}
+
+/// One delivered thumbnail: the image, the resolution tier it was actually decoded at, and the
+/// source version it belongs to. The tier is what lets a larger slider ask for something sharper
+/// instead of blowing up an old small decode, and the version is what lets a file replaced at the
+/// same path never be served its predecessor's pixels.
+struct DeliveredThumbnail {
+    let image: CGImage
+    /// The `maxPixelSize` the thumbnail was requested at.
+    let pixelSize: Int
+    /// `SourceFileIdentity.versionToken` of the file at request time.
+    let versionToken: String
 }
 
 /// The gallery grid: `NSScrollView`'s document view, laying out rows and recycling cells.
@@ -105,7 +119,12 @@ final class GalleryGridView: NSView {
     /// Cells that scrolled out, waiting to be reused.
     private var reusePool: [GalleryItemView] = []
     /// Thumbnails delivered so far, by path, so a recycled cell is filled immediately.
-    private var delivered: [String: CGImage] = [:]
+    ///
+    /// This is a *window*, not a folder-wide cache: it holds only what the visible rows and the
+    /// prefetch band ask for, and everything outside that window is released on the next layout.
+    /// Long-term caching is the `ThumbnailPipeline`'s job (bounded `NSCache`); the gallery is not
+    /// a second, unbounded copy of the folder's pixels.
+    private var delivered: [String: DeliveredThumbnail] = [:]
     /// Every cell ever created, so a test can prove the total does not grow with the folder.
     private(set) var createdCellCount = 0
 
@@ -129,9 +148,11 @@ final class GalleryGridView: NSView {
         self.currentIndex = currentIndex
         self.layoutKind = layoutKind
         self.thumbnailSize = GalleryLayout.clampThumbnailSize(thumbnailSize)
-        // Everything on screen belongs to the old list.
+        // Everything on screen belongs to the old list — and so does every retained thumbnail:
+        // a folder switch must not leave the previous folder's pixels strongly referenced here.
         for (_, cell) in visibleCells { recycle(cell) }
         visibleCells.removeAll()
+        delivered.removeAll()
         needsLayout = true
     }
 
@@ -161,15 +182,24 @@ final class GalleryGridView: NSView {
 
     private func thumbnail(at index: Int) -> CGImage? {
         guard items.indices.contains(index) else { return nil }
-        return delivered[items[index].url.path]
+        return delivered[items[index].url.path]?.image
     }
 
-    func noteDelivered(_ image: CGImage, for url: URL) {
-        delivered[url.path] = image
+    /// Stores a delivered thumbnail. The tier and the source version travel with it, so a later
+    /// request can tell "good enough" from "already have, but stale or too small".
+    func noteDelivered(_ image: CGImage, pixelSize: Int, versionToken: String, for url: URL) {
+        delivered[url.path] = DeliveredThumbnail(image: image, pixelSize: pixelSize,
+                                                 versionToken: versionToken)
+        trimDeliveredToWindow()
     }
 
-    /// Whether a thumbnail is already on screen for this item, so a request is not repeated.
-    func hasThumbnailForTesting(_ url: URL) -> Bool { delivered[url.path] != nil }
+    /// Forgets a delivered thumbnail, so a stale or too-small entry can never be served again.
+    func dropDelivered(for url: URL) {
+        delivered[url.path] = nil
+    }
+
+    /// What is delivered for this URL, if anything.
+    func deliveredThumbnail(for url: URL) -> DeliveredThumbnail? { delivered[url.path] }
 
     /// Delivers a thumbnail by identity: the list may have been resorted while the request was in
     /// flight, so an index captured at request time could belong to a different file.
@@ -248,6 +278,49 @@ final class GalleryGridView: NSView {
                 visibleCells[cellFrame.index]?.frame = cellFrame.frame
             }
         }
+        trimDeliveredToWindow()
+    }
+
+    /// The vertical band above and below the visible rectangle that prefetch covers: two rows,
+    /// measured at the current thumbnail size.
+    private var prefetchBandHeight: CGFloat {
+        2 * (thumbnailSize + GalleryLayout.filenameSlotHeight + GalleryLayout.rowSpacing)
+    }
+
+    /// The indexes the grid wants thumbnails for right now: visible rows plus a prefetch band
+    /// above and below. This is the window the request scope — and the gallery's own delivered
+    /// cache — is bounded to. A ten-thousand-image folder asks for this many thumbnails, not ten
+    /// thousand.
+    var thumbnailWindowIndexes: Set<Int> {
+        let windowRect = visibleRectForCells.insetBy(dx: 0, dy: -prefetchBandHeight)
+        var result: Set<Int> = []
+        for row in GalleryLayout.visibleRows(in: windowRect, of: rows) {
+            for cell in row.cells { result.insert(cell.index) }
+        }
+        return result
+    }
+
+    /// The most thumbnails the gallery keeps before trimming to its window: the window size times
+    /// two, with a floor of 64. Above the cap the delivered cache is trimmed to exactly the
+    /// window; below it nothing is evicted, so a slider reflow (which re-lays-out without new
+    /// decode intent) never churns the retained set and never re-requests.
+    private var deliveredRetentionCap: Int { max(64, thumbnailWindowIndexes.count * 2) }
+
+    /// Releases every delivered thumbnail that is no longer in the window, but only once the
+    /// retained set passes the cap. The gallery's retained images are therefore bounded by a
+    /// constant of the viewport, never by the folder's size — while small folders keep their
+    /// thumbnails through a reflow.
+    private func trimDeliveredToWindow() {
+        let window = thumbnailWindowIndexes
+        // No layout yet (or a degenerate one): there is no window to keep, so nothing to evict.
+        guard !window.isEmpty else { return }
+        guard delivered.count > deliveredRetentionCap else { return }
+        let keep = Set(window.compactMap { index -> String? in
+            items.indices.contains(index) ? items[index].url.path : nil
+        })
+        if delivered.keys.contains(where: { !keep.contains($0) }) {
+            delivered = delivered.filter { keep.contains($0.key) }
+        }
     }
 
     /// The rectangle the cells must cover: the enclosing scroll view's visible area, or the whole
@@ -312,4 +385,16 @@ final class GalleryGridView: NSView {
     var thumbnailSizeForTesting: CGFloat { thumbnailSize }
     var itemCount: Int { items.count }
     func cellForTesting(at index: Int) -> GalleryItemView? { visibleCells[index] }
+
+    /// How many thumbnails the gallery itself is strongly retaining, keyed by path.
+    /// The retention audit: this must stay a small window over a large folder.
+    var deliveredImageCountForTesting: Int { delivered.count }
+    /// The paths of every retained thumbnail, for folder-switch cross-contamination checks.
+    var deliveredPathsForTesting: Set<String> { Set(delivered.keys) }
+    /// Estimated retained pixel bytes, for the memory audit.
+    var retainedThumbnailByteCountForTesting: Int {
+        delivered.values.reduce(0) { $0 + $1.image.bytesPerRow * $1.image.height }
+    }
+    /// The pixel tier a delivered thumbnail was requested at, or nil.
+    func deliveredPixelSizeForTesting(_ url: URL) -> Int? { delivered[url.path]?.pixelSize }
 }
