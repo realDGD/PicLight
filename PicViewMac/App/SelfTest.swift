@@ -985,11 +985,28 @@ enum SelfTest {
               viewer.viewerState.errorMessage ?? "no message")
         check("no pixels are fabricated for a corrupt image", viewer.viewerState.currentImage == nil)
 
+        // The folder is scanned off the main actor, so "next" has to wait for the list it moves
+        // within: pressed against a session whose scan has not finished there is no next to move
+        // to, and the image after the corrupt one never arrives. That race is what the packaged run
+        // reported; the navigation path itself is covered by CorruptImageNavigationTests.
+        let listDeadline = Date().addingTimeInterval(10)
+        while viewer.session.items.count < 2, Date() < listDeadline { drainRunLoop(0.05) }
+        drainRunLoop(0.3)
+
+        // Navigation must survive the corrupt file wherever the folder's order puts it: the sort is
+        // shared with the app's settings, so "next" may already be at the end of the list (measured:
+        // 2 items with the corrupt image at index 1, where next has nowhere to go). One step in
+        // either direction is what "navigation stays alive" means here.
         viewer.perform(.nextImage)
-        drainRunLoop(1.5)
+        drainRunLoop(1.0)
+        if viewer.viewerState.currentImage == nil {
+            viewer.perform(.previousImage)
+            drainRunLoop(1.0)
+        }
         check("navigation stays alive after a corrupt image",
               viewer.viewerState.currentImage != nil,
-              viewer.session.currentItem?.displayName ?? "none")
+              "\(viewer.session.items.count) items, index \(viewer.session.currentIndex.map(String.init) ?? "none"), "
+                + "current \(viewer.session.currentItem?.displayName ?? "none")")
         controller.close()
     }
 
