@@ -355,6 +355,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public func enterFolderBrowser() {
         guard viewerMode != .folderBrowser, let browser = makeFolderBrowser() else { return }
         viewerMode = .folderBrowser
+        // The browser is a working mode with its own top bar: the titlebar stays visible (never
+        // auto-hiding) and the content stops reaching under it, so the browser's toolbar sits
+        // flush below the bar instead of under a bar that can hide on top of it.
+        isFolderBrowserPinningTitlebar = true
+        applyTitlebarMode()
         browser.reload()
         folderBrowserContainer.isHidden = false
         setImageModeViewsHidden(true)
@@ -366,6 +371,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public func leaveFolderBrowser() {
         guard viewerMode == .folderBrowser else { return }
         viewerMode = .image
+        isFolderBrowserPinningTitlebar = false
+        applyTitlebarMode()
         folderBrowser?.teardown()
         folderBrowserContainer.isHidden = true
         setImageModeViewsHidden(false)
@@ -1733,11 +1740,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// current state, and re-evaluate the reasons not to hide.
     func windowTitlebarContextChanged() {
         guard let window = view.window as? ViewerWindow else { return }
-        window.applyTitlebarMode(ViewerWindow.TitlebarMode(settings.titlebar))
+        window.applyTitlebarMode(effectiveTitlebarMode())
         appliedTitlebarState = nil
         refreshTitlebarBlocks()
         applyTitlebarVisibility()
         _ = window.titlebarState
+    }
+
+    /// While the folder browser is up, the titlebar is pinned visible: the browser is a working
+    /// mode with its own top bar, and auto-hide would leave its toolbar under a bar that can hide
+    /// on top of it (or floating controls over it). The pin is a momentary mode statement, reset
+    /// when the browser leaves; it never changes the user's setting.
+    private var isFolderBrowserPinningTitlebar = false
+
+    private func effectiveTitlebarMode() -> ViewerWindow.TitlebarMode {
+        isFolderBrowserPinningTitlebar
+            ? .alwaysVisible
+            : ViewerWindow.TitlebarMode(settings.titlebar)
     }
 
     /// Recomputes the reasons the titlebar must stay: a drag in progress, a sheet, native full
@@ -1779,7 +1798,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// area exactly as a drawer pin does — Fit stays Fit, a manual zoom keeps its level.
     private func applyTitlebarMode() {
         guard let window = view.window as? ViewerWindow else { return }
-        let mode = ViewerWindow.TitlebarMode(settings.titlebar)
+        let mode = effectiveTitlebarMode()
         guard window.titlebarMode != mode else { return }
         let previousCenter = canvas.viewport.normalizedCenter
         let wasAtFit = canvas.viewport.isAtFit

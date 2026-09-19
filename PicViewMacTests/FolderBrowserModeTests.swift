@@ -189,7 +189,52 @@ final class FolderBrowserModeTests: XCTestCase {
         XCTAssertEqual(viewer.session.currentIndex, 3)
     }
 
-    /// Escape leaves the browser and keeps the selection.
+    /// Entering the browser pins the titlebar visible: the browser's toolbar is the mode's top bar,
+    /// flush under a bar that never hides on top of it, and the drawer button stays in that bar.
+    func testTheTitlebarStaysVisibleWhileBrowsing() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        XCTAssertEqual(window.titlebarMode, .autoHide, "precondition: the default is auto-hide")
+
+        viewer.perform(.browseFolder)
+        settle()
+
+        XCTAssertEqual(viewer.viewerMode, .folderBrowser)
+        XCTAssertEqual(window.titlebarMode, .alwaysVisible,
+                       "browsing pins the titlebar to always-visible")
+        XCTAssertEqual(window.titlebarState, .full)
+        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
+                       "content stops reaching under the bar, so the browser's toolbar sits "
+                       + "flush below the titlebar instead of under it")
+
+        // Pointer away and idle: the pinned bar must not auto-hide.
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
+        XCTAssertEqual(window.titlebarState, .full,
+                       "the titlebar does not auto-hide while the browser is up")
+
+        // The drawer button is part of that visible bar, not floating over the browser.
+        for accessory in window.titlebarAccessoryViewControllers {
+            XCTAssertFalse(accessory.isHidden,
+                           "with the pinned bar the accessory is in the titlebar")
+        }
+
+        // Leaving restores the user's mode; the browser's flush layout goes away with it.
+        let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                                    modifierFlags: [], timestamp: 0,
+                                                    windowNumber: 0, context: nil,
+                                                    characters: "\u{1b}",
+                                                    charactersIgnoringModifiers: "\u{1b}",
+                                                    isARepeat: false, keyCode: 53))
+        viewer.keyDown(with: escape)
+        settle(0.5)
+        XCTAssertEqual(viewer.viewerMode, .image)
+        XCTAssertEqual(window.titlebarMode, .autoHide,
+                       "leaving the browser hands the titlebar back to the user's setting")
+    }
+
     func testEscapeLeavesTheBrowserAndKeepsTheSelection() throws {
         let (directory, controller, viewer) = try makeFolder(4)
         defer { cleanup(directory, controller) }

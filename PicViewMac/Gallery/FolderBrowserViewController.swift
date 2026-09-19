@@ -122,13 +122,21 @@ final class FolderBrowserViewController {
     /// any change to the folder or the sort.
     func reload() {
         guard let host else { return }
-        // A new list — new folder or re-sort — invalidates every request made against the old one.
-        // The generation bump makes every pending completion's guard fail, and the host cancels the
-        // decode tasks, so nothing from before this line can land in the gallery after it.
-        folderGeneration += 1
-        pending.removeAll()
-        host.cancelGalleryThumbnails()
         let items = host.session.items
+        // Only a list that actually *changed* invalidates the requests made against the old one:
+        // a new folder, a re-sort, a rescan that added or removed files. The same list arriving
+        // again — which is what the dimension probe's fill produces a moment after entering the
+        // browser — must not cancel in-flight decodes and re-request the window, or a small folder
+        // asks for its thumbnails twice (measured: 48 requests for 40 items).
+        let urls = items.map(\.url)
+        if urls != lastRequestedURLs {
+            // The generation bump makes every pending completion's guard fail, and the host cancels
+            // the decode tasks, so nothing from before this line can land in the gallery after it.
+            folderGeneration += 1
+            pending.removeAll()
+            host.cancelGalleryThumbnails()
+            lastRequestedURLs = urls
+        }
         let aspects = items.map { item -> CGFloat in
             guard let size = item.pixelSize, size.height > 0 else { return 1 }
             return size.width / size.height
@@ -148,6 +156,9 @@ final class FolderBrowserViewController {
         view.treeSidebar.update(nodes: tree.visibleNodes, currentPath: tree.currentFolderPath)
         requestVisibleThumbnails()
     }
+
+    /// The URL list the in-flight requests belong to, so a re-published identical list keeps them.
+    private var lastRequestedURLs: [URL] = []
 
     private func reloadFromSession() {
         reload()

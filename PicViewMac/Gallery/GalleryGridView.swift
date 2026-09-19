@@ -143,16 +143,23 @@ final class GalleryGridView: NSView {
 
     func rebuild(items: [FolderItem], aspects: [CGFloat], currentIndex: Int?,
                  layoutKind: GalleryLayoutKind, thumbnailSize: CGFloat) {
+        // A *different* folder's thumbnails must not survive the switch: the previous folder's
+        // pixels would stay strongly referenced here, and a path from it could still be served.
+        // A re-publish of the *same* files — a re-sort, or the dimension probe filling sizes in a
+        // moment after the browser opens — keeps them, so the window is not re-requested and a
+        // small folder does not ask for its thumbnails twice.
+        let newPaths = Set(items.map { $0.url.path })
+        let oldPaths = Set(self.items.map { $0.url.path })
+        let sameFiles = !oldPaths.isEmpty && newPaths == oldPaths
         self.items = items
         self.aspects = aspects
         self.currentIndex = currentIndex
         self.layoutKind = layoutKind
         self.thumbnailSize = GalleryLayout.clampThumbnailSize(thumbnailSize)
-        // Everything on screen belongs to the old list — and so does every retained thumbnail:
-        // a folder switch must not leave the previous folder's pixels strongly referenced here.
+        // Everything on screen belongs to the old list.
         for (_, cell) in visibleCells { recycle(cell) }
         visibleCells.removeAll()
-        delivered.removeAll()
+        if !sameFiles { delivered.removeAll() }
         needsLayout = true
     }
 

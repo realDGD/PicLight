@@ -202,6 +202,36 @@ final class TrafficLightRevealTests: XCTestCase {
         }
     }
 
+    /// The drawer button rides with the *full* titlebar only: in the lights-only state the bar
+    /// itself is invisible, and a lone button floating beside the traffic lights reads as a
+    /// control on the page instead of a titlebar control.
+    func testTheAccessoryDoesNotFloatInTheLightsOnlyState() throws {
+        let (controller, viewer, window) = try makeViewer()
+        defer { controller.close() }
+        XCTAssertFalse(window.titlebarAccessoryViewControllers.isEmpty,
+                       "the drawer button is the viewer's own titlebar accessory")
+
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.a.midX, y: zones.a.midY), to: nil))
+        settle()
+        XCTAssertEqual(window.titlebarState, .trafficLightsOnly)
+        for accessory in window.titlebarAccessoryViewControllers {
+            XCTAssertTrue(accessory.isHidden,
+                          "the lights-only state must not leave the drawer button floating "
+                          + "over the content")
+        }
+
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        settle()
+        XCTAssertEqual(window.titlebarState, .full)
+        for accessory in window.titlebarAccessoryViewControllers {
+            XCTAssertFalse(accessory.isHidden,
+                           "with the full bar the button is part of the titlebar again")
+        }
+    }
+
     /// Nothing viewer-owned is a titlebar, and nothing draws a replacement control.
     func testThereIsNoViewerOwnedTitlebarOrFakeControl() throws {
         let (controller, viewer, _) = try makeViewer()
