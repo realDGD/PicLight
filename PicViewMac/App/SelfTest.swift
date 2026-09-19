@@ -507,12 +507,24 @@ enum SelfTest {
             return
         }
 
-        // The drawer opens from the titlebar; its own pin control is gone.
-        let viewerWindow = viewer.view.window
+        // The drawer opens from the titlebar; its own pin control is gone. The accessory lives in
+        // the titlebar whenever the bar is up and is taken out of it while the bar is away (so
+        // nothing floats over the image), which is why the check reveals the bar first.
+        let viewerWindow = viewer.view.window as? ViewerWindow
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        drainRunLoop(0.35)
+        let revealedAccessories = viewerWindow?.titlebarAccessoryViewControllers ?? []
         check("titlebar carries the drawer control",
-              viewerWindow?.titlebarAccessoryViewControllers.count == 1
-                && viewerWindow?.titlebarAccessoryViewControllers.first?.layoutAttribute == .leading,
-              "accessories: \(viewerWindow?.titlebarAccessoryViewControllers.count ?? 0)")
+              revealedAccessories.count == 1
+                && revealedAccessories.first?.layoutAttribute == .leading,
+              "state \(String(describing: viewerWindow?.titlebarState)), "
+                + "accessories \(revealedAccessories.count)")
+        // Leave the bar as the rest of the run expects it: away.
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        drainRunLoop(0.35)
         check("drawer has no pin control of its own",
               !Self.containsButton(in: chrome["drawer"] ?? NSView()),
               "the drawer is content only")
