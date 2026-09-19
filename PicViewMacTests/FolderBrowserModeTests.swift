@@ -271,6 +271,90 @@ final class FolderBrowserModeTests: XCTestCase {
                        "the toolbar and the native controls are one row")
     }
 
+    // MARK: - The merged row's alignment, the left column and the background
+
+    /// The browser's top bar is the titlebar row, so its controls must sit on the same line as the
+    /// native ones. Centring them in the taller toolbar row left them about six points lower.
+    func testTheMergedRowControlsLineUpWithTheNativeControls() throws {
+        let (directory, controller, viewer) = try makeFolder(3, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        controller.window?.layoutIfNeeded()
+
+        let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        let lightsMidY = try XCTUnwrap(lights.first?.superview).convert(
+            lights.dropFirst().reduce(lights[0].frame) { $0.union($1.frame) }, to: nil).midY
+        let drawer = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertEqual(drawer.convert(drawer.bounds, to: nil).midY, lightsMidY, accuracy: 1,
+                       "the left-column button is on the titlebar's line")
+        for (name, view) in [("back control", browser.view.backControl as NSView),
+                             ("size slider", browser.view.thumbnailSizeSlider)] {
+            XCTAssertEqual(view.convert(view.bounds, to: nil).midY, lightsMidY, accuracy: 1.5,
+                           "\(name) must line up with the native controls, not sit below them")
+        }
+        _ = controller
+    }
+
+    /// The titlebar's left-column button drives this mode's left column — the folder tree — not the
+    /// thumbnail drawer, which is not on screen while the browser is up.
+    func testTheLeftColumnButtonTogglesTheFolderTreeWhileBrowsing() throws {
+        let (directory, controller, viewer) = try makeFolder(3, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertTrue(browser.view.isSidebarVisible, "the tree starts visible")
+
+        button.performClick(nil)
+        settle(0.4)
+        XCTAssertFalse(browser.view.isSidebarVisible, "the button closes the folder tree")
+        XCTAssertFalse(viewer.isDrawerOpen, "and does not reach for the thumbnail drawer")
+        XCTAssertEqual(button.toolTip, "打开左栏")
+        _ = window
+
+        button.performClick(nil)
+        settle(0.4)
+        XCTAssertTrue(browser.view.isSidebarVisible, "and it opens the tree again")
+        XCTAssertFalse(viewer.isDrawerOpen)
+
+        // Leaving the browser gives the button back to the drawer.
+        let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                                    modifierFlags: [], timestamp: 0,
+                                                    windowNumber: 0, context: nil,
+                                                    characters: "\u{1b}",
+                                                    charactersIgnoringModifiers: "\u{1b}",
+                                                    isARepeat: false, keyCode: 53))
+        viewer.keyDown(with: escape)
+        settle(0.5)
+        XCTAssertEqual(viewer.viewerMode, .image)
+        button.performClick(nil)
+        settle(0.4)
+        XCTAssertTrue(viewer.isDrawerOpen, "in the image mode the button is the drawer control again")
+    }
+
+    /// The browser paints its own background: transparent surfaces let remnants of the image mode's
+    /// canvas show through.
+    func testTheBrowserPaintsItsOwnOpaqueBackground() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+
+        XCTAssertTrue(browser.view.isOpaque, "the browser view fills its own background")
+        XCTAssertTrue(browser.view.galleryScrollView.drawsBackground,
+                      "the gallery's scroll view is not a window onto the image behind it")
+        let sidebarBackground = try XCTUnwrap(browser.view.treeSidebar.outlineView.backgroundColor)
+        XCTAssertGreaterThan(sidebarBackground.alphaComponent, 0.99,
+                             "the folder tree is opaque too")
+    }
+
     func testEscapeLeavesTheBrowserAndKeepsTheSelection() throws {
         let (directory, controller, viewer) = try makeFolder(4)
         defer { cleanup(directory, controller) }

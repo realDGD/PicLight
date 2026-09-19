@@ -28,7 +28,9 @@ final class FolderTreeSidebarView: NSView {
         column.resizingMask = .autoresizingMask
         outline.addTableColumn(column)
         outline.headerView = nil
-        outline.backgroundColor = .clear
+        // Opaque, like the rest of the browser: a clear outline let whatever was behind the
+        // browser show through, which is where remnants of the previous image appeared.
+        outline.backgroundColor = .windowBackgroundColor
         outline.rowSizeStyle = .default
         outline.indentationPerLevel = 14
         outline.style = .plain

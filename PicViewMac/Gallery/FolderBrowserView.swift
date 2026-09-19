@@ -71,6 +71,24 @@ public final class FolderBrowserView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// The browser paints its own background instead of relying on what is behind it.
+    ///
+    /// Every surface here used to be transparent — the tree sidebar's outline, the gallery's scroll
+    /// view, the toolbar — so the browser showed whatever the window had underneath. In the merged
+    /// top row the image mode's canvas is behind it, and a transparent, only-partly-repainted area
+    /// left remnants of the picture on screen. An opaque fill removes the whole class of artefact
+    /// and costs one rectangle per redraw.
+    public override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        dirtyRect.fill()
+    }
+
+    public override var isOpaque: Bool { true }
+
+    /// Height of the browser's top bar. The merged row aligns its content against the titlebar,
+    /// which is what this is measured with.
+    static let toolbarHeight: CGFloat = 44
+
     // MARK: - Construction
 
     private func buildToolbar() {
@@ -128,14 +146,17 @@ public final class FolderBrowserView: NSView {
         let leadingInset = stack.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor,
                                                           constant: 12)
         toolbarStackLeadingConstraint = leadingInset
+        let stackCenter = stack.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor)
+        toolbarStackCenterConstraint = stackCenter
         NSLayoutConstraint.activate([
             leadingInset,
             stack.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -12),
-            stack.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            stackCenter,
         ])
     }
 
     private var toolbarStackLeadingConstraint: NSLayoutConstraint?
+    private var toolbarStackCenterConstraint: NSLayoutConstraint?
 
     /// How far the toolbar's own controls start from the window's leading edge.
     ///
@@ -152,9 +173,35 @@ public final class FolderBrowserView: NSView {
         toolbarStackLeadingConstraint.map { $0.constant - 12 }
     }
 
+    /// Centres the toolbar's controls on the titlebar's own centre line.
+    ///
+    /// The merged row is the titlebar: the traffic lights and the drawer button sit on that line,
+    /// and the browser's controls have to sit on it too. Centring them in the taller toolbar left
+    /// them about six points lower than the native controls (measured: lights and drawer at
+    /// y = 664, back button at 658.5 in a window with a 32 pt bar), which reads as two rows that
+    /// do not line up.
+    func alignToolbarContent(withTitlebarHeight height: CGFloat) {
+        guard height > 0 else {
+            toolbarStackCenterConstraint?.constant = 0
+            return
+        }
+        // Measured, not derived: a positive constant on this centre constraint moves the stack
+        // *down* in the toolbar's coordinate space (verified by probing the frames — +6 put the
+        // controls at 652.5 where the lights are at 664), so the offset that lifts the controls
+        // onto the titlebar's centre line is the titlebar's half-height minus the bar's.
+        toolbarStackCenterConstraint?.constant = height / 2 - Self.toolbarHeight / 2
+        needsLayout = true
+    }
+
+    /// The alignment offset in force, for tests.
+    var toolbarVerticalOffsetForTesting: CGFloat? { toolbarStackCenterConstraint?.constant }
+
     private func buildBody() {
         galleryScroll.translatesAutoresizingMaskIntoConstraints = false
-        galleryScroll.drawsBackground = false
+        // Opaque: the gallery is the browser's own surface, not a window onto the image mode's
+        // canvas. A transparent scroll view left the previous image showing through the gaps.
+        galleryScroll.drawsBackground = true
+        galleryScroll.backgroundColor = .windowBackgroundColor
         galleryScroll.hasVerticalScroller = true
         galleryScroll.autohidesScrollers = true
         galleryScroll.scrollerStyle = .overlay

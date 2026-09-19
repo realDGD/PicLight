@@ -363,15 +363,47 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         applyTitlebarMode()
         (view.window as? ViewerWindow)?.isTopBarMergedWithContent = true
         browser.view.setToolbarLeadingInset(Self.mergedToolbarLeadingInset)
+        alignBrowserToolbarWithTitlebar()
         browser.reload()
         folderBrowserContainer.isHidden = false
         setImageModeViewsHidden(true)
+        // The left-column button follows the mode: in the browser it opens and closes the folder
+        // tree, which is this mode's left column.
+        onLeftColumnChanged?(isFolderTreeSidebarVisible)
         view.window?.makeFirstResponder(browser.view.gallery)
     }
 
     /// Room the browser's toolbar leaves for the native controls in the merged top row: the traffic
     /// lights (9…69 in window coordinates) plus the drawer button beside them (78…108) plus a gap.
     static let mergedToolbarLeadingInset: CGFloat = 120
+
+    /// Centres the browser's toolbar controls on the titlebar's own centre line — the line the
+    /// traffic lights and the left-column button sit on in the merged row.
+    private func alignBrowserToolbarWithTitlebar() {
+        guard let window = view.window else { return }
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        folderBrowser?.view.alignToolbarContent(withTitlebarHeight: titlebarHeight)
+    }
+
+    /// Whether the browser's folder-tree sidebar — this mode's left column — is showing.
+    var isFolderTreeSidebarVisible: Bool { folderBrowser?.view.isSidebarVisible ?? false }
+
+    /// The titlebar's left-column button, routed by mode: the folder tree while the browser is up,
+    /// the thumbnail drawer in the image mode. One button, the left column of whichever mode is
+    /// showing — the drawer itself is not this mode's column.
+    public func toggleLeftColumn() {
+        if viewerMode == .folderBrowser {
+            let visible = isFolderTreeSidebarVisible
+            folderBrowser?.view.setSidebarVisible(!visible)
+            onLeftColumnChanged?(!visible)
+        } else {
+            toggleDrawer()
+        }
+    }
+
+    /// Fired when the left column this window is showing opens or closes, so the titlebar button
+    /// renders the state of whichever column is in force.
+    public var onLeftColumnChanged: ((Bool) -> Void)?
 
     /// Leaves the folder browser and returns to the image. The selected image is whatever the
     /// browser left in the session, so it comes back on screen; the viewport is untouched.
@@ -381,11 +413,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         isFolderBrowserPinningTitlebar = false
         (view.window as? ViewerWindow)?.isTopBarMergedWithContent = false
         folderBrowser?.view.setToolbarLeadingInset(0)
+        folderBrowser?.view.alignToolbarContent(withTitlebarHeight: 0)
         applyTitlebarMode()
         folderBrowser?.teardown()
         folderBrowserContainer.isHidden = true
         setImageModeViewsHidden(false)
         applyChromeVisibility()
+        // The button goes back to being the image mode's drawer control.
+        onLeftColumnChanged?(isDrawerOpen)
         // The session's current item may have moved while the gallery was up; showing it is the
         // one decode this transition can cause, and only when the selection actually changed.
         if let url = session.currentItem?.url, url != displayedItemURL {
@@ -1753,6 +1788,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         appliedTitlebarState = nil
         refreshTitlebarBlocks()
         applyTitlebarVisibility()
+        // A resize or a full-screen transition can give the strip a different height, and the
+        // browser's controls are aligned to it.
+        if viewerMode == .folderBrowser { alignBrowserToolbarWithTitlebar() }
         _ = window.titlebarState
     }
 

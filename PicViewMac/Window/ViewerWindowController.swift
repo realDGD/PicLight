@@ -35,6 +35,11 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onDrawerOpenChanged = { [weak self] open in
             self?.updateDrawerButton(open: open)
         }
+        // The button renders whichever left column is in force: the drawer in the image mode, the
+        // folder tree while the browser is up.
+        viewerViewController.onLeftColumnChanged = { [weak self] open in
+            self?.updateDrawerButton(open: open)
+        }
         // The titlebar mode is a window property, so the window applies it as soon as it exists.
         viewerViewController.onTitlebarModeNeeded = { [weak self] in
             self?.viewerViewController.applyTitlebarModeForWindow()
@@ -96,7 +101,10 @@ public final class ViewerWindowController: NSWindowController {
     }
 
     @objc private func toggleDrawerFromTitlebar() {
-        viewerViewController.toggleDrawer()
+        // Mode-aware: the browser's left column is the folder tree, the image mode's is the
+        // thumbnail drawer. Driving the drawer unconditionally left the button doing nothing
+        // visible while the browser was up.
+        viewerViewController.toggleLeftColumn()
     }
 
     /// The titlebar drawer button, for tests.
