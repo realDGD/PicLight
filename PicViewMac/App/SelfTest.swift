@@ -778,18 +778,26 @@ enum SelfTest {
         check("unpinning hands the dock back to auto-hide",
               waitForDock({ dock.isHidden }, nudge: pointerAway))
 
-        // Pointer into the left-edge hot zone.
+        // The viewer-ux redesign removed the left-edge hover auto-open: a pointer into the
+        // left-edge zone must not open the drawer, and the drawer opens on demand instead.
         let leftEdge = NSPoint(x: 3, y: viewer.view.bounds.midY)
         viewer.simulatePointer(atWindowPoint: leftEdge)
         drainRunLoop(0.4)
         snapshot = viewer.chromeSnapshot
-        check("left-edge hover opens the drawer", snapshot.drawer)
+        check("left-edge hover does not open the drawer", snapshot.drawer == false,
+              "drawer=\(snapshot.drawer) after a pointer into the left edge")
+        viewer.perform(.toggleThumbnailDrawer)
+        drainRunLoop(0.6)
+        snapshot = viewer.chromeSnapshot
+        check("the drawer opens on demand", snapshot.drawer,
+              "drawer=\(snapshot.drawer) after the toggle command")
         check("drawer rows equal the folder contents",
               snapshot.drawerRows == viewer.session.items.count)
-        check("opening the drawer never changes canvas geometry",
-              snapshot.canvasFrame == before.canvasFrame && snapshot.zoomScale == before.zoomScale,
-              "before frame \(before.canvasFrame.size) zoom \(before.zoomScale); "
-                + "after frame \(snapshot.canvasFrame.size) zoom \(snapshot.zoomScale)")
+        // The redesign's drawer reserves canvas width when open (that geometry is asserted
+        // precisely in verifyDrawerPin/verifyViewerLayout); the hover-era "overlay, canvas
+        // unchanged" contract no longer exists.
+        viewer.perform(.toggleThumbnailDrawer)
+        drainRunLoop(0.2)
 
         // The minimap is only permitted while zoomed past Fit.
         viewer.perform(.zoomToFit)
