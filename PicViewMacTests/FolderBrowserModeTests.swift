@@ -189,8 +189,8 @@ final class FolderBrowserModeTests: XCTestCase {
         XCTAssertEqual(viewer.session.currentIndex, 3)
     }
 
-    /// Entering the browser pins the titlebar visible: the browser's toolbar is the mode's top bar,
-    /// flush under a bar that never hides on top of it, and the drawer button stays in that bar.
+    /// Entering the browser merges the mode's top bar into the titlebar: one row, the browser's
+    /// toolbar with the traffic lights and the drawer button in it, and the bar never auto-hides.
     func testTheTitlebarStaysVisibleWhileBrowsing() throws {
         let (directory, controller, viewer) = try makeFolder(4)
         defer { cleanup(directory, controller) }
@@ -198,30 +198,33 @@ final class FolderBrowserModeTests: XCTestCase {
         XCTAssertEqual(window.titlebarMode, .autoHide, "precondition: the default is auto-hide")
 
         viewer.perform(.browseFolder)
-        settle()
+        settle(0.5)
 
         XCTAssertEqual(viewer.viewerMode, .folderBrowser)
+        XCTAssertTrue(window.isTopBarMergedWithContent,
+                      "browsing merges the browser's top bar into the titlebar strip")
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView),
+                      "the content reaches the top so the browser's toolbar occupies the strip")
+        XCTAssertTrue(window.titlebarAppearsTransparent,
+                      "the native bar is transparent: the toolbar is what the user sees")
+        XCTAssertEqual(window.titleVisibility, .hidden)
         XCTAssertEqual(window.titlebarMode, .alwaysVisible,
-                       "browsing pins the titlebar to always-visible")
-        XCTAssertEqual(window.titlebarState, .full)
-        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
-                       "content stops reaching under the bar, so the browser's toolbar sits "
-                       + "flush below the titlebar instead of under it")
+                       "browsing pins the titlebar so it never auto-hides")
 
-        // Pointer away and idle: the pinned bar must not auto-hide.
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 120,
+                       "the toolbar starts clear of the native controls in the merged row")
+
+        // Pointer away and idle: the merged bar must not hide.
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
             CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
         settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
         XCTAssertEqual(window.titlebarState, .full,
                        "the titlebar does not auto-hide while the browser is up")
+        XCTAssertFalse(controller.drawerTitlebarButton?.isHidden ?? true,
+                       "and the drawer button stays in the merged row")
 
-        // The drawer button is part of that visible bar, not floating over the browser.
-        for accessory in window.titlebarAccessoryViewControllers {
-            XCTAssertFalse(accessory.isHidden,
-                           "with the pinned bar the accessory is in the titlebar")
-        }
-
-        // Leaving restores the user's mode; the browser's flush layout goes away with it.
+        // Leaving restores the user's mode and gives the strip back to the titlebar.
         let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
                                                     modifierFlags: [], timestamp: 0,
                                                     windowNumber: 0, context: nil,
@@ -231,8 +234,41 @@ final class FolderBrowserModeTests: XCTestCase {
         viewer.keyDown(with: escape)
         settle(0.5)
         XCTAssertEqual(viewer.viewerMode, .image)
+        XCTAssertFalse(window.isTopBarMergedWithContent)
+        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 0)
         XCTAssertEqual(window.titlebarMode, .autoHide,
                        "leaving the browser hands the titlebar back to the user's setting")
+    }
+
+    /// The merged row's controls must not sit on top of each other: the toolbar's first control
+    /// starts after the traffic lights and the drawer button that share the row.
+    func testTheMergedRowKeepsTheToolbarClearOfTheNativeControls() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        controller.window?.layoutIfNeeded()
+
+        let back = browser.view.backControl
+        let backFrame = back.convert(back.bounds, to: nil)
+        let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        let lightsFrame = try XCTUnwrap(lights.first?.superview).convert(
+            lights.dropFirst().reduce(lights[0].frame) { $0.union($1.frame) }, to: nil)
+        let drawer = try XCTUnwrap(controller.drawerTitlebarButton)
+        let drawerFrame = drawer.convert(drawer.bounds, to: nil)
+
+        for (name, frame) in [("traffic lights", lightsFrame), ("drawer button", drawerFrame)] {
+            let overlap = frame.intersection(backFrame)
+            XCTAssertTrue(overlap.isNull || overlap.width <= 0 || overlap.height <= 0,
+                          "the toolbar's back control must not overlap the \(name) "
+                          + "(back \(backFrame), \(name) \(frame))")
+        }
+        // And they really do share the row.
+        XCTAssertEqual(backFrame.midY, lightsFrame.midY, accuracy: 12,
+                       "the toolbar and the native controls are one row")
     }
 
     func testEscapeLeavesTheBrowserAndKeepsTheSelection() throws {

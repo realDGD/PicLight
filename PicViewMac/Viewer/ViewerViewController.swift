@@ -355,16 +355,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public func enterFolderBrowser() {
         guard viewerMode != .folderBrowser, let browser = makeFolderBrowser() else { return }
         viewerMode = .folderBrowser
-        // The browser is a working mode with its own top bar: the titlebar stays visible (never
-        // auto-hiding) and the content stops reaching under it, so the browser's toolbar sits
-        // flush below the bar instead of under a bar that can hide on top of it.
+        // The browser is a working mode with its own top bar: the window merges that bar into the
+        // titlebar strip — one row, the browser's toolbar with the traffic lights and the drawer
+        // button in it — and the bar never auto-hides while the browser is up. The toolbar keeps
+        // clear of those controls, which is what the leading inset is for.
         isFolderBrowserPinningTitlebar = true
         applyTitlebarMode()
+        (view.window as? ViewerWindow)?.isTopBarMergedWithContent = true
+        browser.view.setToolbarLeadingInset(Self.mergedToolbarLeadingInset)
         browser.reload()
         folderBrowserContainer.isHidden = false
         setImageModeViewsHidden(true)
         view.window?.makeFirstResponder(browser.view.gallery)
     }
+
+    /// Room the browser's toolbar leaves for the native controls in the merged top row: the traffic
+    /// lights (9…69 in window coordinates) plus the drawer button beside them (78…108) plus a gap.
+    static let mergedToolbarLeadingInset: CGFloat = 120
 
     /// Leaves the folder browser and returns to the image. The selected image is whatever the
     /// browser left in the session, so it comes back on screen; the viewport is untouched.
@@ -372,6 +379,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         guard viewerMode == .folderBrowser else { return }
         viewerMode = .image
         isFolderBrowserPinningTitlebar = false
+        (view.window as? ViewerWindow)?.isTopBarMergedWithContent = false
+        folderBrowser?.view.setToolbarLeadingInset(0)
         applyTitlebarMode()
         folderBrowser?.teardown()
         folderBrowserContainer.isHidden = true

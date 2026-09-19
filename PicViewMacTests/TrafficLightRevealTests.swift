@@ -181,25 +181,25 @@ final class TrafficLightRevealTests: XCTestCase {
         XCTAssertEqual(window.titlebarState, .full)
     }
 
-    /// The viewer's own titlebar accessory — the drawer button — hides with the bar it lives in,
-    /// so a hidden titlebar leaves nothing floating over the image.
+    /// The viewer's own titlebar accessory — the drawer button — goes with the bar it lives in, so a
+    /// hidden titlebar leaves nothing floating over the image. Visibility is presence in the
+    /// titlebar, not a flag: `isHidden` alone does not take an accessory's view out of a
+    /// `.fullSizeContentView` window.
     func testTheTitlebarAccessoryHidesWithTheBar() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { controller.close() }
-        XCTAssertFalse(window.titlebarAccessoryViewControllers.isEmpty,
-                       "the drawer button is the viewer's own titlebar accessory")
-        for accessory in window.titlebarAccessoryViewControllers {
-            XCTAssertTrue(accessory.isHidden,
-                          "an accessory must not outlive the titlebar it belongs to")
-        }
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertFalse(window.titlebarAccessoryViewControllers.contains { $0.view === button },
+                       "with the bar away the drawer button is not in the titlebar at all")
+        XCTAssertTrue(button.isHidden)
 
         let zones = viewer.titlebarRevealZones
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
             CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
         settle()
-        for accessory in window.titlebarAccessoryViewControllers {
-            XCTAssertFalse(accessory.isHidden, "and it comes back with the bar")
-        }
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.contains { $0.view === button },
+                      "and it comes back with the bar")
+        XCTAssertFalse(button.isHidden)
     }
 
     /// The drawer button rides with the *full* titlebar only: in the lights-only state the bar
@@ -208,28 +208,24 @@ final class TrafficLightRevealTests: XCTestCase {
     func testTheAccessoryDoesNotFloatInTheLightsOnlyState() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { controller.close() }
-        XCTAssertFalse(window.titlebarAccessoryViewControllers.isEmpty,
-                       "the drawer button is the viewer's own titlebar accessory")
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
 
         let zones = viewer.titlebarRevealZones
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
             CGPoint(x: zones.a.midX, y: zones.a.midY), to: nil))
         settle()
         XCTAssertEqual(window.titlebarState, .trafficLightsOnly)
-        for accessory in window.titlebarAccessoryViewControllers {
-            XCTAssertTrue(accessory.isHidden,
-                          "the lights-only state must not leave the drawer button floating "
-                          + "over the content")
-        }
+        XCTAssertFalse(window.titlebarAccessoryViewControllers.contains { $0.view === button },
+                       "the lights-only state must not leave the drawer button floating "
+                       + "over the content")
 
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
             CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
         settle()
         XCTAssertEqual(window.titlebarState, .full)
-        for accessory in window.titlebarAccessoryViewControllers {
-            XCTAssertFalse(accessory.isHidden,
-                           "with the full bar the button is part of the titlebar again")
-        }
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.contains { $0.view === button },
+                      "with the full bar the button is part of the titlebar again")
+        XCTAssertFalse(button.isHidden)
     }
 
     /// Nothing viewer-owned is a titlebar, and nothing draws a replacement control.

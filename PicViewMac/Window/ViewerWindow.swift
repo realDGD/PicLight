@@ -110,6 +110,19 @@ public final class ViewerWindow: NSWindow {
     /// Applies one of the auto-hide states. In always-visible mode this restores the standard
     /// titlebar instead of hiding anything.
     public func applyTitlebarState(_ state: TitlebarVisibilityModel.State) {
+        if isTopBarMergedWithContent {
+            // The folder browser owns the top strip: its own toolbar is the top row, so the native
+            // bar is drawn transparently over it (title hidden) and the controls — traffic lights
+            // and the drawer button — live in that row rather than pushing the content down. The
+            // state is recorded as given, so the window still reports whether the bar is up.
+            appliedTitlebarState = state
+            styleMask.insert(.fullSizeContentView)
+            titlebarSeparatorStyle = .none
+            titlebarAppearsTransparent = true
+            titleVisibility = .hidden
+            refreshTrafficLights()
+            return
+        }
         guard titlebarMode == .autoHide else {
             // Always-visible mode is the standard window: the titlebar and its buttons are AppKit's.
             guard appliedTitlebarState != .full else { return }
@@ -135,6 +148,21 @@ public final class ViewerWindow: NSWindow {
         refreshTrafficLights()
     }
 
+    /// While the folder browser is up, the window presents *one* top row: the browser's toolbar
+    /// occupies the titlebar strip and the native controls sit in it. Set by the viewer on entering
+    /// the browser and cleared on leaving; it is a presentation override, not a user setting.
+    public var isTopBarMergedWithContent = false {
+        didSet {
+            guard isTopBarMergedWithContent != oldValue else { return }
+            appliedTitlebarState = nil
+            applyTitlebarState(isTopBarMergedWithContent ? .full : .hidden)
+        }
+    }
+
+    /// The viewer's own titlebar accessories — the drawer button. Registered by the window controller
+    /// so the window can take them in and out of the titlebar together with the bar itself.
+    public var viewerAccessories: [NSTitlebarAccessoryViewController] = []
+
     /// Shows or hides the real traffic-light controls, and does nothing else to them.
     ///
     /// Never called in native full screen: there the system owns the top strip and manages the
@@ -148,22 +176,37 @@ public final class ViewerWindow: NSWindow {
             button.isHidden = !visible
             button.alphaValue = visible ? 1 : 0
         }
-        // The titlebar accessories ride with the *full* bar, not with the lights-only state: in
-        // trafficLightsOnly the bar itself is invisible, and a lone drawer button beside the
-        // floating lights reads as "a control on the page" instead of a titlebar control. The
-        // drawer is still reachable from the dock, the context menu and its shortcut.
-        //
-        // The accessory's *view* is what has to be hidden, not just the controller. With
-        // `.fullSizeContentView` and a hidden title, AppKit does not remove an accessory's view
-        // from the window when the bar goes away: `isHidden` on the controller is honoured by the
-        // titlebar's own layout, which is not on screen — measured here as a drawer button still
-        // visible at (18, 208) with the lights hidden, and shifting to (78, 208) as they appeared,
-        // which is exactly the "two overlapping controls" a pointer showed.
-        let accessoriesVisible = titlebarState == .full
-        for accessory in titlebarAccessoryViewControllers {
-            accessory.isHidden = !accessoriesVisible
-            accessory.view.isHidden = !accessoriesVisible
-            accessory.view.alphaValue = accessoriesVisible ? 1 : 0
+        // The viewer's accessories ride with the bar. In the image mode that is the *full* (painted)
+        // bar, not the lights-only state: there the bar's background is away, and a lone drawer
+        // button beside the floating lights reads as a control on the page. In the browser's merged
+        // row the bar *is* the toolbar, so the button belongs in it alongside the lights.
+        let accessoriesVisible = isTopBarMergedWithContent
+            ? titlebarState != .hidden
+            : titlebarState == .full
+        setViewerAccessoriesVisible(accessoriesVisible)
+    }
+
+    /// Takes the viewer's accessories in and out of the titlebar.
+    ///
+    /// Presence, not `isHidden`. With `.fullSizeContentView` and a hidden title, AppKit keeps an
+    /// accessory's view in the window and merely *moves* it: measured at (18, …), floating over the
+    /// traffic lights' own (9…69) strip, while the bar was away, and at (78, …) inside the bar when
+    /// it was up. Hiding the view left it in the window at the stale floating position, which put
+    /// it back on top of the lights. Removing the accessory takes the view out of the window
+    /// outright — nothing can float over the image — and adding it back lays it out inside the bar,
+    /// so it cannot end up on top of the controls it sits beside.
+    private func setViewerAccessoriesVisible(_ visible: Bool) {
+        for accessory in viewerAccessories {
+            let present = titlebarAccessoryViewControllers.contains { $0 === accessory }
+            if visible, !present {
+                addTitlebarAccessoryViewController(accessory)
+            } else if !visible, present,
+                      let index = titlebarAccessoryViewControllers.firstIndex(where: { $0 === accessory }) {
+                removeTitlebarAccessoryViewController(at: index)
+            }
+            accessory.isHidden = !visible
+            accessory.view.isHidden = !visible
+            accessory.view.alphaValue = visible ? 1 : 0
         }
     }
 
@@ -187,14 +230,17 @@ public final class ViewerWindow: NSWindow {
     /// Restores the system's own management of the controls, for the events where it takes over.
     ///
     /// The accessories come back with the controls: full screen gives the system a titlebar of its
-    /// own, and a drawer button left hidden by the auto-hide state would be missing from it.
+    /// own, and a drawer button left out of it by the auto-hide state would be missing.
     public func restoreSystemTitlebarControl() {
         for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             guard let button = standardWindowButton(type) else { continue }
             button.isHidden = false
             button.alphaValue = 1
         }
-        for accessory in titlebarAccessoryViewControllers {
+        for accessory in viewerAccessories {
+            if !titlebarAccessoryViewControllers.contains(where: { $0 === accessory }) {
+                addTitlebarAccessoryViewController(accessory)
+            }
             accessory.isHidden = false
             accessory.view.isHidden = false
             accessory.view.alphaValue = 1

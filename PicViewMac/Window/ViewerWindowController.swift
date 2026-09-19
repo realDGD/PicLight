@@ -69,6 +69,11 @@ public final class ViewerWindowController: NSWindowController {
         accessory.view = button
         window?.addTitlebarAccessoryViewController(accessory)
         drawerAccessory = accessory
+        // Registered with the window so it can be taken out of the titlebar when the bar is away
+        // and put back when the bar appears: a titlebar accessory's `isHidden` does not take its
+        // view out of a `.fullSizeContentView` window, which left the button floating over the
+        // content (and, once the lights were revealed, on top of them).
+        (window as? ViewerWindow)?.viewerAccessories.append(accessory)
         updateDrawerButton(open: viewerViewController.isDrawerOpen)
         // The accessory was added after the window applied its titlebar state, so it has to be
         // brought into line with it now: an accessory that appears after the bar has hidden would

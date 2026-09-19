@@ -125,11 +125,31 @@ public final class FolderBrowserView: NSView {
         stack.distribution = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         toolbar.addSubview(stack)
+        let leadingInset = stack.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor,
+                                                          constant: 12)
+        toolbarStackLeadingConstraint = leadingInset
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 12),
+            leadingInset,
             stack.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
         ])
+    }
+
+    private var toolbarStackLeadingConstraint: NSLayoutConstraint?
+
+    /// How far the toolbar's own controls start from the window's leading edge.
+    ///
+    /// In the browser's merged top row the native controls occupy that edge — the traffic lights
+    /// and the drawer button beside them — so the toolbar has to begin after them. Zero in every
+    /// other presentation.
+    func setToolbarLeadingInset(_ inset: CGFloat) {
+        toolbarStackLeadingConstraint?.constant = 12 + max(0, inset)
+        needsLayout = true
+    }
+
+    /// Where the toolbar's first control starts, for tests.
+    var toolbarLeadingEdgeForTesting: CGFloat? {
+        toolbarStackLeadingConstraint.map { $0.constant - 12 }
     }
 
     private func buildBody() {

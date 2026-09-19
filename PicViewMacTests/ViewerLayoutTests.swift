@@ -788,17 +788,17 @@ final class DrawerTitlebarButtonTests: XCTestCase {
     /// size: the titlebar laid that container out zero-width and clipped the button
     /// away, so it existed but could not be seen.
     ///
-    /// It now also hides with the titlebar — a hidden bar must not leave a lone control
-    /// floating over the image — so the size check is made with the bar revealed, which
-    /// is the state in which the button is meant to be clickable.
+    /// It now also leaves with the titlebar — a hidden bar must not leave a lone control
+    /// floating over the image, so the accessory is taken out of the titlebar entirely —
+    /// so the size check is made with the bar revealed, which is the state in which the
+    /// button is meant to be clickable.
     func testTitlebarDrawerButtonHasARealOnScreenSize() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         controller.window?.layoutIfNeeded()
-        let accessory = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first)
-        let accessoryView = accessory.view
-        XCTAssertTrue(accessory.isHidden,
-                      "the accessory hides with the titlebar it belongs to")
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertTrue(controller.window?.titlebarAccessoryViewControllers.isEmpty ?? false,
+                      "with the bar away the accessory is not in the titlebar at all")
 
         // Reveal the bar, which is where the button is meant to be used.
         let zones = viewer.titlebarRevealZones
@@ -807,13 +807,15 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         controller.window?.layoutIfNeeded()
 
+        let accessory = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first,
+                                      "the revealed bar carries the drawer accessory")
+        let accessoryView = accessory.view
         XCTAssertGreaterThan(accessoryView.frame.width, 0,
                              "a zero-width accessory is invisible in the titlebar")
         XCTAssertGreaterThan(accessoryView.frame.height, 0)
         XCTAssertFalse(accessoryView.isHidden)
         XCTAssertFalse(accessory.isHidden)
         // Everything the user needs to click is inside that frame.
-        let button = try XCTUnwrap(controller.drawerTitlebarButton)
         let buttonInWindow = button.convert(button.bounds, to: nil)
         let accessoryInWindow = accessoryView.convert(accessoryView.bounds, to: nil)
         XCTAssertGreaterThan(buttonInWindow.width, 0)
@@ -829,9 +831,15 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         defer { controller.close() }
         let button = try XCTUnwrap(controller.drawerTitlebarButton,
                                    "the titlebar needs the drawer control")
-        XCTAssertTrue(button.isDescendant(of: controller.window!.contentView!)
-                      || controller.window?.titlebarAccessoryViewControllers.isEmpty == false,
-                      "the button lives in a titlebar accessory, not in the content area")
+        // Reveal the bar: that is when the accessory is in the titlebar (it is taken out while
+        // the bar is away, so nothing can float over the content).
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        XCTAssertFalse(button.isDescendant(of: controller.window!.contentView!),
+                       "the button lives in a titlebar accessory, not in the content area")
         XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.count, 1)
         XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.first?.layoutAttribute,
                        .leading, "it sits next to the traffic lights")

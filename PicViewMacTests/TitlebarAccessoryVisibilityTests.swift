@@ -5,11 +5,18 @@ import AppKit
 /// The drawer button's real visibility across the titlebar states.
 ///
 /// Reported from a real GUI pass: with the bar away the traffic lights were gone but the drawer
-/// button was still on screen, and when the pointer arrived the controls overlapped. The cause was
-/// that `NSTitlebarAccessoryViewController.isHidden` does not remove an accessory's view from a
-/// `.fullSizeContentView` window whose title is hidden — the view stayed in the window and merely
-/// moved between the floating position (x=18) and the titlebar position (x=78), which is what made
-/// the two overlap. These assertions are on the *view*, which is what the user sees.
+/// button was still on screen, and once the lights appeared the two overlapped. Two mechanisms
+/// were measured, and the fix has to answer both:
+///
+/// - `NSTitlebarAccessoryViewController.isHidden` does not take an accessory's view out of a
+///   `.fullSizeContentView` window whose title is hidden; the view stayed in the window.
+/// - AppKit *moves* that view between two positions: (18, …) — floating over the traffic lights'
+///   own (9…69) strip — while the bar is away, and (78, …) inside the bar when it is up. A view
+///   left at the floating position is what landed on top of the lights.
+///
+/// So visibility is presence in the titlebar, not a flag: the accessory is removed while the bar is
+/// away and added back with it. These assertions are on the window's real accessory list and on
+/// the button's own view, which is what the user sees.
 @MainActor
 final class TitlebarAccessoryVisibilityTests: XCTestCase {
 
@@ -34,22 +41,36 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 
-    /// What the user sees: the button's own view, not the accessory controller's flag.
-    private func assertButton(_ controller: ViewerWindowController, visible: Bool, _ message: String) {
-        let button = controller.drawerTitlebarButton
-        XCTAssertNotNil(button, "the drawer button exists")
-        XCTAssertEqual(button?.isHidden, !visible, message)
-        XCTAssertEqual(button?.alphaValue ?? -1, visible ? 1 : 0, accuracy: 0.01, message)
+    private func isInTitlebar(_ controller: ViewerWindowController, _ window: ViewerWindow) -> Bool {
+        guard let button = controller.drawerTitlebarButton else { return false }
+        return window.titlebarAccessoryViewControllers.contains { $0.view === button }
+    }
+
+    private func lightsFrame(_ window: ViewerWindow) -> CGRect {
+        let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        guard let first = lights.first, let container = first.superview else { return .null }
+        let union = lights.dropFirst().reduce(first.frame) { $0.union($1.frame) }
+        return container.convert(union, to: nil)
+    }
+
+    private func assertClearOfTheLights(_ button: NSButton, _ window: ViewerWindow,
+                                        _ message: String) {
+        let buttonFrame = button.convert(button.bounds, to: nil)
+        let overlap = lightsFrame(window).intersection(buttonFrame)
+        XCTAssertTrue(overlap.isNull || overlap.width <= 0 || overlap.height <= 0,
+                      "\(message) (button \(buttonFrame), lights \(lightsFrame(window)))")
     }
 
     /// The reported bug: with the bar away the button must be gone from the screen — the traffic
     /// lights are hidden, and a lone control left floating over the image is not a titlebar.
-    func testTheDrawerButtonIsInvisibleWhileTheBarIsAway() throws {
+    func testTheDrawerButtonIsNotInTheTitlebarWhileTheBarIsAway() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { controller.close() }
         XCTAssertEqual(window.titlebarState, .hidden, "precondition: the bar starts away")
-        assertButton(controller, visible: false,
-                     "the drawer button must not outlive the hidden bar")
+        XCTAssertFalse(isInTitlebar(controller, window),
+                       "the accessory must be taken out of the titlebar with the bar")
+        XCTAssertEqual(controller.drawerTitlebarButton?.isHidden, true)
 
         let zones = viewer.titlebarRevealZones
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
@@ -58,12 +79,12 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
         XCTAssertEqual(window.titlebarState, .trafficLightsOnly)
         XCTAssertFalse(window.standardWindowButton(.closeButton)?.isHidden ?? true,
                        "the lights themselves are revealed in zone A")
-        assertButton(controller, visible: false,
-                     "the lights-only state must not leave the button floating beside them")
+        XCTAssertFalse(isInTitlebar(controller, window),
+                       "the lights-only state must not put the button back beside them")
     }
 
-    /// And it comes back with the full titlebar it belongs to.
-    func testTheDrawerButtonReturnsWithTheFullTitlebar() throws {
+    /// And it comes back inside the full titlebar, beside the lights rather than on top of them.
+    func testTheDrawerButtonReturnsInsideTheFullTitlebarClearOfTheLights() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { controller.close() }
         let zones = viewer.titlebarRevealZones
@@ -71,37 +92,65 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
             CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
         settle()
         XCTAssertEqual(window.titlebarState, .full)
-        assertButton(controller, visible: true, "with the full bar the button is part of it")
+        XCTAssertTrue(isInTitlebar(controller, window),
+                      "with the full bar the button is part of it")
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertFalse(button.isHidden)
+        XCTAssertEqual(button.alphaValue, 1, accuracy: 0.01)
+        assertClearOfTheLights(button, window, "the button must sit beside the lights, not over them")
 
         // Away again: it leaves with the bar, after the model's own delay.
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
             CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
         settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
         XCTAssertEqual(window.titlebarState, .hidden)
-        assertButton(controller, visible: false, "and it leaves with the bar")
+        XCTAssertFalse(isInTitlebar(controller, window), "and it leaves with the bar")
     }
 
-    /// The lights-only state is not a place where the button may sit: the button occupies the same
-    /// strip the lights appear in, so both being visible there is exactly the overlap reported.
-    func testTheButtonAndTheLightsAreNeverBothFloating() throws {
+    /// A reveal after a hide cycle is the sequence that exposed the stale floating position: the
+    /// button must land inside the bar every time, never over the lights.
+    func testRepeatedRevealsNeverLeaveTheButtonOverTheLights() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { controller.close() }
         let zones = viewer.titlebarRevealZones
-        var sawLightsOnly = false
-        for (name, zone) in [("A", zones.a), ("B", zones.b)] {
-            viewer.simulatePointer(atWindowPoint: viewer.view.convert(
-                CGPoint(x: zone.midX, y: zone.midY), to: nil))
+        let insideB = viewer.view.convert(CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil)
+        let middle = viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil)
+
+        for cycle in 0..<3 {
+            viewer.simulatePointer(atWindowPoint: insideB)
             settle()
-            let lightsShown = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
-                .contains { window.standardWindowButton($0)?.isHidden == false }
-            let buttonShown = controller.drawerTitlebarButton?.isHidden == false
-            if window.titlebarState == .trafficLightsOnly {
-                sawLightsOnly = true
-                XCTAssertFalse(lightsShown && buttonShown,
-                               "zone \(name): floating lights and a floating button at once is "
-                               + "the overlap that was reported")
-            }
+            XCTAssertEqual(window.titlebarState, .full, "cycle \(cycle)")
+            let button = try XCTUnwrap(controller.drawerTitlebarButton)
+            assertClearOfTheLights(button, window, "cycle \(cycle): the button overlapped the lights")
+            viewer.simulatePointer(atWindowPoint: middle)
+            settle(TitlebarVisibilityModel.Timing().hideDelay + 0.3)
+            XCTAssertEqual(window.titlebarState, .hidden, "cycle \(cycle)")
         }
-        XCTAssertTrue(sawLightsOnly, "the lights-only state must have been exercised")
+    }
+
+    /// The folder browser pins the bar visible: the button is part of that bar and clear of the
+    /// lights there too.
+    func testTheButtonSitsInThePinnedBarWhileBrowsing() throws {
+        let directory = try Fixtures.makeScratchDirectory("accessory-browse")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        for index in 0..<3 {
+            try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                             to: directory.appendingPathComponent("img\(index).png"))
+        }
+        let (controller, viewer, window) = try makeViewer()
+        defer { controller.close() }
+        viewer.open(url: directory.appendingPathComponent("img0.png"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        viewer.perform(.browseFolder)
+        settle(0.6)
+
+        XCTAssertEqual(window.titlebarMode, .alwaysVisible)
+        XCTAssertTrue(isInTitlebar(controller, window), "the pinned bar carries the button")
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        assertClearOfTheLights(button, window, "and it is still clear of the lights")
     }
 }
