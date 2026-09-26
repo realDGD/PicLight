@@ -78,19 +78,104 @@ public final class FolderTreeModel {
 
     // MARK: - Building
 
-    /// Points the tree at `folder`: the folder itself is the root, expanded, so the sidebar lists the
+    /// Points the tree at `folder`, and remembers which folder that is.
+    ///
+    /// The root is *not* re-set every time the focus moves. Descending inside the tree — clicking a
+    /// subfolder row, opening a folder from the gallery, a rescan — keeps the root where the user
+    /// started and only moves the highlight, so the sidebar does not rewrite itself under the
+    /// pointer, and every expansion the user made survives. Measured before: opening a subfolder
+    /// rebuilt the tree with the subfolder as the root, so the list of rows changed on every
+    /// descent and a refresh thrown by the dimension probe collapsed what had been expanded.
+    ///
+    /// The one thing that moves the root is going *above* it — the "上一级" row of the root, or a
+    /// folder opened from somewhere else entirely. There the tree grows upward to the new folder,
+    /// which is what makes the up row a way out rather than a dead end.
+    /// - Parameter reveal: whether the tree may *expand* to show the folder. Navigation passes true;
+    ///   a refresh (a rescan, a re-sort, a lazy size fill) passes false, because a periodic update
+    ///   must not re-open a node the user collapsed. The highlight always follows.
+    public func focus(on folder: URL, reveal shouldReveal: Bool = true) {
+        let target = URL(fileURLWithPath: folder.resolvingSymlinksInPath().path)
+        currentFolder = target
+        guard var tree = root else {
+            adoptRoot(target)
+            return
+        }
+        guard Self.isInside(target, root: tree.url) else {
+            // Above (or beside) the root: the tree grows upward, and the subtree that was there is
+            // hung back on its own row so nothing the user loaded or expanded is thrown away.
+            adoptRoot(target, preserving: tree)
+            return
+        }
+        guard shouldReveal else { return }
+        expand(&tree)
+        _ = reveal(target, in: &tree)
+        root = tree
+    }
+
+    /// Replaces the root outright. Used when a folder outside the current tree is opened.
+    public func setRoot(_ url: URL) {
+        currentFolder = URL(fileURLWithPath: url.resolvingSymlinksInPath().path)
+        adoptRoot(currentFolder ?? url)
+    }
+
+    /// A folder is inside a subtree when it is the subtree's own folder or below it. Compared by
+    /// path components, so `/a/bc` is not treated as being inside `/a/b`.
+    static func isInside(_ url: URL, root: URL) -> Bool {
+        if url.path == root.path { return true }
+        let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        return url.path.hasPrefix(prefix)
+    }
+
+    /// Makes `folder` the root: the folder itself is the root row, expanded, so the sidebar lists the
     /// directory the gallery is showing and the folders inside it.
     ///
     /// The ancestors are deliberately not built. A tree rooted above the current folder fills the
     /// sidebar with the path the image happens to live on — `/`, `Users`, `dgd`, … — which is not
     /// what the navigator is for: it is for moving around *inside* the folder that is open.
-    public func focus(on folder: URL) {
-        let standardized = URL(fileURLWithPath: folder.resolvingSymlinksInPath().path)
-        currentFolder = standardized
-        var node = loadNode(at: standardized)
+    private func adoptRoot(_ folder: URL, preserving oldRoot: Node? = nil) {
+        var node = loadNode(at: folder)
         node.isExpanded = true
         expand(&node)
+        if let oldRoot, Self.isInside(oldRoot.url, root: folder) {
+            attach(oldRoot, under: &node)
+        }
         root = node
+    }
+
+    /// Hangs an already-loaded subtree back on the row it belongs to, keeping its children and its
+    /// expansion state. Returns without doing anything when the subtree is not below `node`.
+    private func attach(_ subtree: Node, under node: inout Node) {
+        if node.url == subtree.url {
+            node = subtree
+            return
+        }
+        guard Self.isInside(subtree.url, root: node.url), var children = node.children else { return }
+        for index in children.indices where Self.isInside(subtree.url, root: children[index].url) {
+            attach(subtree, under: &children[index])
+            node.children = children
+            return
+        }
+    }
+
+    /// Expands the chain from `node` down to `target`, so the focused folder is visible inside the
+    /// tree rather than replacing it. Returns whether `target` was found in this subtree.
+    private func reveal(_ target: URL, in node: inout Node) -> Bool {
+        if node.url == target {
+            // The focused folder is expanded, so what is inside it is on screen without a click.
+            node.isExpanded = true
+            expand(&node)
+            return true
+        }
+        guard Self.isInside(target, root: node.url) else { return false }
+        guard var children = node.children else { return false }
+        node.isExpanded = true
+        for index in children.indices where Self.isInside(target, root: children[index].url) {
+            if reveal(target, in: &children[index]) {
+                node.children = children
+                return true
+            }
+        }
+        return false
     }
 
     private func loadNode(at url: URL) -> Node {
@@ -109,21 +194,26 @@ public final class FolderTreeModel {
         node.hasChildren = !urls.isEmpty
     }
 
-    /// Expands or collapses the node at `url`, wherever it is in the visible tree.
-    public func toggle(_ url: URL) {
+    /// Sets the expansion of the node at `url`, wherever it is in the tree.
+    ///
+    /// Explicit rather than a flip: the view reports what AppKit did ("this item was expanded"), and
+    /// a repeated notification of the same state must not collapse the node the model just opened —
+    /// which is exactly what a toggle did when a disclosure click and a programmatic expand arrived
+    /// together.
+    public func setExpanded(_ expanded: Bool, for url: URL) {
         guard var tree = root else { return }
-        _ = toggle(url, in: &tree)
+        guard setExpanded(expanded, for: url, in: &tree) else { return }
         root = tree
     }
 
-    private func toggle(_ url: URL, in node: inout Node) -> Bool {
+    private func setExpanded(_ expanded: Bool, for url: URL, in node: inout Node) -> Bool {
         if node.url == url {
-            node.isExpanded.toggle()
-            if node.isExpanded { expand(&node) }
+            node.isExpanded = expanded
+            if expanded { expand(&node) }
             return true
         }
         guard var children = node.children else { return false }
-        for index in children.indices where toggle(url, in: &children[index]) {
+        for index in children.indices where setExpanded(expanded, for: url, in: &children[index]) {
             node.children = children
             return true
         }

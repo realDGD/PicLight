@@ -40,7 +40,7 @@ public final class FolderBrowserView: NSView {
     /// A folder was chosen in the tree sidebar.
     public var onFolderChosen: ((URL) -> Void)?
     /// A tree row's disclosure triangle was clicked.
-    public var onFolderToggled: ((URL) -> Void)?
+    public var onFolderExpansionChanged: ((URL, Bool) -> Void)?
     /// A gallery item was clicked or double-clicked.
     public var onItemSelected: ((Int) -> Void)?
     public var onItemOpened: ((Int) -> Void)?
@@ -228,7 +228,9 @@ public final class FolderBrowserView: NSView {
 
         treeSidebar.translatesAutoresizingMaskIntoConstraints = false
         treeSidebar.onFolderChosen = { [weak self] url in self?.onFolderChosen?(url) }
-        treeSidebar.onFolderToggled = { [weak self] url in self?.onFolderToggled?(url) }
+        treeSidebar.onFolderExpansionChanged = { [weak self] url, expanded in
+            self?.onFolderExpansionChanged?(url, expanded)
+        }
 
         addSubview(toolbar)
         addSubview(treeSidebar)

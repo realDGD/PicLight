@@ -34,6 +34,28 @@ enum TestAppKit {
         controller.present()
         moveOffScreen(controller.window)
     }
+
+    /// Lets the animations AppKit started finish before the test moves on.
+    ///
+    /// `NSView.animator()` fades are driven by AppKit, and when the main thread is not servicing the
+    /// run loop they run on the global dispatch pool. A test that closes its window while one is
+    /// still running leaves that pool work behind; enough of them and the pool is full, which is
+    /// what made a full-suite run of `TilePlanAndRedrawTests` time out on its own background uploads
+    /// (16/16 of those tests pass in isolation in 0.2 s). Measured with `sample`: 64 of 64 pool
+    /// threads blocked in `-[NSAnimation _runBlocking]`.
+    @MainActor
+    static func settleAnimations(_ seconds: TimeInterval = 0.4) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    /// Closes a viewer window *after* its animations have settled. Use this instead of `close()` in
+    /// tests that showed a window: it is what keeps one test's animation out of the next test's pool.
+    @MainActor
+    static func close(_ controller: ViewerWindowController, settle: TimeInterval = 0.4) {
+        settleAnimations(settle)
+        controller.close()
+        settleAnimations(0.05)
+    }
 }
 
 /// The app's sort order is one shared state (that is the point of the redesign), so a test that

@@ -231,8 +231,30 @@ public enum GalleryLayout {
 
     /// Which rows intersect a visible rectangle. This is the virtualization question — "which cells
     /// exist right now" — answered from the layout alone, so it can be tested without a scroll view.
+    ///
+    /// Binary search rather than a filter: rows are laid out top to bottom, so the intersecting ones
+    /// are a contiguous range. The filter walked every row of the folder — 10,000 rows for a
+    /// 50,000-image folder — and this is asked on every delivery, on every scroll and on every
+    /// layout pass.
     public static func visibleRows(in visibleRect: CGRect, of rows: [GalleryRow]) -> [GalleryRow] {
-        rows.filter { $0.frame.intersects(visibleRect) }
+        guard !rows.isEmpty, !visibleRect.isEmpty else { return [] }
+        // First row whose bottom edge is below the rectangle's top.
+        var low = 0
+        var high = rows.count
+        while low < high {
+            let middle = (low + high) / 2
+            if rows[middle].frame.maxY <= visibleRect.minY { low = middle + 1 } else { high = middle }
+        }
+        let first = low
+        // First row whose top edge is below the rectangle's bottom: everything before it intersects.
+        high = rows.count
+        while low < high {
+            let middle = (low + high) / 2
+            if rows[middle].frame.minY < visibleRect.maxY { low = middle + 1 } else { high = middle }
+        }
+        let last = low
+        guard first < last else { return [] }
+        return Array(rows[first..<last])
     }
 
     /// How many cells a layout materializes for a visible rectangle. Used to prove that a

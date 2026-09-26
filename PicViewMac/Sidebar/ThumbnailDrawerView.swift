@@ -116,6 +116,24 @@ public final class ThumbnailDrawerView: MaterialHostView {
 
     public var visibleRowCount: Int { items.count }
 
+    /// How many rows above and below the visible rectangle the drawer prefetches. Small on purpose:
+    /// it is also the band whose thumbnails the owner is allowed to keep in memory.
+    static let prefetchRowCount = 8
+
+    /// The rows the drawer wants thumbnails for right now: the visible rectangle plus the prefetch
+    /// band. This is the window the owner's thumbnail cache is bounded to — without it the cache
+    /// grew with everything the user ever scrolled past (measured: 200 thumbnails, ≈69 MiB, still
+    /// held after the folder list was emptied).
+    var thumbnailWindow: Set<Int> {
+        guard !items.isEmpty else { return [] }
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.location != NSNotFound, visible.length > 0 else { return [] }
+        let lower = max(0, visible.location - Self.prefetchRowCount)
+        let upper = min(items.count - 1, visible.location + visible.length - 1 + Self.prefetchRowCount)
+        guard lower <= upper else { return [] }
+        return Set(lower...upper)
+    }
+
 
 
     private func applySelection() {

@@ -102,8 +102,11 @@ final class FolderTreeTests: XCTestCase {
     /// Expanding reads exactly one more level, and only once — collapsing and expanding again comes
     /// from the cache.
     ///
-    /// The node toggled is a *visible* one, which is the only kind a user can click: a tree row
+    /// The node expanded is a *visible* one, which is the only kind a user can click: a tree row
     /// exists only when its parent — here the root — has been read.
+    ///
+    /// The model is told what happened ("expanded", "collapsed") rather than "flip it": the view
+    /// reports what AppKit did, and a repeated notification of the same state must not undo it.
     func testExpandingReadsOneLevelAndCachesIt() {
         let (tree, counts) = model()
         tree.focus(on: URL(fileURLWithPath: "/a"))
@@ -111,18 +114,22 @@ final class FolderTreeTests: XCTestCase {
         XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
                        "a collapsed folder's contents are not shown…")
 
-        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        tree.setExpanded(true, for: URL(fileURLWithPath: "/a/a1"))
         let afterExpand = counts().children
         XCTAssertGreaterThan(afterExpand, before, "…and are read when it is expanded")
         XCTAssertTrue(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
                       "its children are now on screen")
 
-        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        tree.setExpanded(false, for: URL(fileURLWithPath: "/a/a1"))
         XCTAssertFalse(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"),
                        "collapsing hides them again")
-        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        tree.setExpanded(true, for: URL(fileURLWithPath: "/a/a1"))
         XCTAssertEqual(counts().children, afterExpand,
                        "a second expansion must come from the cache, not from the disk")
+        // A repeated "expanded" for the node that is already open changes nothing.
+        tree.setExpanded(true, for: URL(fileURLWithPath: "/a/a1"))
+        XCTAssertTrue(tree.visibleNodes.map(\.url.path).contains("/a/a1/x"))
+        XCTAssertEqual(counts().children, afterExpand)
     }
 
     /// The number of enumerations is bounded by the tree's visible levels, not by the folder's size:
@@ -132,10 +139,10 @@ final class FolderTreeTests: XCTestCase {
         tree.focus(on: URL(fileURLWithPath: "/a"))
         XCTAssertEqual(counts().children, 1, "focusing lists the current folder only")
 
-        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        tree.setExpanded(true, for: URL(fileURLWithPath: "/a/a1"))
         XCTAssertEqual(counts().children, 2, "expanding a child lists that child, once")
-        tree.toggle(URL(fileURLWithPath: "/a/a1"))
-        tree.toggle(URL(fileURLWithPath: "/a/a1"))
+        tree.setExpanded(false, for: URL(fileURLWithPath: "/a/a1"))
+        tree.setExpanded(true, for: URL(fileURLWithPath: "/a/a1"))
         XCTAssertEqual(counts().children, 2, "and a re-expansion comes from the cache")
     }
 

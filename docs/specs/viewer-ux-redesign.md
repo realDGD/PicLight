@@ -446,13 +446,26 @@ It no longer shows image thumbnails.
 
 It becomes a folder tree/navigator similar to the reference screenshots:
 
-- rooted at the image's own folder: the current folder is the root row and is highlighted
+- rooted at the image's own folder: that folder is the root row, and the folder being browsed is
+  highlighted inside the tree
 - child folders, expand/collapse
 - lazy-load children on expansion
 - clicking a folder updates the gallery
+- an "up one level" action row above the root, which opens the current folder's parent
 
-The folders *above* the current one are deliberately not shown: the sidebar is for moving around
-inside the folder that is open, not for displaying the path it lives on.
+The navigation root is **stable**: descending into a subfolder — from the tree, the gallery, or a
+rescan — keeps the root, its siblings and everything the user expanded, and only moves the highlight
+and the gallery. The root moves in exactly one direction, upward: the "up one level" row above the
+root (or a folder opened from outside the tree) grows the tree to that parent, keeping the subtree
+that was already loaded. A refresh the user did not ask for — a watcher rescan, a lazy size fill, a
+re-sort — never changes what is expanded, and navigating to a collapsed descendant expands only the
+ancestors it needs to be visible.
+
+The folders *above* the root are deliberately not shown: the sidebar is for moving around inside the
+folder that is open plus one step out of it, not for displaying the whole path the image lives on.
+The row list is the tree's own hierarchy — the outline view is given the root and asks for children
+as it expands — so a folder's contents appear exactly once, and every rendered row addresses the
+folder it displays.
 
 Do not recursively scan the entire disk.
 

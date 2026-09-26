@@ -1,25 +1,68 @@
 import AppKit
 
+/// One row of the sidebar: either a folder of the tree, or the "up one level" action.
+///
+/// The action needs an identity of its own even when its target is a folder the tree also contains.
+/// Sharing the node's identity made AppKit treat the action row and the folder row as one item —
+/// and, because the label was chosen by comparing URLs, drew the folder's own row as a second
+/// "上一级" (measured: `上一级, 上一级, B, D, C`).
+enum FolderSidebarItem: Hashable {
+    case up(target: URL)
+    case folder(FolderTreeModel.Node)
+
+    var url: URL {
+        switch self {
+        case let .up(target): return target
+        case let .folder(node): return node.url
+        }
+    }
+
+    var node: FolderTreeModel.Node? {
+        if case let .folder(node) = self { return node }
+        return nil
+    }
+}
+
 /// The folder browser's sidebar: a folder tree, in place of the thumbnail drawer.
 ///
-/// `NSOutlineView` is what makes this virtualized and gives disclosure triangles for free; what it
-/// renders is `FolderTreeModel.visibleNodes`, which only contains what has been expanded.
+/// `NSOutlineView` is what makes this virtualized and gives disclosure triangles for free. The
+/// outline is given the tree's *root* and asks for children as it expands; the flattened
+/// `FolderTreeModel.visibleNodes` is deliberately not its input (see `root`).
 final class FolderTreeSidebarView: NSView {
 
     var onFolderChosen: ((URL) -> Void)?
-    var onFolderToggled: ((URL) -> Void)?
+    /// A disclosure click: the URL of the node and whether the user expanded or collapsed it.
+    var onFolderExpansionChanged: ((URL, Bool) -> Void)?
 
     private let scrollView = NSScrollView()
     private let material = NSVisualEffectView()
     private let outline = NSOutlineView()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
-    private var nodes: [FolderTreeModel.Node] = []
+    /// The tree's root node, which is what the outline expands from. Deliberately not a flattened
+    /// row list: feeding AppKit the flattened rows *and* asking it to expand the same nodes drew
+    /// every expanded folder's children twice — measured as six rendered rows for four model rows
+    /// (`上一级, A, B, C, B, C`) — and the selection handler's row-to-model mapping then addressed
+    /// the wrong row, so the duplicate rows did nothing when clicked.
+    private var root: FolderTreeModel.Node?
     private var currentPath: String?
-    /// The synthetic "up one level" row, when the current folder has a parent in the tree.
-    ///
-    /// The tree is rooted at the folder being browsed, so descending into a child re-roots it —
-    /// and without this row there was no way back up: the parent was deliberately not a row.
-    private var upRow: FolderTreeModel.Node?
+
+    /// The rows the outline is asked for at the top level: the "up one level" action, then the root.
+    private var topLevelItems: [FolderSidebarItem] {
+        var items: [FolderSidebarItem] = []
+        if let parent = parentOfCurrentFolder {
+            items.append(.up(target: parent))
+        }
+        if let root { items.append(.folder(root)) }
+        return items
+    }
+
+    /// The parent of the folder being browsed, which is what "上一级" opens.
+    private var parentOfCurrentFolder: URL? {
+        guard let currentPath else { return nil }
+        let folder = URL(fileURLWithPath: currentPath)
+        let parent = folder.deletingLastPathComponent()
+        return parent.path == folder.path ? nil : parent
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -78,56 +121,89 @@ final class FolderTreeSidebarView: NSView {
     /// collapsed itself to a single row on the second render.
     private var isApplyingModelState = false
 
-    func update(nodes: [FolderTreeModel.Node], currentPath: String?) {
+    /// Replaces what the outline shows. The model's *root* is what it is given: the outline is asked
+    /// for children as it expands, so a folder's contents appear once, as its children.
+    func update(root: FolderTreeModel.Node?, currentPath: String?) {
+        self.root = root
         self.currentPath = currentPath
-        // A folder that has a parent gets an "up one level" row: the tree is rooted at the folder
-        // being browsed, so this is the only way back to where it came from.
-        if let currentPath {
-            let folder = URL(fileURLWithPath: currentPath)
-            let parent = folder.deletingLastPathComponent()
-            if parent.path != folder.path {
-                upRow = FolderTreeModel.Node(url: parent, hasChildren: false,
-                                             isExpanded: false, children: nil)
-            } else {
-                upRow = nil
-            }
-        } else {
-            upRow = nil
-        }
-        self.nodes = (upRow.map { [$0] } ?? []) + nodes
         outline.reloadData()
+        // Expanding is the model's business, so the triangle state is mirrored from it rather than
+        // owned here — and mirrored down the tree, because the outline only knows about the levels
+        // the model already read.
         isApplyingModelState = true
-        for node in self.nodes {
-            // Expanding is the model's business, so the triangle state is mirrored from it rather
-            // than owned here.
-            if node.isExpanded, outline.isItemExpanded(node) == false {
-                outline.expandItem(node)
-            } else if !node.isExpanded, outline.isItemExpanded(node) {
-                outline.collapseItem(node)
-            }
-        }
+        applyExpansion(of: root, ancestorsVisible: true)
         isApplyingModelState = false
         // Programmatic selection, so the change notification it raises is not mistaken for the user
         // clicking a folder: that mistake made the browser rescan the folder it was already in and
         // discard the one the user had just chosen.
         isApplyingModelState = true
-        if let currentPath, let index = self.nodes.firstIndex(where: { $0.url.path == currentPath }) {
-            outline.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        if let currentPath, let row = row(forPath: currentPath) {
+            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         } else {
             outline.deselectAll(nil)
         }
         isApplyingModelState = false
     }
 
-    /// The row the user can click to go back up, for tests.
-    var upRowPath: String? { upRow?.url.path }
-
-    /// The label a synthetic row renders, if it is the up row.
-    private func displayName(for node: FolderTreeModel.Node) -> String {
-        node.url == upRow?.url ? "上一级" : node.name
+    /// Mirrors the model's expansion state into the outline, depth first.
+    ///
+    /// `ancestorsVisible` is what keeps a collapsed ancestor collapsed: the model remembers that a
+    /// folder deep inside was expanded, and telling the outline to expand it would expand the
+    /// ancestor above it as well — undoing the user's collapse.
+    private func applyExpansion(of node: FolderTreeModel.Node?, ancestorsVisible: Bool) {
+        guard let node else { return }
+        if ancestorsVisible {
+            // The outline's items are `FolderSidebarItem` wrappers, so the question and the command
+            // have to be asked in the same currency: a bare `Node` is not an item the outline knows,
+            // and asking about it made every expansion a no-op.
+            let item = FolderSidebarItem.folder(node)
+            if node.isExpanded, !outline.isItemExpanded(item) {
+                outline.expandItem(item)
+            } else if !node.isExpanded, outline.isItemExpanded(item) {
+                outline.collapseItem(item)
+            }
+        }
+        for child in node.children ?? [] {
+            applyExpansion(of: child, ancestorsVisible: ancestorsVisible && node.isExpanded)
+        }
     }
 
-    var visibleRowCount: Int { nodes.count }
+    /// The row an item is rendered at, by path. Asked of the outline rather than of a flattened
+    /// array: those two stopped agreeing the moment an expanded folder's children were drawn, and
+    /// the row-to-item mismatch is what made clicks land on nothing.
+    ///
+    /// A folder row wins over the up action when both point at the same folder: the highlight
+    /// belongs on the folder the tree contains, not on a shortcut to it.
+    private func row(forPath path: String) -> Int? {
+        var actionRow: Int?
+        for row in 0..<outline.numberOfRows {
+            guard let item = outline.item(atRow: row) as? FolderSidebarItem else { continue }
+            switch item {
+            case let .folder(node) where node.url.path == path:
+                return row
+            case .up where item.url.path == path:
+                actionRow = actionRow ?? row
+            default:
+                continue
+            }
+        }
+        return actionRow
+    }
+
+    /// The folder the "up one level" action opens, for tests.
+    var upRowPath: String? { parentOfCurrentFolder?.path }
+
+    /// The label a row renders.
+    private func displayName(for item: FolderSidebarItem) -> String {
+        switch item {
+        case .up: return "上一级"
+        case let .folder(node): return node.name
+        }
+    }
+
+    /// How many rows the outline is rendering right now. Read from the outline, not from a model
+    /// array: what is on screen is the outline's answer, and the two can only differ by a bug.
+    var visibleRowCount: Int { outline.numberOfRows }
 
     /// The row the model says is current, for tests.
     var selectedPath: String? { currentPath }
@@ -142,65 +218,75 @@ final class FolderTreeSidebarView: NSView {
 
     /// The rendered label for a row, for tests that check the tree shows what it should.
     func renderedName(at row: Int) -> String? {
-        guard nodes.indices.contains(row) else { return nil }
-        return displayName(for: nodes[row])
+        guard let item = outline.item(atRow: row) as? FolderSidebarItem else { return nil }
+        return displayName(for: item)
     }
 }
 
 extension FolderTreeSidebarView: NSOutlineViewDataSource {
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        if item == nil { return nodes.count }
+        if item == nil { return topLevelItems.count }
         // The model's own children, which are nil for a collapsed node. Returning 0 is what keeps a
         // collapsed folder from being enumerated.
-        return (item as? FolderTreeModel.Node)?.children?.count ?? 0
+        return (item as? FolderSidebarItem)?.node?.children?.count ?? 0
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if item == nil { return nodes[index] }
-        guard let node = item as? FolderTreeModel.Node, let children = node.children,
-              children.indices.contains(index) else { return FolderTreeModel.Node(
-                url: URL(fileURLWithPath: "/"), hasChildren: false, isExpanded: false, children: nil) }
-        return children[index]
+        if item == nil {
+            return topLevelItems.indices.contains(index) ? topLevelItems[index]
+                : FolderSidebarItem.up(target: URL(fileURLWithPath: "/"))
+        }
+        guard let node = (item as? FolderSidebarItem)?.node, let children = node.children,
+              children.indices.contains(index) else {
+            return FolderSidebarItem.up(target: URL(fileURLWithPath: "/"))
+        }
+        return FolderSidebarItem.folder(children[index])
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? FolderTreeModel.Node)?.hasChildren ?? false
+        (item as? FolderSidebarItem)?.node?.hasChildren ?? false
     }
 }
 
 extension FolderTreeSidebarView: NSOutlineViewDelegate {
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?,
                      item: Any) -> NSView? {
-        guard let node = item as? FolderTreeModel.Node else { return nil }
+        guard let row = item as? FolderSidebarItem else { return nil }
         let identifier = NSUserInterfaceItemIdentifier("FolderTreeCell")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? FolderTreeCellView
             ?? FolderTreeCellView(identifier: identifier)
-        let isUpRow = node.url == upRow?.url
-        cell.configure(name: displayName(for: node),
-                       isCurrent: !isUpRow && node.url.path == currentPath,
-                       symbol: isUpRow ? "arrow.up" : "folder")
+        cell.configure(name: displayName(for: row),
+                       isCurrent: row.node != nil && row.url.path == currentPath,
+                       symbol: row.node == nil ? "arrow.up" : "folder")
         return cell
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isApplyingModelState else { return }
         let row = outline.selectedRow
-        guard nodes.indices.contains(row) else { return }
-        onFolderChosen?(nodes[row].url)
+        // The clicked *item*, not a row index into a model array: rows and model entries are only
+        // the same list while nothing is expanded, and every expanded folder breaks that.
+        guard row >= 0, let item = outline.item(atRow: row) as? FolderSidebarItem else { return }
+        onFolderChosen?(item.url)
     }
 
     /// A disclosure click is a request to expand or collapse, and the model owns that decision: the
     /// view reports it and re-renders whatever the model says afterwards.
+    ///
+    /// Reported whether or not the children were already loaded: the model's `isExpanded` is what
+    /// the next render mirrors, so a real click has to reach it every time.
     func outlineViewItemDidExpand(_ notification: Notification) {
         guard !isApplyingModelState else { return }
-        guard let node = notification.userInfo?["NSObject"] as? FolderTreeModel.Node else { return }
-        if node.children == nil { onFolderToggled?(node.url) }
+        guard let item = notification.userInfo?["NSObject"] as? FolderSidebarItem,
+              let node = item.node else { return }
+        onFolderExpansionChanged?(node.url, true)
     }
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
         guard !isApplyingModelState else { return }
-        guard let node = notification.userInfo?["NSObject"] as? FolderTreeModel.Node else { return }
-        if node.isExpanded { onFolderToggled?(node.url) }
+        guard let item = notification.userInfo?["NSObject"] as? FolderSidebarItem,
+              let node = item.node, node.isExpanded else { return }
+        onFolderExpansionChanged?(node.url, false)
     }
 }
 

@@ -100,10 +100,10 @@ final class FolderBrowserViewController {
         view.onFolderChosen = { [weak self] url in
             self?.host?.openFolder(url)
         }
-        view.onFolderToggled = { [weak self] url in
+        view.onFolderExpansionChanged = { [weak self] url, expanded in
             guard let self else { return }
-            self.tree.toggle(url)
-            self.view.treeSidebar.update(nodes: self.tree.visibleNodes,
+            self.tree.setExpanded(expanded, for: url)
+            self.view.treeSidebar.update(root: self.tree.root,
                                          currentPath: self.tree.currentFolderPath)
         }
         view.gallery.onThumbnailNeeded = { [weak self] index, item in
@@ -123,9 +123,29 @@ final class FolderBrowserViewController {
 
     // MARK: - Session
 
+    /// Why the browser is rebuilding. It decides two things that must not be guessed: whether the
+    /// tree may expand to show the folder, and whether the grid may move the scroll position.
+    ///
+    /// A refresh is everything the user did not ask for — a watcher rescan, a lazy size fill, a
+    /// re-sort they triggered from another window's chrome — and it must leave the triangles, the
+    /// highlight and the viewport exactly where they were. Navigation is an explicit move to another
+    /// folder or an explicit selection, where the target has to be brought into sight.
+    enum ReloadReason {
+        /// An explicit move to another folder or an explicit selection.
+        case navigation
+        /// The user asked for a re-order: the grid should show what is selected, the tree should not
+        /// re-open anything (a sort is not a navigation).
+        case userReorder
+        /// A rescan or a lazy fill: neither the viewport nor the triangles may move.
+        case passive
+
+        var revealsTree: Bool { self == .navigation }
+        var revealsGrid: Bool { self != .passive }
+    }
+
     /// Rebuilds the gallery and the tree from the session. Called when the browser appears and after
     /// any change to the folder or the sort.
-    func reload() {
+    func reload(_ reason: ReloadReason = .passive) {
         guard let host else { return }
         let items = host.session.items
         // Only a list that actually *changed* invalidates the requests made against the old one:
@@ -141,6 +161,11 @@ final class FolderBrowserViewController {
             pending.removeAll()
             host.cancelGalleryThumbnails()
             lastRequestedURLs = urls
+            // Failures belong to the folder that had them: what is no longer listed cannot be
+            // retried, and a folder that comes back gets a clean slate. A *sort* leaves the list
+            // alone, so it must not clear anything — the negative cache is per file version and
+            // expires on its own when the file changes.
+            pruneDimensionFailures(keeping: Set(urls.map(\.path)))
         }
         let aspects = items.map { item -> CGFloat in
             guard let size = item.pixelSize, size.height > 0 else { return 1 }
@@ -156,27 +181,36 @@ final class FolderBrowserViewController {
                              currentIndex: host.session.currentIndex,
                              layoutKind: host.galleryLayoutKind,
                              thumbnailSize: host.galleryThumbnailSize)
+        // Only navigation moves the viewport. A metadata fill or a rescan that arrived while the
+        // user was reading row 300 must not pull the grid back to the selected item.
+        if reason.revealsGrid { view.gallery.scrollCurrentIntoView() }
         // A reload is not part of a drag: whatever gesture was in progress is over.
         view.gallery.setRetentionPaused(false)
         let folder = host.session.directory ?? host.session.currentItem?.url.deletingLastPathComponent()
-        if let folder { tree.focus(on: folder) }
-        view.treeSidebar.update(nodes: tree.visibleNodes, currentPath: tree.currentFolderPath)
+        if let folder { tree.focus(on: folder, reveal: reason.revealsTree) }
+        view.treeSidebar.update(root: tree.root, currentPath: tree.currentFolderPath)
         requestVisibleThumbnails()
     }
 
     /// The URL list the in-flight requests belong to, so a re-published identical list keeps them.
     private var lastRequestedURLs: [URL] = []
 
+    /// A user-driven sort: the list order changed, and whatever is current should be brought back
+    /// into sight because the user asked for the re-order.
     private func reloadFromSession() {
-        reload()
+        reload(.userReorder)
     }
 
     /// The session's current item moved from outside the gallery — a keyboard next/previous, a
     /// delete, a rescan. The gallery's highlight and the toolbar's position follow, because there is
     /// one index and two views of it.
-    func syncSelectionFromSession() {
+    /// - Parameter reveal: whether the moved selection must be brought into sight. It comes from the
+    ///   change's reason, not from the fact that the index changed: a rescan that inserts a file
+    ///   before the current one moves its index without the user having moved at all.
+    func syncSelectionFromSession(reveal: Bool = false) {
         guard let host else { return }
-        view.gallery.setCurrentIndex(host.session.currentIndex)
+        view.gallery.setCurrentIndex(host.session.currentIndex,
+                                     visibility: reveal ? .revealCurrent : .preserveViewport)
         view.update(layout: host.galleryLayoutKind, thumbnailSize: host.galleryThumbnailSize,
                     sortKey: AppSettings.shared.sortKey,
                     sortDirection: AppSettings.shared.sortDirection,
@@ -190,25 +224,77 @@ final class FolderBrowserViewController {
     /// a filename. The probe reads only the image header (tens of bytes), so a folder's worth of
     /// them is cheap, and it runs off the main actor — but it is *not* run for a folder whose items
     /// already have their sizes, and not twice for the same folder.
+    ///
+    /// Only the items that are actually missing are probed: reading every header again on every
+    /// reload was work proportional to the folder for a question whose answer had not changed.
     private func noteMissingDimensions(_ items: [FolderItem]) {
-        let missing = items.filter { $0.pixelSize == nil }
+        let missing = items.filter { item in
+            guard item.pixelSize == nil else { return false }
+            guard let failedVersion = dimensionProbeFailures[item.url.path] else { return true }
+            // The failure belongs to the *version* that failed, not to the path: a file replaced
+            // after a failed read — a download that finished, an editor that saved over it — is a
+            // different question and is asked again. One `stat`, and only for the handful of files
+            // that actually failed.
+            return SourceFileIdentity.read(at: item.url).versionToken != failedVersion
+        }
         guard !missing.isEmpty, dimensionsWorkItem == nil else { return }
-        let itemCount = items.count
+        let folder = host?.session.directory
+        let generation = browserGeneration
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             Task { @MainActor in
                 guard let host = self.host else { return }
-                let filled = await FolderScanner.fillDimensions(host.session.items)
+                let probed = await FolderScanner.fillDimensions(missing)
                 self.dimensionsWorkItem = nil
-                // The folder may have moved on while the probe ran.
-                guard filled.count == itemCount, filled.map(\.url) == host.session.items.map(\.url)
-                else { return }
-                var updated = host.session.items
-                for index in updated.indices where updated[index].pixelSize == nil {
-                    updated[index].pixelSize = filled[index].pixelSize
+                // The folder may have moved on while the probe ran, and the browser may be gone:
+                // cancelling the work item does not stop the task it started, so the completion has
+                // to check for itself before it touches the session or the views.
+                guard host.session.directory == folder, generation == self.browserGeneration else {
+                    return
                 }
+
+                var sizes: [String: CGSize] = [:]
+                var failures: Set<String> = []
+                for (item, result) in zip(missing, probed) {
+                    if let size = result.pixelSize, size.width > 0, size.height > 0 {
+                        sizes[item.url.path] = size
+                    } else {
+                        failures.insert(item.url.path)
+                    }
+                }
+                // A header that cannot be read stays unknown for this visit to the folder. Retrying
+                // it on every reload is what made one unreadable image republish the whole list more
+                // than twenty times a second — the reload looked exactly like the "there is still
+                // something to probe" state it was reacting to. The set is cleared when the folder
+                // changes, so a file that was mid-download is read the next time it is opened.
+                for failure in failures {
+                    let url = URL(fileURLWithPath: failure)
+                    self.dimensionProbeFailures[failure] =
+                        SourceFileIdentity.read(at: url).versionToken
+                }
+
+                var updated = host.session.items
+                var filledAnything = false
+                for index in updated.indices {
+                    guard updated[index].pixelSize == nil,
+                          let size = sizes[updated[index].url.path] else { continue }
+                    updated[index].pixelSize = size
+                    filledAnything = true
+                }
+                // Nothing new arrived: the list is the same list, and a reload here is the reload
+                // that would ask for the probe again.
+                guard filledAnything else { return }
+                // "图像尺寸" is a question about the sizes that were just read, so the order has to be
+                // recomputed from them: the sort that was chosen while the probe was still running
+                // had nothing to sort by and left the list in filename order forever.
+                if AppSettings.shared.sortKey == .dimensions {
+                    updated = ImageSort.sort(updated, by: .dimensions,
+                                             direction: AppSettings.shared.sortDirection)
+                }
+                // Publishing is what reloads the browser: the session's list event reaches the
+                // grid (when it is on screen), so a second reload here would rebuild the same list
+                // twice in the same run-loop turn.
                 host.session.replaceItemsPreservingCurrent(updated)
-                self.reload()
             }
         }
         dimensionsWorkItem = work
@@ -216,6 +302,16 @@ final class FolderBrowserViewController {
     }
 
     private var dimensionsWorkItem: DispatchWorkItem?
+    /// Headers that could not be read, by path, with the version that failed. See
+    /// `noteMissingDimensions`. Bounded by the folder: entries for files that are no longer listed
+    /// are dropped, so a long browsing session cannot accumulate them.
+    private var dimensionProbeFailures: [String: String] = [:]
+
+    /// Drops failures for files the current list does not contain.
+    private func pruneDimensionFailures(keeping paths: Set<String>) {
+        guard !dimensionProbeFailures.isEmpty else { return }
+        dimensionProbeFailures = dimensionProbeFailures.filter { paths.contains($0.key) }
+    }
 
     /// Selection: one click selects and syncs the session's index, which is also what the info HUD
     /// and the dock's position readout show. The spec's "may update FolderSession.currentIndex" is
@@ -223,7 +319,8 @@ final class FolderBrowserViewController {
     func select(_ index: Int) {
         guard let host else { return }
         host.session.select(index: index)
-        view.gallery.setCurrentIndex(index)
+        // A click lands on a cell that is on screen by definition: no scroll.
+        view.gallery.setCurrentIndex(index, visibility: .preserveViewport)
         view.update(layout: host.galleryLayoutKind, thumbnailSize: host.galleryThumbnailSize,
                     sortKey: AppSettings.shared.sortKey,
                     sortDirection: AppSettings.shared.sortDirection,
@@ -344,12 +441,20 @@ final class FolderBrowserViewController {
     }
 
     /// Cancels work when the browser is leaving.
+    ///
+    /// The generation is what the *completions* check: a `DispatchWorkItem` can be cancelled, but the
+    /// task it already started keeps running and would otherwise publish into a browser that is gone.
+    private var browserGeneration = 0
+
     func teardown() {
+        browserGeneration += 1
         pendingResolutionWorkItem?.cancel()
         pendingResolutionWorkItem = nil
         dimensionsWorkItem?.cancel()
         dimensionsWorkItem = nil
         pending.removeAll()
+        dimensionProbeFailures.removeAll()
+        lastRequestedURLs = []
         view.gallery.setRetentionPaused(false)
         host?.cancelGalleryThumbnails()
     }

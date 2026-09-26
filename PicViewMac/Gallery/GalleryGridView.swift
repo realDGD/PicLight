@@ -156,6 +156,8 @@ final class GalleryGridView: NSView {
         self.currentIndex = currentIndex
         self.layoutKind = layoutKind
         self.thumbnailSize = GalleryLayout.clampThumbnailSize(thumbnailSize)
+        // The geometry belongs to the list that was just replaced.
+        contentRevision += 1
         // Everything on screen belongs to the old list.
         for (_, cell) in visibleCells { recycle(cell) }
         visibleCells.removeAll()
@@ -163,13 +165,37 @@ final class GalleryGridView: NSView {
         needsLayout = true
     }
 
-    func setCurrentIndex(_ index: Int?) {
+    /// What may happen to the scroll position when the selection changes.
+    enum SelectionVisibility {
+        /// Leave the viewport exactly where it is: a click on a cell that is already visible, a
+        /// highlight synced from the session, a list republished with more information.
+        case preserveViewport
+        /// Bring the selection into sight. The user moved it from outside the grid — "最后一张",
+        /// next/previous from the keyboard, a delete that moved on — and a selection the user
+        /// cannot see is not a selection (measured: index 199 of 200 with the grid showing 0…15).
+        case revealCurrent
+    }
+
+    func setCurrentIndex(_ index: Int?, visibility: SelectionVisibility = .preserveViewport) {
         guard index != currentIndex else { return }
         currentIndex = index
         for (itemIndex, cell) in visibleCells where items.indices.contains(itemIndex) {
             cell.configure(item: items[itemIndex], thumbnail: thumbnail(at: itemIndex),
                            isCurrent: itemIndex == index)
         }
+        if visibility == .revealCurrent { scrollCurrentIntoView() }
+    }
+
+    /// Brings the current item's row into the visible rectangle. A no-op when it is already there.
+    func scrollCurrentIntoView() {
+        guard let currentIndex, items.indices.contains(currentIndex),
+              enclosingScrollView != nil else { return }
+        // Both the row geometry and the document frame the scroll happens within belong to the
+        // current layout, so the pass runs before the rectangle is asked for.
+        layoutSubtreeIfNeeded()
+        guard let row = rows.first(where: { $0.cells.contains { $0.index == currentIndex } })
+        else { return }
+        scrollToVisible(row.frame.insetBy(dx: 0, dy: -GalleryLayout.rowSpacing))
     }
 
     /// Live reflow: geometry only. No thumbnail is requested and nothing is decoded — that is the
@@ -178,6 +204,7 @@ final class GalleryGridView: NSView {
         let clamped = GalleryLayout.clampThumbnailSize(size)
         guard clamped != thumbnailSize else { return }
         thumbnailSize = clamped
+        contentRevision += 1
         needsLayout = true
     }
 
@@ -195,6 +222,7 @@ final class GalleryGridView: NSView {
     func setLayoutKind(_ kind: GalleryLayoutKind) {
         guard kind != layoutKind else { return }
         layoutKind = kind
+        contentRevision += 1
         needsLayout = true
     }
 
@@ -235,9 +263,43 @@ final class GalleryGridView: NSView {
                            thumbnailSize: thumbnailSize)
     }
 
+    /// The row geometry, recomputed only when one of its inputs changed.
+    ///
+    /// Every delivered thumbnail asks for it — `trimDeliveredToWindow` needs the window, and the
+    /// window's size is also the retention cap — and every layout pass asks for it again. Computing
+    /// it each time is work proportional to the *folder*, for geometry that is a function of four
+    /// values. Measured in a Debug build: one delivery cost 1.3 ms at 1,000 images and 28.7 ms at
+    /// 50,000, and the whole of it was rebuilding rows that had not moved.
+    private var rowsCache: (key: RowsKey, rows: [GalleryRow])?
+
+    /// What the geometry depends on: the two layout choices, the width it is computed for, and a
+    /// revision counter that the list and the aspects bump. A counter rather than the aspect array:
+    /// comparing 50,000 `CGFloat`s is cheap but pointless when the array can only change in one
+    /// place.
+    private struct RowsKey: Equatable {
+        let kind: GalleryLayoutKind
+        let thumbnailSize: CGFloat
+        let width: CGFloat
+        let contentRevision: Int
+    }
+
+    /// How many times the whole folder's geometry has actually been computed. Exposed so a test can
+    /// tell "the cache answered" from "the geometry was rebuilt and happened to match".
+    private(set) var rowsComputationCountForTesting = 0
+
+    /// Bumped by every change to the content the geometry is computed *from*.
+    private var contentRevision = 0
+
     var rows: [GalleryRow] {
-        GalleryLayout.rows(for: layoutKind, aspects: aspects, containerWidth: bounds.width,
-                           thumbnailSize: thumbnailSize)
+        let key = RowsKey(kind: layoutKind, thumbnailSize: thumbnailSize,
+                          width: layoutWidth, contentRevision: contentRevision)
+        if let rowsCache, rowsCache.key == key { return rowsCache.rows }
+        rowsComputationCountForTesting += 1
+        let computed = GalleryLayout.rows(for: layoutKind, aspects: aspects,
+                                          containerWidth: key.width,
+                                          thumbnailSize: thumbnailSize)
+        rowsCache = (key, computed)
+        return computed
     }
 
     // MARK: - Layout and recycling
@@ -263,8 +325,7 @@ final class GalleryGridView: NSView {
         super.layout()
         layoutPassCountForTesting += 1
         let width = layoutWidth
-        let rows = GalleryLayout.rows(for: layoutKind, aspects: aspects, containerWidth: width,
-                                      thumbnailSize: thumbnailSize)
+        let rows = self.rows
         let visible = visibleRectForCells
         let contentHeight = GalleryLayout.contentHeight(of: rows)
         if frame.size.height != contentHeight || frame.size.width != width {
@@ -323,12 +384,6 @@ final class GalleryGridView: NSView {
         return result
     }
 
-    /// The most thumbnails the gallery keeps before trimming to its window: the window size times
-    /// two, with a floor of 64. Above the cap the delivered cache is trimmed to exactly the
-    /// window; below it nothing is evicted, so a slider reflow (which re-lays-out without new
-    /// decode intent) never churns the retained set and never re-requests.
-    private var deliveredRetentionCap: Int { max(64, thumbnailWindowIndexes.count * 2) }
-
     /// Releases every delivered thumbnail that is no longer in the window, but only once the
     /// retained set passes the cap. The gallery's retained images are therefore bounded by a
     /// constant of the viewport, never by the folder's size — while small folders keep their
@@ -340,10 +395,12 @@ final class GalleryGridView: NSView {
         // drag is about to need again on the way back. The pause lasts only while the pointer is
         // down; the settle lifts it and trims to the window the drag ended on.
         guard !isRetentionPaused else { return }
+        // One window, asked for once: it is both what is kept and the number the cap is derived
+        // from, and asking twice walked the whole row list twice per delivery.
         let window = thumbnailWindowIndexes
         // No layout yet (or a degenerate one): there is no window to keep, so nothing to evict.
         guard !window.isEmpty else { return }
-        guard delivered.count > deliveredRetentionCap else { return }
+        guard delivered.count > max(64, window.count * 2) else { return }
         let keep = Set(window.compactMap { index -> String? in
             items.indices.contains(index) ? items[index].url.path : nil
         })

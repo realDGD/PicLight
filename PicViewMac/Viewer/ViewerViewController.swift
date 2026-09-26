@@ -320,15 +320,31 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public override func viewDidLoad() {
         super.viewDidLoad()
         session.onItemsChanged = { [weak self] in
-            self?.rebuildDrawer()
-            self?.refreshBottomBar()
+            guard let self else { return }
+            // Before the drawer is rebuilt: a thumbnail of a file that is gone, or of bytes the file
+            // no longer has, must not be handed to the cells that are about to be created.
+            self.pruneThumbnailCache()
+            self.rebuildDrawer()
+            self.refreshBottomBar()
+            // The gallery draws the same list, so a change to it has to reach the grid — or the grid
+            // shows one list while the session holds another, and a click in a cell opens the file
+            // that happens to share its index. A hidden gallery is not rebuilt: it reads the session
+            // when it is next entered, and rebuilding a view nobody can see is work whose only
+            // effect would be to steal a scroll position.
+            if self.viewerMode == .folderBrowser {
+                self.folderBrowser?.reload(.passive)
+            }
+            // The file on screen may have been replaced at its path while the list was rescanned.
+            self.showCurrentItemIfNeeded(revealSelection: false)
         }
         session.onCurrentChanged = { [weak self] in
             guard let self else { return }
-            self.loadCurrentImage()
+            let reason = self.session.lastChangeReason
+            self.showCurrentItemIfNeeded(revealSelection: reason.revealsSelection)
             // The gallery shows the same index: a move made from the image mode's keyboard, or by a
-            // delete, has to move the highlight too.
-            self.folderBrowser?.syncSelectionFromSession()
+            // delete, has to move the highlight too — and its viewport, when the user is the one who
+            // moved.
+            self.folderBrowser?.syncSelectionFromSession(reveal: reason.revealsSelection)
         }
         applySettings()
         NotificationCenter.default.addObserver(
@@ -370,7 +386,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         (view.window as? ViewerWindow)?.isTopBarMergedWithContent = true
         browser.view.setToolbarLeadingInset(Self.mergedToolbarLeadingInset)
         alignBrowserToolbarWithTitlebar()
-        browser.reload()
+        // Entering is a navigation: the grid starts at the selected item and the tree shows the
+        // folder being browsed.
+        browser.reload(.navigation)
         folderBrowserContainer.isHidden = false
         setImageModeViewsHidden(true)
         // The left-column button follows the mode: in the browser it opens and closes the folder
@@ -429,12 +447,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         onLeftColumnChanged?(isDrawerOpen)
         // The session's current item may have moved while the gallery was up; showing it is the
         // one decode this transition can cause, and only when the selection actually changed.
-        if let url = session.currentItem?.url, url != displayedItemURL {
-            // The selection moved while the gallery was up, so the image on screen is the wrong one.
-            // Anything else — coming back to the same file — leaves the decoded bitmap alone, which
-            // is what makes entering and leaving the browser free.
-            loadCurrentImage()
-        }
+        // Anything else — coming back to the same file — leaves the decoded bitmap alone, which
+        // is what makes entering and leaving the browser free.
+        showCurrentItemIfNeeded()
         view.window?.makeFirstResponder(canvas)
     }
 
@@ -476,6 +491,54 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// needs a decode at all — comparing against the *descriptor* asked the wrong question, because
     /// a descriptor's source URL is not always set.
     private var displayedItemURL: URL?
+    /// The `SourceFileIdentity.versionToken` of the file that bitmap was decoded from.
+    ///
+    /// `FileIdentity` answers "which path", and its `==` compares paths only, so it cannot see an
+    /// editor saving over `photo.png`. The token can: it carries size, both timestamps, the inode
+    /// and the volume, and it is the same value the tile and thumbnail caches already key on.
+    private var displayedItemVersion: String?
+    /// The item and version a decode has been started for but not delivered yet.
+    ///
+    /// One publication reaches this view through two callbacks — the list changed and the selection
+    /// changed — and both have to ask "is the right picture on screen?". Without this record the
+    /// second answer was another decode of the same file: measured as two full decodes for one open,
+    /// which is also two 48,000-pixel streams for an oversized image.
+    private var requestedItem: (url: URL, version: String)?
+
+    /// Shows the session's current item, decoding again only when the file on screen is not it.
+    ///
+    /// Both directions matter. A republish that only added metadata (the dimension probe) or a
+    /// re-sort that moved the *same* file must not decode again: that resets a multi-page document
+    /// to its first page and throws away the viewport for a picture that has not changed. A
+    /// *replacement* at the same path must decode again: the bytes on screen are not the file's
+    /// bytes any more.
+    /// - Parameter revealSelection: whether the drawer may scroll the selection into sight. It is
+    ///   driven by the session's change reason, so a rescan that shifts an index does not move the
+    ///   drawer under the pointer.
+    private func showCurrentItemIfNeeded(revealSelection: Bool = false) {
+        guard let item = session.currentItem else {
+            // Nothing is current: whatever is on screen belongs to a list that is gone, and the
+            // empty state has to be rendered for *this* situation — a fresh launch and a folder
+            // with no images read differently, and only the load path knows which one this is.
+            loadCurrentImage()
+            return
+        }
+        let version = SourceFileIdentity.read(at: item.url).versionToken
+        if item.url == displayedItemURL, version == displayedItemVersion {
+            // The same file is still on screen: the position moved, the picture did not. The chrome
+            // that reads the index still follows it.
+            drawer.setCurrentIndex(session.currentIndex)
+            if revealSelection { drawer.scrollCurrentIntoView() }
+            refreshBottomBar()
+            return
+        }
+        if let requested = requestedItem, requested.url == item.url, requested.version == version {
+            // Already on its way: asking again would start a second decode of the same bytes.
+            return
+        }
+        loadCurrentImage()
+        if revealSelection { drawer.scrollCurrentIntoView() }
+    }
 
     /// The folder browser, for tests and the acceptance runner.
     var folderBrowserForTesting: FolderBrowserViewController? { folderBrowser }
@@ -663,20 +726,42 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // spelling (`/tmp` versus `/private/tmp`, symlinked folders).
         let directory = url.deletingLastPathComponent().resolvingSymlinksInPath()
         let canonicalURL = directory.appendingPathComponent(url.lastPathComponent)
-        session.setDirectory(directory)
-        watcher.onChange = { [weak self] in
-            Task { @MainActor in await self?.rescanPreservingCurrent() }
-        }
-        watcher.start(watching: directory)
+        let generation = beginFolderRequest(directory)
         Task { [weak self] in
             guard let self else { return }
             let scanner = FolderScanner()
             let items = (try? await scanner.scan(directory: directory)) ?? []
             let sorted = await self.sortedItems(items)
+            // A folder opened after this scan started owns the session now. Publishing anyway put
+            // the *previous* folder's files in the list while the session said the new one was
+            // current — measured as "directory=B, 3000 items from A".
+            guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
             self.session.setItems(sorted, preferredIdentity: FileIdentity(url: canonicalURL))
             self.session.select(url: canonicalURL)
         }
     }
+
+    /// Starts a folder request: one watcher, one generation.
+    ///
+    /// The generation is what makes a slow scan harmless. Every publish compares it, so the newest
+    /// request is the only one that can land, however the scans interleave.
+    private func beginFolderRequest(_ directory: URL) -> Int {
+        folderRequestGeneration += 1
+        session.setDirectory(directory)
+        watcher.onChange = { [weak self] in
+            Task { @MainActor in await self?.rescanPreservingCurrent() }
+        }
+        watcher.start(watching: directory)
+        return folderRequestGeneration
+    }
+
+    /// Whether the request that started at `generation` is still the session's folder.
+    private func isCurrentFolderRequest(_ generation: Int, directory: URL) -> Bool {
+        generation == folderRequestGeneration && session.directory == directory
+    }
+
+    /// Which folder request the session is waiting for. See `beginFolderRequest`.
+    private var folderRequestGeneration = 0
 
     /// Dimension sorting needs a lazy dimension lookup; every other mode sorts
     /// the metadata already collected during the scan.
@@ -691,9 +776,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func rescanPreservingCurrent() async {
         guard let directory = session.directory else { return }
+        let generation = folderRequestGeneration
         let scanner = FolderScanner()
         guard let items = try? await scanner.scan(directory: directory) else { return }
         let sorted = await sortedItems(items)
+        // The watcher fired for the folder that was current when it fired; by the time the scan
+        // returns, the user may have opened another one. The same guard as `open(url:)`.
+        guard isCurrentFolderRequest(generation, directory: directory) else { return }
         // The delete-follow-up preference decides what survives a folder change:
         // "smart" follows the file the user was moved to, "stay in place" holds
         // the slot. Both are observable when a rescan re-sorts the list.
@@ -706,10 +795,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     public func reloadWithCurrentSort() {
+        guard let directory = session.directory else { return }
+        let generation = folderRequestGeneration
         Task { [weak self] in
             guard let self else { return }
             let identity = self.session.currentItem?.id
             let sorted = await self.sortedItems(self.session.items)
+            guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
             self.session.setItems(sorted, preferredIdentity: identity)
         }
     }
@@ -718,6 +810,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func loadCurrentImage() {
         guard let item = session.currentItem else {
+            requestedItem = nil
             viewerState.clearForNewImage()
             viewerState.applyEmptyState()
             canvas.renderImage = nil
@@ -757,6 +850,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         drawer.scrollCurrentIntoView()
         refreshBottomBar()
 
+        // Remember what is being asked for, so the second callback of the same publication does not
+        // ask again. The version travels with it: a replacement while the decode runs is a different
+        // request and must not be mistaken for this one.
+        requestedItem = (item.url, SourceFileIdentity.read(at: item.url).versionToken)
         startDecode(url: item.url, previous: previous, next: next,
                     direction: direction, target: currentDecodeTarget())
     }
@@ -813,11 +910,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     /// Whether the tile backend can read this source (PNG, 8-bit, not interlaced). Asked
-    /// once per file.
+    /// once per file — and per *version* of it: format is a property of the bytes, so a
+    /// replacement at the same path must be asked about again.
     private func canServeNativeDetail(_ url: URL) -> Bool {
-        if let known = detailCapability[url.path] { return known }
+        let key = "\(url.path)#\(SourceFileIdentity.read(at: url).versionToken)"
+        if let known = detailCapability[key] { return known }
         let answer = NativeTileCapability.canServe(url)
-        detailCapability[url.path] = answer
+        detailCapability[key] = answer
         return answer
     }
 
@@ -1317,11 +1416,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func handle(event: DecodeEvent) {
         switch event {
         case let .head(head):
+            requestedItem = nil
             // The image (or its replacement) is on screen, so the HUD's readout is worth showing.
             // This is the load/change trigger; it is deliberately not driven by the decode
             // starting, which would show a readout for an image that has not arrived.
             noteImageChangedForInfoHUD()
             displayedItemURL = head.descriptor.sourceURL ?? session.currentItem?.url
+            displayedItemVersion = displayedItemURL.map {
+                SourceFileIdentity.read(at: $0).versionToken
+            }
             viewerState.apply(head: head)
             displayedLevel = head.level
             inFlightLevel = nil
@@ -1346,6 +1449,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 viewerState.apply(frame: frame)
             }
         case let .failure(message):
+            requestedItem = nil
             isDecodingCurrentItem = false
             inFlightLevel = nil
             viewerState.apply(error: message)
@@ -1553,7 +1657,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func rebuildDrawer() {
         // A drawer rebuild never touches the canvas frame or zoom: it only
         // overlays an existing region, and rows are virtualized.
-        drawer.thumbnailProvider = { [weak self] item in self?.thumbnailCache[item.url] }
+        listedURLs = Set(session.items.map(\.url))
+        drawer.thumbnailProvider = { [weak self] item in self?.thumbnailCache[item.url]?.image }
         drawer.onThumbnailNeeded = { [weak self] index, item in
             self?.requestThumbnail(at: index, for: item)
         }
@@ -1586,11 +1691,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     var thumbnailCacheCountForTesting: Int { thumbnailCache.count }
 
     var thumbnailCacheBytesForTesting: Int {
-        thumbnailCache.values.reduce(0) { $0 + $1.width * $1.height * 4 }
+        thumbnailCache.values.reduce(0) { $0 + Self.byteCost(of: $1.image) }
     }
 
     /// Whether a drawer thumbnail has been delivered, for tests and the acceptance runner.
     func hasCachedThumbnailForTesting(_ url: URL) -> Bool { thumbnailCache[url] != nil }
+
+    /// The file version the cached thumbnail describes, for tests: whatever is retained must be a
+    /// picture of the file that is at that path *now*.
+    func cachedThumbnailVersionForTesting(_ url: URL) -> String? {
+        thumbnailCache[url]?.version
+    }
 
     private func requestThumbnail(at index: Int, for item: FolderItem) {
         guard thumbnailCache[item.url] == nil else { return }
@@ -1628,12 +1739,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         activeThumbnailRequests -= 1
         activeThumbnailRequestsPerURL[item.url, default: 0] -= 1
         if let image {
-            thumbnailCache[item.url] = image
+            // A delivery for a file the list no longer holds is a picture nothing can show: it used
+            // to be retained until the next trim, which is how emptying the folder left entries
+            // behind (measured: seven of them, still 2.4 MiB).
+            if listedURLs.contains(item.url) {
+                thumbnailDeliverySequence += 1
+                thumbnailCache[item.url] = DrawerThumbnail(
+                    image: image, version: SourceFileIdentity.read(at: item.url).versionToken,
+                    sequence: thumbnailDeliverySequence)
+            }
             // Delivered by URL: the row captured when the request started may now belong to a
             // different item.
             if !drawer.updateThumbnail(for: item.url, image: image) {
                 thumbnailStaleDeliveriesIgnored += 1
             }
+            trimThumbnailCacheToWindow()
             return
         }
         guard hadQueuedRetry else { return }
@@ -1673,7 +1793,100 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         return try? await thumbnails.thumbnail(for: item.url, maxPixelSize: Self.drawerThumbnailPixelSize)
     }
 
-    private var thumbnailCache: [URL: CGImage] = [:]
+    /// One delivered drawer thumbnail: the image and the version of the file it was decoded from.
+    ///
+    /// The version is what keeps a replaced file from being shown its predecessor's pixels, and
+    /// keeping it *here* rather than re-reading the file per row is what makes the check affordable.
+    private struct DrawerThumbnail {
+        let image: CGImage
+        let version: String
+        /// Delivery order, so a trim keeps the newest pictures when it has to choose.
+        let sequence: Int
+    }
+
+    /// Monotonic delivery counter for `DrawerThumbnail.sequence`.
+    private var thumbnailDeliverySequence = 0
+
+    /// Drawer thumbnails, bounded to the rows the drawer is showing. See
+    /// `trimThumbnailCacheToWindow` and `pruneThumbnailCache`.
+    private var thumbnailCache: [URL: DrawerThumbnail] = [:]
+    /// The URLs the drawer can show right now, so a delivery that arrives after the list moved on
+    /// is discarded instead of being retained for a row that no longer exists.
+    private var listedURLs: Set<URL> = []
+
+    /// Releases drawer thumbnails outside the rows the drawer is showing (plus its prefetch band).
+    ///
+    /// The floor of 48 keeps a small drawer from churning through re-decodes as it scrolls; above
+    /// it the cache is cut back to exactly the window. This is the same shape as the gallery's own
+    /// delivered window, and for the same reason: a per-window view of a folder-sized list must not
+    /// retain the folder. Measured before this: 200 thumbnails ≈ 69 MiB, still held after the list
+    /// was emptied.
+    private func trimThumbnailCacheToWindow() {
+        let window = drawer.thumbnailWindow
+        // A drawer with nothing visible (closed, or a window that has not laid out yet) has no
+        // window to keep — but it still must not keep the folder. It falls back to a small floor:
+        // bounded, and cheap to refill when the drawer is opened again.
+        let countCap = window.isEmpty
+            ? Self.closedDrawerThumbnailLimit
+            : max(Self.minimumDrawerThumbnailLimit, window.count * 2)
+        let totalBytes = thumbnailCacheBytesForTesting
+        guard thumbnailCache.count > countCap
+                || totalBytes > Self.drawerThumbnailByteBudget else { return }
+
+        let keep = Set(window.compactMap { index -> URL? in
+            session.items.indices.contains(index) ? session.items[index].url : nil
+        })
+        // The picture a visible row is showing is never evicted, whatever the budget says: blanking
+        // a row the user is looking at is a visible regression, and the window is bounded by the
+        // viewport rather than by the folder.
+        var survivors = thumbnailCache.filter { keep.contains($0.key) }
+        var retainedBytes = survivors.values.reduce(0) { $0 + Self.byteCost(of: $1.image) }
+        let rest = thumbnailCache
+            .filter { !keep.contains($0.key) }
+            .sorted { $0.value.sequence > $1.value.sequence }
+        for (url, entry) in rest {
+            let cost = Self.byteCost(of: entry.image)
+            guard survivors.count < countCap,
+                  retainedBytes + cost <= Self.drawerThumbnailByteBudget else { break }
+            survivors[url] = entry
+            retainedBytes += cost
+        }
+        guard survivors.count != thumbnailCache.count else { return }
+        thumbnailCache = survivors
+    }
+
+    /// A decoded bitmap's real byte size, which is what the budget is denominated in — the row's
+    /// `width × height × 4` is an estimate that ignores row padding.
+    private static func byteCost(of image: CGImage) -> Int {
+        image.bytesPerRow * image.height
+    }
+
+    /// Byte ceiling for drawer thumbnails, whatever the row count says. Thumbnails are decoded at
+    /// 300 pt, so a large folder's window is still megabytes: measured at 351 KiB per 300×300
+    /// picture, the count window alone is ~20 MiB.
+    private static let drawerThumbnailByteBudget = 24 * 1024 * 1024
+    private static let minimumDrawerThumbnailLimit = 48
+    private static let closedDrawerThumbnailLimit = 16
+
+    /// Drops drawer thumbnails the new list cannot show: files that are gone, and files whose bytes
+    /// changed at the same path since the thumbnail was decoded.
+    ///
+    /// Called before the drawer is rebuilt, so the cells that are about to be created ask for a
+    /// fresh thumbnail instead of being handed the old file's pixels.
+    private func pruneThumbnailCache() {
+        listedURLs = Set(session.items.map(\.url))
+        // Nothing retained, nothing to check: important on a folder of tens of thousands of items,
+        // where building the membership set is proportional to the list.
+        guard !thumbnailCache.isEmpty else { return }
+        guard !session.items.isEmpty else {
+            thumbnailCache.removeAll()
+            return
+        }
+        thumbnailCache = thumbnailCache.filter { url, delivered in
+            guard listedURLs.contains(url) else { return false }
+            return delivered.version == SourceFileIdentity.read(at: url).versionToken
+        }
+    }
     private var inFlightThumbnails: [URL: Bool] = [:]
     /// Retries that arrived while a request was already running for the same URL. Starting a second
     /// request instead is what the state machine has to prevent.
@@ -2225,7 +2438,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             viewerState.toggleImmersive()
             applyChromeVisibility()
         case .toggleThumbnailDrawer:
-            toggleDrawer()
+            // The command is the menu/keyboard spelling of the left-column button, so it follows the
+            // same routing: in the gallery the left column is the folder tree, and the drawer is not
+            // on screen there at all. Toggling the hidden drawer instead changed state the user
+            // could not see — measured as `drawerOpen false → true` while the browser was up, with
+            // the change only appearing after going back to the image.
+            toggleLeftColumn()
         case .showImageInfo:
             showImageInfo()
         case .toggleSortDirection:
@@ -2511,20 +2729,19 @@ extension ViewerViewController: FolderBrowserHost {
     /// the caller is the browser — leaves the mode alone.
     func openFolder(_ url: URL) {
         let directory = url.resolvingSymlinksInPath()
-        session.setDirectory(directory)
-        watcher.onChange = { [weak self] in
-            Task { @MainActor in await self?.rescanPreservingCurrent() }
-        }
-        watcher.start(watching: directory)
+        let generation = beginFolderRequest(directory)
         Task { [weak self] in
             guard let self else { return }
             let scanner = FolderScanner()
             let items = (try? await scanner.scan(directory: directory)) ?? []
             let sorted = await self.sortedItems(items)
+            // See `open(url:)`: a folder chosen later owns the session, and this scan must not
+            // overwrite the list it published.
+            guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
             // A folder change selects its first item, which is what makes the gallery show
             // something and what the image mode will come back to.
-            self.session.setItems(sorted)
-            self.folderBrowser?.reload()
+            self.session.setItems(sorted, reason: .navigation)
+            self.folderBrowser?.reload(.navigation)
         }
     }
 
