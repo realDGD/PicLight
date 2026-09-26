@@ -144,6 +144,19 @@ else
     fail "Mach-O deployment target is '$BUILD_INFO', expected '$EXPECTED_MINOS'"
 fi
 
+# AppKit reads the SDK version recorded here to choose the design language. A binary that says
+# `sdk 14.0` — what SwiftPM links by default, because it passes the deployment target as the
+# platform version — keeps every system control (the toolbar slider, the sort popup, the folder
+# outline) in the pre-26 compatibility look, with no Liquid Glass, however new the OS is. Package.swift
+# names the build SDK for exactly this reason; this is the check that it stayed named.
+BUILD_SDK=$(otool -l "$BINARY" | awk '/LC_BUILD_VERSION/{flag=1} flag&&/sdk/{print $2; exit}')
+SDK_MAJOR="${BUILD_SDK%%.*}"
+if [ -n "$SDK_MAJOR" ] && [ "$SDK_MAJOR" -ge 26 ] 2>/dev/null; then
+    pass "Mach-O build SDK is macOS $BUILD_SDK (the macOS 26 design is adopted)"
+else
+    fail "Mach-O build SDK is '$BUILD_SDK'; AppKit needs >= 26.0 to leave the pre-26 look"
+fi
+
 # ------------------------------------------------------------- fixture freedom
 if strings "$BINARY" 2>/dev/null | grep -q "make-fixtures"; then
     fail "binary references the fixture generator"

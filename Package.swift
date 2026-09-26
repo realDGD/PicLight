@@ -1,6 +1,29 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+// AppKit decides whether the app uses the macOS 26 design language — Liquid Glass on the system
+// controls, which is what a slider, a popup button and an outline view are — from the SDK version
+// recorded in the executable's `LC_BUILD_VERSION`. SwiftPM links with
+// `--target=arm64-apple-macos14.0`, and clang then records the *deployment target* as the build SDK:
+// measured on this package, the binary said `minos 14.0, sdk 14.0`, and on macOS 27 every system
+// control stayed in the pre-26 compatibility look while only the explicitly created
+// `NSGlassEffectView` surfaces (the dock, the drawer) showed glass. Measured with the same source
+// and OS, naming the real platform version changes the controls' own metrics — `sdk 14.0` gives an
+// `NSSlider` a 24 pt knob and a 28 pt fitting height, `sdk 26.0` gives it 20 pt and 16 pt.
+//
+// The deployment target stays 14.0: only the *build* SDK is named, so the app still launches on
+// macOS 14. 26.0 is the minimum that enables the design and is never an over-claim:
+// `MaterialHostView` uses `NSGlassEffectView`, which does not compile against an older SDK, so the
+// build already requires Xcode 26 or later.
+//
+// Applied to the test target as well, so the tests measure the control metrics the shipped app uses.
+// SwiftPM also propagates the executable target's unsafe flags to it, so this line is explicit
+// rather than load-bearing — but it is the one that keeps `swift test` honest if that changes.
+let liquidGlassDesignLinkerSettings: [LinkerSetting] = [
+    .unsafeFlags(["-Xlinker", "-platform_version", "-Xlinker", "macos",
+                  "-Xlinker", "14.0", "-Xlinker", "26.0"]),
+]
+
 let package = Package(
     name: "PicViewMac",
     platforms: [.macOS(.v14)],
@@ -29,13 +52,15 @@ let package = Package(
             // source is the development fallback. Nothing on the runtime path may use
             // the generated `Bundle.module` accessor — it traps when the bundle is
             // missing (see MetalLibraryLocator).
-            resources: [.copy("Shaders/ImageShaders.metal")]
+            resources: [.copy("Shaders/ImageShaders.metal")],
+            linkerSettings: liquidGlassDesignLinkerSettings
         ),
         .testTarget(
             name: "PicViewMacTests",
             dependencies: ["PicViewMac", "PicPNGStream"],
             path: "PicViewMacTests",
-            resources: [.copy("Fixtures")]
+            resources: [.copy("Fixtures")],
+            linkerSettings: liquidGlassDesignLinkerSettings
         ),
     ]
 )
