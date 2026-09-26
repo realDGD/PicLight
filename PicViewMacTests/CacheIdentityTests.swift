@@ -23,20 +23,20 @@ final class CacheIdentityTests: XCTestCase {
     func testLevelsDoNotAlias() {
         let cache = DecodeCache()
         let url = URL(fileURLWithPath: "/tmp/identity.png")
-        let bounded = DecodeCacheKey(url: url, level: .bucket(4096))
+        let bounded = DecodeCacheKey(url: url, version: "v", level: .bucket(4096))
         cache.store(head: syntheticHead(), for: bounded)
 
         XCTAssertNotNil(cache.head(for: bounded))
-        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, level: .bucket(8192))),
+        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, version: "v", level: .bucket(8192))),
                      "a 4096 entry must not satisfy an 8192 request")
-        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, level: .native)))
+        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, version: "v", level: .native)))
     }
 
     func testPagesDoNotAlias() {
         let cache = DecodeCache()
         let url = URL(fileURLWithPath: "/tmp/identity.png")
-        let page0 = DecodeCacheKey(url: url, pageIndex: 0, level: .native)
-        let page1 = DecodeCacheKey(url: url, pageIndex: 1, level: .native)
+        let page0 = DecodeCacheKey(url: url, version: "v", pageIndex: 0, level: .native)
+        let page1 = DecodeCacheKey(url: url, version: "v", pageIndex: 1, level: .native)
         cache.store(head: syntheticHead(), for: page0)
 
         XCTAssertNotNil(cache.head(for: page0))
@@ -46,14 +46,14 @@ final class CacheIdentityTests: XCTestCase {
     func testFramesCarryLevelAndPageIdentity() {
         let cache = DecodeCache()
         let url = URL(fileURLWithPath: "/tmp/identity.gif")
-        let key = DecodeCacheKey(url: url, level: .native)
+        let key = DecodeCacheKey(url: url, version: "v", level: .native)
         let frame = syntheticHead()
         cache.store(frame: DecodedFrame(image: frame.image, index: 2, duration: 0.1), for: key)
 
         XCTAssertNotNil(cache.frame(for: key, index: 2))
-        XCTAssertNil(cache.frame(for: DecodeCacheKey(url: url, level: .bucket(4096)), index: 2),
+        XCTAssertNil(cache.frame(for: DecodeCacheKey(url: url, version: "v", level: .bucket(4096)), index: 2),
                      "frame identity includes the level")
-        XCTAssertNil(cache.frame(for: DecodeCacheKey(url: url, pageIndex: 1, level: .native), index: 2),
+        XCTAssertNil(cache.frame(for: DecodeCacheKey(url: url, version: "v", pageIndex: 1, level: .native), index: 2),
                      "and the page")
     }
 
@@ -62,10 +62,10 @@ final class CacheIdentityTests: XCTestCase {
     func testPurgeKeepsTheCurrentPageAndLevel() {
         let cache = DecodeCache()
         let url = URL(fileURLWithPath: "/tmp/identity.png")
-        let onScreen = DecodeCacheKey(url: url, pageIndex: 0, level: .bucket(8192))
-        let otherLevel = DecodeCacheKey(url: url, pageIndex: 0, level: .bucket(4096))
-        let otherPage = DecodeCacheKey(url: url, pageIndex: 1, level: .bucket(8192))
-        let otherFile = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/other.png"), level: .native)
+        let onScreen = DecodeCacheKey(url: url, version: "v", pageIndex: 0, level: .bucket(8192))
+        let otherLevel = DecodeCacheKey(url: url, version: "v", pageIndex: 0, level: .bucket(4096))
+        let otherPage = DecodeCacheKey(url: url, version: "v", pageIndex: 1, level: .bucket(8192))
+        let otherFile = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/other.png"), version: "v", level: .native)
         for key in [onScreen, otherLevel, otherPage, otherFile] {
             cache.store(head: syntheticHead(), for: key)
         }
@@ -81,7 +81,7 @@ final class CacheIdentityTests: XCTestCase {
 
     func testPurgeKeepingNothingEmptiesTheCache() {
         let cache = DecodeCache()
-        let key = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/identity.png"), level: .native)
+        let key = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/identity.png"), version: "v", level: .native)
         cache.store(head: syntheticHead(), for: key)
         cache.purge(keeping: nil)
         XCTAssertNil(cache.head(for: key))
@@ -101,8 +101,8 @@ final class CacheIdentityTests: XCTestCase {
     /// against a 384 MiB budget.)
     func testOversizedEntryDoesNotPoisonTheCache() {
         let cache = DecodeCache(totalCostLimit: 64 * 1024)      // 64 KiB
-        let big = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/big.png"), level: .native)
-        let small = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/small.png"), level: .native)
+        let big = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/big.png"), version: "v", level: .native)
+        let small = DecodeCacheKey(url: URL(fileURLWithPath: "/tmp/small.png"), version: "v", level: .native)
         cache.store(head: syntheticHead(width: 512, height: 512), for: big)     // 1 MiB, way over budget
         cache.store(head: syntheticHead(), for: small)                          // ~3 KiB, fits
         XCTAssertNotNil(cache.head(for: small),

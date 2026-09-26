@@ -44,7 +44,7 @@ final class CacheInvariantTests: XCTestCase {
         let decoder = ImageIODecoder()
         let first = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.png"),
                                                                   target: .fullResolution)
-        let key = DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)
+        let key = DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native)
         cache.setCurrent(key)
         cache.store(head: first, for: key)
         XCTAssertNotNil(cache.head(for: key))
@@ -61,8 +61,8 @@ final class CacheInvariantTests: XCTestCase {
                                                                     target: .fullResolution)
         let other = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.bmp"),
                                                                   target: .fullResolution)
-        let currentKey = DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)
-        let otherKey = DecodeCacheKey(url: Fixtures.url("static.bmp"), level: .native)
+        let currentKey = DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native)
+        let otherKey = DecodeCacheKey(url: Fixtures.url("static.bmp"), version: "v", level: .native)
         cache.setCurrent(currentKey)
         cache.store(head: current, for: currentKey)
         cache.store(head: other, for: otherKey)
@@ -79,7 +79,7 @@ final class CacheInvariantTests: XCTestCase {
         let decoder = ImageIODecoder()
         let head = try await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
         let frame = try await decoder.decodeFrame(url, index: 1)
-        let key = DecodeCacheKey(url: url, level: .native)
+        let key = DecodeCacheKey(url: url, version: "v", level: .native)
         cache.store(head: head, for: key)
         cache.store(frame: frame, for: key)
         XCTAssertNotNil(cache.head(for: key))
@@ -99,14 +99,14 @@ final class CacheInvariantTests: XCTestCase {
 
         _ = try await thumbnails.thumbnail(for: url, maxPixelSize: 64)
         let head = try await decoder.decodeFirstDisplayableFrame(url, target: .fullResolution)
-        cache.store(head: head, for: DecodeCacheKey(url: url, level: .native))
+        cache.store(head: head, for: DecodeCacheKey(url: url, version: "v", level: .native))
 
         await thumbnails.purge()
-        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: url, level: .native)),
+        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: url, version: "v", level: .native)),
                         "purging thumbnails must not empty the image cache")
 
         cache.purge(keeping: nil)
-        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, level: .native)))
+        XCTAssertNil(cache.head(for: DecodeCacheKey(url: url, version: "v", level: .native)))
         let thumbnailAgain = try await thumbnails.thumbnail(for: url, maxPixelSize: 64)
         XCTAssertGreaterThan(thumbnailAgain.width, 0, "thumbnails remain available after a cache purge")
     }
