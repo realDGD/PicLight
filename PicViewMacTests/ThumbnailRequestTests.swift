@@ -38,6 +38,7 @@ final class ThumbnailRequestTests: XCTestCase {
         // A window that releases itself on close leaves the table view dangling: closing it in the
         // test teardown then crashes in objc_release.
         window.isReleasedWhenClosed = false
+        TestAppKit.prepareForOffScreen(window)
         let drawer = ThumbnailDrawerView()
         drawer.frame = NSRect(x: 0, y: 0, width: 200, height: height)
         window.contentView = drawer

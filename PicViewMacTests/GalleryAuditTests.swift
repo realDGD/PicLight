@@ -77,6 +77,7 @@ private func presentOffScreen(_ view: NSView, size: NSSize = NSSize(width: 1200,
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                           styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
+    TestAppKit.prepareForOffScreen(window)
     window.contentView = view
     window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
     window.makeKeyAndOrderFront(nil)
