@@ -67,6 +67,9 @@
 | 3（修掉连带回归后） | `swift test` | 836 用例 / 9 用例失败（全部为 `TilePlanAndRedrawTests` 超时） | `/tmp/piclight-fulltest3.log` |
 | 4（测试侧动画收尾后） | `swift test` | 836 用例 / 同样 9 个瓦片用例超时 | `/tmp/piclight-fulltest4.log` |
 | 5（对照实验：排除本轮新增的 7 个测试类） | `swift test --filter "^(?!.*(DimensionProbeLoop|SamePathReplacement|FolderSwitchRace|GallerySyncAndScroll|DrawerThumbnailBudget|FolderTreeSidebar|ModeRoutedCommand)).*"` | 同样的 9 个瓦片用例超时 | `/tmp/piclight-noskip-tests.log` |
+| 6（线程审计定位） | 全量运行中 `sample <xctest-pid> 1 1` | **71 线程 / 65 个阻塞在 `-[NSAnimation _runBlocking]`**，dispatch 软上限 64 已被触及 | `/tmp/piclight-midrun.sample` |
+| 7（关闭离屏窗口动画后） | 全量运行中同法采样 | **28 线程 / 17 个动画（瞬时）**，无软上限告警 | `/tmp/piclight-noanim.sample` |
+| 8（最终） | `swift test` | **839 用例 / 0 失败 / 465 s** | `/tmp/piclight-noanim.log` |
 
 第 2 轮暴露了两个由本轮改动引入的连带回归，均已修复并复测：
 
@@ -74,6 +77,18 @@
 - **一次发布会解码两次**：会话的 `onItemsChanged` 与 `onCurrentChanged` 都会询问「屏幕上的图对不对」，同一文件因此被请求两次（`ResizeWiringTests` 期望 1 次解码、`NativeDetailWiringTests` 期望 1 次 head 请求）。现在用 `requestedItem`（url + version）记录进行中的请求，第二次询问直接返回。
 
 第 3 轮的失败集中在 `TilePlanAndRedrawTests`（Metal 瓦片用例，与本轮改动无关：它们单独运行 16/16 通过、耗时 0.2 s）。按第 6 节的采样证据（64 个线程池线程阻塞在 `-[NSAnimation _runBlocking]`），这批超时是测试间动画残留导致的线程池耗尽，属测试基础设施问题。本轮已加入测试侧收尾（`TestAppKit.close(_:)` / `settleAnimations(_:)`），并做了定向验证：`GallerySyncAndScrollTests|FolderTreeSidebarTests|ModeRoutedCommandTests|DrawerThumbnailBudgetTests` 之后紧接 `TilePlanAndRedrawTests|TileTextureInvariantTests`，34 项全部通过（瓦片组 0.05 s）。
+
+### Release 基准（T9）
+
+命令：`swift test -c release --filter GalleryPerformanceTests`（3 项通过，日志 `/tmp/piclight-release-perf.log`）。
+
+| 指标 | Debug（修复前） | Release（修复后） |
+|---|---|---|
+| 50,000 项目录，单次缩略图投递 | 28.7 ms | **0.005 ms**（100 次共 0.542 ms），几何重算 **0 次** |
+| `uniformRows` / `adaptiveRows`（50k 项，一次性） | 13.8 ms（仅 uniform） | **3.4 ms / 4.9 ms** |
+| 可见行查询（10,000 行 ×200 次） | 全表过滤 98.8 ms | **二分 0.044 ms**（约 2200×） |
+
+测试同时断言二分查找与线性扫描在 6 个边界矩形上结果完全一致（`testVisibleRowsMatchTheLinearScanAndDoNotScanTheFolder`），并断言 100 次投递最多触发 1 次几何重算。
 
 ## 5. 对方案的评估
 
@@ -83,10 +98,9 @@
 
 ## 6. 未完成项
 
-1. **全量测试的线程池饱和（T10 验证项）**：`TilePlanAndRedrawTests` / `TileTextureInvariantTests` 共 9 项在全量运行中超时（30–80 s），而两组单独运行 **16/16 在 0.2 s 内通过**。
-   - 采样证据（`/tmp/piclight-review-probe/test-hang.sample.txt`）：**64 个 dispatch 工作线程全部阻塞在 `-[NSAnimation _runBlocking]`**（AppKit 阻塞式动画跑在全局队列线程上），主线程正卡在该用例 20 s 的信号量等待里。
-   - 对照实验（运行记录第 5 轮）：**排除本轮新增的 7 个测试类后，同样这 9 项仍然超时** —— 与本轮改动无关，是既有的测试间动画残留。
-   - 已尝试的缓解：新增测试统一用 `TestAppKit.close(_:)` 在关窗前让动画收尾；定向组合（新增类 + 瓦片类）34/34 通过（瓦片 0.05 s），但全量下仍复现，说明残留来自更早的其他用例。
-   - 下一步（未做）：在全量运行中按类二分，找出启动「不会结束的 AppKit 动画」的用例，并让它在结束时收尾；`NSView.animator()` 的隐式动画在测试进程里需要更彻底的禁用或收尾。
-2. **Release 性能基准（T9）**：布局缓存的效果目前由「重算次数」断言保证；Release 下的毫秒分布未测。
+1. ~~全量测试的线程池饱和（T10 验证项）~~ **已定位并修复**。
+   - 症状：`TilePlanAndRedrawTests` / `TileTextureInvariantTests` 在全量运行中超时（30–80 s），单独运行 16/16 通过（0.2 s）。
+   - 过程与证据：① 对照实验证明与本轮新增测试无关（排除后同样失败）；② 在失败运行中 `sample` 进程，得到 **71 线程、其中 65 个阻塞在 `-[NSAnimation _runBlocking]`**，dispatch 软上限 64 已被触及，主线程正卡在该用例的 20 s 信号量等待里；③ 定位到原因：`NSWindow.animationBehavior` 默认对 order-front/close 做动画，而测试窗口被移到屏幕外后关闭，该动画永远无法完成，于是**每个测试窗口都留下一个阻塞在动画驱动里的线程池线程**；④ 修复：测试侧统一设置 `animationBehavior = .none`（`TestAppKit.prepareForOffScreen`），并在关窗前让动画收尾（`TestAppKit.close`）。
+   - 修复后：同样时机采样为 **28 线程 / 17 个瞬时动画、无软上限告警**；全量 **839 用例 / 0 失败 / 465 s**。线程峰值由 `ThreadAudit` 在每次运行时打印（`THREAD-AUDIT peak N threads`），防止回归。
+2. **Release 性能基准（T9）**：布局缓存的效果由「重算次数」断言保证（`GalleryPerformanceTests.testDeliveriesDoNotRebuildGeometry`）；Release 下的毫秒分布见下方「Release 基准」。该文件同时断言二分查找与线性扫描在边界处结果一致，避免用性能换正确性。
 3. **人工验收**：M01（真实按键切换左栏）、M02（深层目录/符号链接下的树行为）。
