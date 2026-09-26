@@ -71,12 +71,17 @@ final class FolderBrowserViewController {
         view.onThumbnailSizeChanged = { [weak self] size in
             guard let self, let host = self.host else { return }
             // Live reflow: geometry only, no decode. The grid follows the slider; the sharper
-            // thumbnails wait for it to settle.
+            // thumbnails wait for it to settle. The retention window is held open for the gesture:
+            // the reflow shrinks it as the thumbnails grow, and trimming mid-drag would evict what
+            // the same drag needs again on the way back.
             host.galleryThumbnailSize = size
+            self.view.gallery.setRetentionPaused(true)
             self.view.gallery.setThumbnailSize(size)
         }
         view.onThumbnailSizeSettled = { [weak self] size in
-            self?.scheduleThumbnailResolution(for: size)
+            guard let self else { return }
+            self.view.gallery.setRetentionPaused(false)
+            self.scheduleThumbnailResolution(for: size)
         }
         view.onSortKeyChanged = { [weak self] key in
             guard let self, let host = self.host else { return }
@@ -151,6 +156,8 @@ final class FolderBrowserViewController {
                              currentIndex: host.session.currentIndex,
                              layoutKind: host.galleryLayoutKind,
                              thumbnailSize: host.galleryThumbnailSize)
+        // A reload is not part of a drag: whatever gesture was in progress is over.
+        view.gallery.setRetentionPaused(false)
         let folder = host.session.directory ?? host.session.currentItem?.url.deletingLastPathComponent()
         if let folder { tree.focus(on: folder) }
         view.treeSidebar.update(nodes: tree.visibleNodes, currentPath: tree.currentFolderPath)
@@ -260,14 +267,24 @@ final class FolderBrowserViewController {
         guard let host else { return }
         let path = item.url.path
         let identity = SourceFileIdentity.read(at: item.url)
-        // Good enough already: the same file, decoded at a resolution at least this sharp.
-        if let delivered = view.gallery.deliveredThumbnail(for: item.url),
-           delivered.pixelSize >= maxPixelSize, delivered.versionToken == identity.versionToken {
-            return
+        if let delivered = view.gallery.deliveredThumbnail(for: item.url) {
+            // Good enough already: the same file, decoded at a resolution at least this sharp.
+            if delivered.versionToken == identity.versionToken, delivered.pixelSize >= maxPixelSize {
+                return
+            }
+            // Stale (the file changed) must never be served again, so it goes.
+            //
+            // Merely *too small* must not: it is still a picture of this file, and dropping it
+            // before the sharper decode exists is what made the grid flash. The slider's settle
+            // upgrades every thumbnail in the window at once, and a reflow after that (the next
+            // drag) re-materializes cells — each one found the window empty and drew a blank until
+            // its decode landed. Keeping the old tier means those cells keep showing a slightly
+            // soft thumbnail and the sharper delivery replaces it in place. A failed decode then
+            // leaves the old image up instead of leaving a hole.
+            if delivered.versionToken != identity.versionToken {
+                view.gallery.dropDelivered(for: item.url)
+            }
         }
-        // Stale (the file changed) or too small (the slider grew): it must never be served again,
-        // so forget it and ask for a fresh, sharper one.
-        view.gallery.dropDelivered(for: item.url)
         if let inFlight = pending[path], inFlight.maxPixelSize >= maxPixelSize { return }
         requestGeneration += 1
         let generation = requestGeneration
@@ -333,6 +350,7 @@ final class FolderBrowserViewController {
         dimensionsWorkItem?.cancel()
         dimensionsWorkItem = nil
         pending.removeAll()
+        view.gallery.setRetentionPaused(false)
         host?.cancelGalleryThumbnails()
     }
 

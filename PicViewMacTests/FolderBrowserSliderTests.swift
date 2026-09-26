@@ -135,6 +135,30 @@ final class FolderBrowserSliderTests: XCTestCase {
                              "the settle is what escalates the resolution")
     }
 
+    /// The settle is only reachable if something reports the end of the drag.
+    ///
+    /// `NSSliderCell` tracks the pointer itself, so the control's `mouseUp` never runs after a drag:
+    /// the slider has to report the end from its own tracking loop. Nothing did, and the whole
+    /// settle path — the debounce the spec asks for, the sharper tier — was dead code.
+    func testTheSliderReportsTheEndOfADrag() throws {
+        let (directory, controller, _, browser) = try makeViewer(4)
+        defer { cleanup(directory, controller) }
+        let slider = try XCTUnwrap(browser.view.thumbnailSizeSlider as? ThumbnailSizeSlider,
+                                   "the size slider must be the one that reports its drag ending")
+        let dragEnded = try XCTUnwrap(slider.onTrackingEnded,
+                                      "without this hook nothing ever calls noteSliderDragEnded")
+
+        var settled: [CGFloat] = []
+        browser.view.onThumbnailSizeSettled = { settled.append($0) }
+        // The way the real gesture arrives: the slider's value has already moved, then the drag
+        // ends and the settle reports where it landed.
+        browser.view.onThumbnailSizeChanged?(200)
+        slider.doubleValue = 200
+        dragEnded()
+        XCTAssertEqual(settled, [200],
+                       "the drag's end is the settle the resolution escalation waits for")
+    }
+
     /// Choosing a layout switches the geometry, and the choice is remembered for the window.
     ///
     /// The folder holds a wide and a tall image, so the two layouts really do differ: with every

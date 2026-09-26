@@ -181,6 +181,17 @@ final class GalleryGridView: NSView {
         needsLayout = true
     }
 
+    /// Holds the retention window open for the duration of a slider drag. See
+    /// `trimDeliveredToWindow`.
+    private(set) var isRetentionPaused = false
+
+    func setRetentionPaused(_ paused: Bool) {
+        guard paused != isRetentionPaused else { return }
+        isRetentionPaused = paused
+        // The drag is over: the window it ended on is what gets retained.
+        if !paused { trimDeliveredToWindow() }
+    }
+
     func setLayoutKind(_ kind: GalleryLayoutKind) {
         guard kind != layoutKind else { return }
         layoutKind = kind
@@ -244,8 +255,13 @@ final class GalleryGridView: NSView {
         return bounds.width
     }
 
+    /// How many layout passes this grid has run. Exposed so a test can tell "the reflow produced the
+    /// right geometry" from "no reflow happened at all" — the two look identical from the frame.
+    private(set) var layoutPassCountForTesting = 0
+
     override func layout() {
         super.layout()
+        layoutPassCountForTesting += 1
         let width = layoutWidth
         let rows = GalleryLayout.rows(for: layoutKind, aspects: aspects, containerWidth: width,
                                       thumbnailSize: thumbnailSize)
@@ -318,6 +334,12 @@ final class GalleryGridView: NSView {
     /// constant of the viewport, never by the folder's size — while small folders keep their
     /// thumbnails through a reflow.
     private func trimDeliveredToWindow() {
+        // A drag in progress must not evict. The cap is a function of the window size, and a
+        // reflow that grows the thumbnails shrinks the window — so a mid-drag trim would cut the
+        // retained set down to the smaller window and throw away exactly the thumbnails the same
+        // drag is about to need again on the way back. The pause lasts only while the pointer is
+        // down; the settle lifts it and trims to the window the drag ended on.
+        guard !isRetentionPaused else { return }
         let window = thumbnailWindowIndexes
         // No layout yet (or a degenerate one): there is no window to keep, so nothing to evict.
         guard !window.isEmpty else { return }
@@ -356,17 +378,39 @@ final class GalleryGridView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        // Scrolling changes the visible rectangle without a layout pass on the document view.
+        // Two different changes need a layout pass on the document view, and the clip view posts
+        // them as two different notifications.
+        //
+        // Scrolling changes the visible *rectangle* (a bounds change) without a layout pass on the
+        // document view, which is what materializes the cells that scrolled in.
+        //
+        // A *resize* of the content area changes the width every row is computed for — and the clip
+        // view does not post a bounds change for it: measured, closing the folder tree produced one
+        // `frameDidChangeNotification` and zero bounds notifications. Watching only the bounds is
+        // why hiding the tree left the grid laid out for the narrow width: the 200 pt it gave back
+        // was never used, because no layout pass ever ran. `layoutWidth` reads the scroll view, so a
+        // pass is all that is needed.
         let center = NotificationCenter.default
         center.removeObserver(self, name: NSView.boundsDidChangeNotification, object: nil)
+        center.removeObserver(self, name: NSView.frameDidChangeNotification, object: nil)
         guard let scrollView = enclosingScrollView else { return }
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.contentView.postsFrameChangedNotifications = true
         center.addObserver(self, selector: #selector(scrollViewDidScroll),
                            name: NSView.boundsDidChangeNotification,
+                           object: scrollView.contentView)
+        center.addObserver(self, selector: #selector(contentAreaDidResize),
+                           name: NSView.frameDidChangeNotification,
                            object: scrollView.contentView)
     }
 
     @objc private func scrollViewDidScroll() {
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    /// The scroll view's content area changed size: the row geometry belongs to the old width.
+    @objc private func contentAreaDidResize() {
         needsLayout = true
         layoutSubtreeIfNeeded()
     }

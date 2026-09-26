@@ -53,7 +53,7 @@ public final class FolderBrowserView: NSView {
     private let backButton = DockButton(symbol: "chevron.left", tooltip: "返回图像视图")
     private let uniformButton = DockButton(symbol: "square.grid.2x2", tooltip: "规则网格")
     private let adaptiveButton = DockButton(symbol: "rectangle.grid.1x2", tooltip: "自适应网格")
-    private let sizeSlider = NSSlider()
+    private let sizeSlider = ThumbnailSizeSlider()
     private let titleLabel = NSTextField(labelWithString: "")
     private let sortKeyPopup = NSPopUpButton()
     private let sortDirectionButton = DockButton(symbol: "arrow.up.arrow.down", tooltip: "排序方向")
@@ -116,6 +116,9 @@ public final class FolderBrowserView: NSView {
         sizeSlider.widthAnchor.constraint(equalToConstant: 120).isActive = true
         sizeSlider.toolTip = "缩略图大小"
         sizeSlider.setAccessibilityLabel("缩略图大小")
+        // The slider's own cell tracks the pointer, so the control's `mouseUp` never runs after a
+        // drag; the tracking loop returns from `mouseDown`, which is where the drag really ends.
+        sizeSlider.onTrackingEnded = { [weak self] in self?.noteSliderDragEnded() }
 
         titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
         titleLabel.textColor = .secondaryLabelColor
@@ -345,4 +348,24 @@ public final class FolderBrowserView: NSView {
     var sortDirectionControl: DockButton { sortDirectionButton }
     var toolbarViews: [NSView] { [backButton, uniformButton, adaptiveButton, sizeSlider,
                                    titleLabel, sortKeyPopup, sortDirectionButton] }
+}
+
+/// The gallery's size slider, with a real end-of-drag signal.
+///
+/// `NSSliderCell` runs its own tracking loop inside `mouseDown`, so the control's `mouseUp` never
+/// fires after a drag and there is no delegate for "the pointer came up". The loop *returns* from
+/// `super.mouseDown`, and that is the drag's end.
+///
+/// This exists because nothing called `noteSliderDragEnded` at all: the whole settle path — the
+/// debounce the spec asks for, `scheduleThumbnailResolution`, the sharper tier a larger slider is
+/// supposed to request — was dead code. A drag reflowed the grid live and then never asked for a
+/// sharper thumbnail, so the visible thumbnails stayed at whatever tier they happened to be decoded
+/// at while the cells were being reflowed.
+final class ThumbnailSizeSlider: NSSlider {
+    var onTrackingEnded: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        onTrackingEnded?()
+    }
 }
