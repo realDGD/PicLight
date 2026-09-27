@@ -130,6 +130,81 @@ final class ThumbnailDiskCacheTests: XCTestCase {
     }
 }
 
+/// A stored thumbnail that cannot be a picture of its source is never served.
+///
+/// This is the bug that was reported from the app: the cell for a 48,000 × 32,000 PNG showed the JPEG
+/// that happened to be open. The wrong pixels were written under the right key by an earlier build's
+/// fast path, and because the store is on disk they came back after every relaunch — even once the
+/// code that wrote them was fixed. Two things prevent that now: the format version retires everything
+/// an older layout wrote, and a stored entry whose shape is not the source's is a miss.
+final class ThumbnailDiskCacheIntegrityTests: XCTestCase {
+
+    private func solidImage(width: Int, height: Int) -> CGImage {
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(red: 0.3, green: 0.6, blue: 0.9, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()!
+    }
+
+    func testAWronglyStoredEntryIsNeverServedAndIsDeleted() throws {
+        let directory = try Fixtures.makeScratchDirectory("thumb-integrity")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = ThumbnailDiskCache(directory: directory)
+        // The reported entry, to scale: a 48,000 × 32,000 source (1.5) whose key held the open JPEG's
+        // thumbnail, 317 × 203 (1.5615) — a 4 % difference, well outside the rounding tolerance.
+        cache.store(solidImage(width: 317, height: 203), forKey: "source|317")
+        XCTAssertNotNil(cache.thumbnail(forKey: "source|317"),
+                        "precondition: it is readable when nothing is known about the source")
+
+        XCTAssertNil(cache.thumbnail(forKey: "source|317", expectedAspect: 48000.0 / 32000.0),
+                     "317 × 203 is not a thumbnail of a 1.5:1 source")
+        XCTAssertEqual(cache.entryCount, 0, "and it is thrown away, so the right one can be written")
+    }
+
+    func testACorrectEntrySurvivesTheShapeCheck() throws {
+        let directory = try Fixtures.makeScratchDirectory("thumb-integrity-ok")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = ThumbnailDiskCache(directory: directory)
+        cache.store(solidImage(width: 320, height: 213), forKey: "source|320")
+
+        XCTAssertNotNil(cache.thumbnail(forKey: "source|320", expectedAspect: 1.5),
+                        "the same shape is served")
+        // A rotated source legitimately stores the transposed shape.
+        cache.store(solidImage(width: 213, height: 320), forKey: "rotated|320")
+        XCTAssertNotNil(cache.thumbnail(forKey: "rotated|320", expectedAspect: 1.5),
+                        "a quarter turn is a real thumbnail of a 1.5:1 source")
+        // Rounding to whole pixels must not trip the check.
+        cache.store(solidImage(width: 320, height: 205), forKey: "jpg|320")
+        XCTAssertNotNil(cache.thumbnail(forKey: "jpg|320", expectedAspect: 1946.0 / 1248.0),
+                        "1946 × 1248 rounds to 320 × 205 without a false miss")
+    }
+
+    func testANewFormatVersionRetiresWhatAnOlderOneWrote() throws {
+        let directory = try Fixtures.makeScratchDirectory("thumb-format")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = ThumbnailDiskCache(directory: directory)
+        first.store(solidImage(width: 64, height: 64), forKey: "anything|160")
+        XCTAssertNotNil(first.thumbnail(forKey: "anything|160"))
+
+        // Another layout: an older build's marker and an entry it wrote. Opening the store now has to
+        // clear the directory — nothing from that layout can be trusted to mean the same thing.
+        let stale = directory.appendingPathComponent("stale-entry.png")
+        try Data([0x00]).write(to: stale)
+        try "1".write(to: directory.appendingPathComponent("format-version"),
+                      atomically: true, encoding: .utf8)
+        let second = ThumbnailDiskCache(directory: directory)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path),
+                       "an entry from another format is removed, not read")
+        XCTAssertNil(second.thumbnail(forKey: "anything|160"),
+                     "and what the older layout wrote is gone with it")
+        second.store(solidImage(width: 64, height: 64), forKey: "anything|160")
+        XCTAssertNotNil(second.thumbnail(forKey: "anything|160"),
+                        "while the current format works as usual")
+    }
+}
+
 /// The decode bound: a folder of large images asks for one thumbnail per visible cell, and they must
 /// not all decode at once.
 final class ThumbnailDecodeBoundTests: XCTestCase {

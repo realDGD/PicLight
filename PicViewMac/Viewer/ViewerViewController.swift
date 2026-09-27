@@ -1792,7 +1792,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// thumbnail request and could "pass" while proving nothing.
     func thumbnailImage(for item: FolderItem) async -> CGImage? {
         if let hook = thumbnailPauseHook { await hook() }
-        if item.url == session.currentItem?.url, let bitmap = viewerState.currentImage {
+        // The *displayed* file, not the selected one: a selection that has moved onto a file still
+        // decoding would otherwise be shown the previous picture's pixels.
+        if item.url == session.currentItem?.url,
+           let bitmap = viewerState.currentImage {
             return await thumbnails.preview(from: bitmap, maxPixelSize: Self.drawerThumbnailPixelSize)
         }
         if await probe.isOversized(item.url) { return nil }
@@ -2717,7 +2720,14 @@ extension ViewerViewController: FolderBrowserHost {
         // makes the drawer's own current cell instant, and it is the only way a grid cell can be
         // filled at all for a file whose thumbnail would cost a whole-stream decode. The result is
         // remembered at this size, so the grid and the drawer are free from then on.
-        if item.url == session.currentItem?.url, let bitmap = viewerState.currentImage {
+        //
+        // "On screen" is `displayedItem*`, not the session's selection: while a large file decodes
+        // — measured at ~20 s for a 1.9 GB PNG — the canvas still holds the *previous* picture, and
+        // resampling that for the newly selected file put another image's thumbnail in the cell
+        // (reported: the cell for a 48,000 × 32,000 PNG showed the JPEG that was open before it).
+        if item.url == displayedItemURL,
+           SourceFileIdentity.read(at: item.url).versionToken == displayedItemVersion,
+           let bitmap = viewerState.currentImage {
             let preview = Task { [weak self] in
                 guard let self else { return }
                 let image = await self.thumbnails.preview(from: bitmap, maxPixelSize: maxPixelSize)

@@ -45,7 +45,12 @@ public actor ThumbnailPipeline {
         let cacheKey = key as String
         let diskCache = self.diskCache
         let task = Task.detached(priority: .utility) { () -> CGImage? in
-            if let onDisk = diskCache?.thumbnail(forKey: cacheKey) {
+            // The source's shape, read from the image header: one cheap read that makes a wrongly
+            // stored entry detectable (see `ThumbnailDiskCache.thumbnail(forKey:expectedAspect:)`).
+            let expectedAspect = ImageHeaderProbe.pixelSize(of: url).flatMap { size -> CGFloat? in
+                size.height > 0 ? size.width / size.height : nil
+            }
+            if let onDisk = diskCache?.thumbnail(forKey: cacheKey, expectedAspect: expectedAspect) {
                 ThumbnailPipelineMetrics.noteDiskCacheHit()
                 return onDisk
             }

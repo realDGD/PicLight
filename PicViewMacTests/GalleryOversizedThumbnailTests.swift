@@ -196,3 +196,124 @@ final class GalleryOversizedThumbnailTests: XCTestCase {
         XCTAssertNil(gallery.cellForTesting(at: oversizedIndex)?.loadingCaptionForTesting)
     }
 }
+
+/// The report this guard exists for: a grid cell showed the thumbnail of a *different* picture.
+///
+/// Reported exactly: with `Doriyanetwork-广州电信.jpg` open, the cell for `万萝图.png`
+/// (48,000 × 32,000) showed the JPEG's thumbnail. The cause was the in-hand-bitmap fast path
+/// comparing the session's *selection*: selecting the huge file moves the selection immediately but
+/// its decode takes tens of seconds, so the canvas still holds the previous picture — and resampling
+/// "the bitmap on screen" produced the previous picture's thumbnail for the new file.
+@MainActor
+final class GalleryStaleThumbnailTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+        ThumbnailPipelineMetrics.reset()
+    }
+
+    private func pump(_ seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    private func waitUntil(_ timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { pump(0.05) }
+        return condition()
+    }
+
+    /// Writes a solid PNG. `oversized` is achieved with a long edge above
+    /// `DecodeBudget.maximumLongEdge`; the extra height is what makes its decode slow enough for the
+    /// "selection moved, bitmap not updated yet" state to be entered deliberately.
+    private func writeSolidPNG(_ url: URL, width: Int, height: Int,
+                               red: CGFloat, green: CGFloat, blue: CGFloat) throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: red, green: green, blue: blue, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(
+            url as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
+    /// The colour at the centre of an image, so a delivery can be attributed to a picture.
+    private func centreColor(of image: CGImage?) -> (r: CGFloat, g: CGFloat, b: CGFloat)? {
+        guard let image else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let context = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8,
+                                      bytesPerRow: 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (CGFloat(pixel[0]) / 255, CGFloat(pixel[1]) / 255, CGFloat(pixel[2]) / 255)
+    }
+
+    func testACellDoesNotBorrowThePreviousPicturesPixels() throws {
+        let directory = try Fixtures.makeScratchDirectory("stale-thumb")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let opened = directory.appendingPathComponent("a-opened.png")
+        let huge = directory.appendingPathComponent("b-huge.png")
+        try writeSolidPNG(opened, width: 900, height: 700, red: 1, green: 0, blue: 0)
+        // Oversized (9000 > 8192) *and* slow enough to decode that the canvas cannot have caught up
+        // by the time the thumbnail is asked for.
+        try writeSolidPNG(huge, width: 9000, height: 3000, red: 0, green: 0, blue: 1)
+
+        let controller = ViewerWindowController()
+        TestAppKit.presentOffScreen(controller)
+        controller.window?.setFrame(NSRect(x: 0, y: 0, width: 1000, height: 800), display: false)
+        controller.showWindow(nil)
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        defer { TestAppKit.close(controller) }
+        viewer.open(url: opened)
+        XCTAssertTrue(waitUntil(15) { viewer.viewerState.currentImage != nil },
+                      "precondition: the first picture is on screen")
+        pump(0.2)
+        let shown = try XCTUnwrap(centreColor(of: viewer.viewerState.currentImage))
+        XCTAssertGreaterThan(shown.r, 0.8, "precondition: the canvas is showing the red picture")
+
+        viewer.perform(.browseFolder)
+        pump(0.8)
+        viewer.view.layoutSubtreeIfNeeded()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let gallery = browser.view.gallery
+        let hugeItem = try XCTUnwrap(gallery.items.first { $0.url.lastPathComponent == "b-huge.png" },
+                                     "the huge file is in the folder")
+
+        // Move the selection onto the huge file and immediately ask for its thumbnail: the decode has
+        // not landed, so the canvas still holds the red picture.
+        viewer.session.select(index: try XCTUnwrap(gallery.items.firstIndex(of: hugeItem)))
+        var delivered: CGImage?
+        var skip: GalleryThumbnailSkip = .none
+        viewer.requestGalleryThumbnail(for: hugeItem, index: 0, maxPixelSize: 320) { _, image, reason in
+            delivered = image
+            skip = reason
+        }
+        XCTAssertTrue(waitUntil(20) { delivered != nil || skip != .none },
+                      "the request was answered")
+        pump(0.3)
+
+        if let color = centreColor(of: delivered) {
+            XCTAssertGreaterThan(color.b, 0.8,
+                                 "a cell may only show the file's *own* pixels, never the previous "
+                                 + "picture's (delivered colour r=\(color.r) g=\(color.g) b=\(color.b))")
+            XCTAssertLessThan(color.r, 0.2, "and certainly not the red picture that was open before")
+        } else {
+            XCTAssertEqual(skip, .oversized,
+                           "no image for an oversized source: the cell says so instead")
+        }
+        XCTAssertTrue(waitUntil(20) {
+            gallery.cellForTesting(at: try! XCTUnwrap(gallery.items.firstIndex(of: hugeItem)))
+                .map { $0.imageForTesting == nil
+                    || self.centreColor(of: $0.imageForTesting?.cgImage(forProposedRect: nil,
+                                                                       context: nil,
+                                                                       hints: nil))
+                        .map { $0.b > 0.8 } == true } ?? true
+        }, "and the cell on screen follows the same rule")
+    }
+}

@@ -24,6 +24,14 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
         return ThumbnailDiskCache(directory: directory)
     }
 
+    /// Bumped when the *meaning* of a stored entry changes. Entries from another format are retired
+    /// at startup: a thumbnail written by an older build cannot be told apart from a correct one by
+    /// looking at it, and one such entry was written — a cell for a 48,000 × 32,000 PNG held the JPEG
+    /// that happened to be open, because the fast path compared the session's *selection* rather than
+    /// what the canvas was showing. That entry then survived every relaunch, which is why the wrong
+    /// thumbnail kept coming back after the code was fixed.
+    public static let formatVersion = 2
+
     public let directory: URL
     private let byteLimit: Int
     private let fileManager: FileManager
@@ -37,18 +45,54 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
         self.byteLimit = byteLimit
         self.fileManager = fileManager
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        retireOlderFormats()
+    }
+
+    /// Empties the directory once per format change, so entries a previous layout wrote can never be
+    /// read under the new one.
+    private func retireOlderFormats() {
+        let marker = directory.appendingPathComponent("format-version")
+        let current = String(Self.formatVersion)
+        if (try? String(contentsOf: marker, encoding: .utf8)) == current { return }
+        for url in (try? fileManager.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil)) ?? [] {
+            try? fileManager.removeItem(at: url)
+        }
+        try? current.write(to: marker, atomically: true, encoding: .utf8)
     }
 
     /// The image stored for this key, or nil. A hit is a file read plus an ImageIO decode of an
     /// already-small image: microseconds against a full source decode.
-    public func thumbnail(forKey key: String) -> CGImage? {
+    ///
+    /// - Parameter expectedAspect: the source's own width ÷ height, when the caller can read it
+    ///   cheaply (the app reads the image header). An entry whose picture has a different shape
+    ///   cannot be a thumbnail of that source, so it is deleted and reported as a miss rather than
+    ///   shown. This is the guard that makes a wrong-but-valid entry impossible to serve, whatever
+    ///   wrote it.
+    public func thumbnail(forKey key: String, expectedAspect: CGFloat? = nil) -> CGImage? {
         let url = fileURL(forKey: key)
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe), !data.isEmpty,
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        guard matches(image, expectedAspect: expectedAspect) else {
+            // Poisoned or stale: out it goes, so the decode path can write the right one.
+            try? fileManager.removeItem(at: url)
+            return nil
+        }
         // Keep it warm for the next prune: usage order, not creation order.
         try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
         return image
+    }
+
+    /// Whether a stored picture has the shape its source does. A quarter-turn is allowed: a thumbnail
+    /// carries the EXIF transform, so a rotated source is legitimately the transposed shape.
+    func matches(_ image: CGImage, expectedAspect: CGFloat?) -> Bool {
+        guard let expectedAspect, expectedAspect > 0, image.height > 0 else { return true }
+        let actual = CGFloat(image.width) / CGFloat(image.height)
+        // Integer rounding moves a 317 px edge by up to a pixel: 1 % covers it, 2 % is generous.
+        let tolerance: CGFloat = 0.02
+        return abs(actual - expectedAspect) <= expectedAspect * tolerance
+            || abs(actual - 1 / expectedAspect) <= (1 / expectedAspect) * tolerance
     }
 
     /// Encodes and stores a thumbnail, and does not return until it is readable.
@@ -137,9 +181,10 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
     }
 
     /// A stable file name for a key, so a version token (which contains path-ish characters) cannot
-    /// escape the directory or collide with another key.
+    /// escape the directory or collide with another key. The format version is part of the hash *and*
+    /// of the directory's marker, so an entry from another layout is neither found nor kept.
     private func fileURL(forKey key: String) -> URL {
-        let digest = SHA256.hash(data: Data(key.utf8))
+        let digest = SHA256.hash(data: Data("v\(Self.formatVersion)|\(key)".utf8))
         let name = digest.map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(name).appendingPathExtension("png")
     }
