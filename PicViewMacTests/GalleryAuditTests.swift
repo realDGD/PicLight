@@ -22,7 +22,8 @@ final class GalleryAuditHost: FolderBrowserHost {
 
     private(set) var requests: [Record] = []
     /// Every completion handed out, in order — a test fires them in whichever order it needs.
-    private(set) var completions: [(url: URL, index: Int, completion: (Int, CGImage?) -> Void)] = []
+    private(set) var completions: [(url: URL, index: Int,
+                                     completion: (Int, CGImage?, GalleryThumbnailSkip) -> Void)] = []
     private(set) var cancelCount = 0
     private(set) var leaves = 0
     /// When set, each request completes immediately with the returned image.
@@ -33,11 +34,11 @@ final class GalleryAuditHost: FolderBrowserHost {
     }
 
     func requestGalleryThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int,
-                                 completion: @escaping (Int, CGImage?) -> Void) {
+                                 completion: @escaping (Int, CGImage?, GalleryThumbnailSkip) -> Void) {
         requests.append(Record(url: item.url, index: index, maxPixelSize: maxPixelSize))
         completions.append((item.url, index, completion))
         if let image = autoDeliver?(item.url, maxPixelSize) {
-            completion(index, image)
+            completion(index, image, .none)
         }
     }
 
@@ -332,9 +333,9 @@ final class GalleryAuditTests: XCTestCase {
         XCTAssertNotNil(lowCompletion)
         XCTAssertNotNil(highCompletion)
         // The new high-res result lands first; the stale low-res completion arrives late.
-        highCompletion!(0, solidImage(width: 640, height: 640, red: 0.1))
+        highCompletion!(0, solidImage(width: 640, height: 640, red: 0.1), .none)
         pump(0.05)
-        lowCompletion!(0, solidImage(width: 160, height: 160, red: 0.9))
+        lowCompletion!(0, solidImage(width: 160, height: 160, red: 0.9), .none)
         pump(0.1)
 
         let cell = try XCTUnwrap(browser.view.gallery.cellForTesting(at: 0))
@@ -371,7 +372,7 @@ final class GalleryAuditTests: XCTestCase {
 
         // Now a completion from folder A's request arrives late.
         if let stale = host.completions.first(where: { $0.url == itemA0.url }) {
-            stale.completion(stale.index, solidImage(width: 64, height: 64, red: 0.95))
+            stale.completion(stale.index, solidImage(width: 64, height: 64, red: 0.95), .none)
         }
         pump(0.1)
         XCTAssertFalse(browser.view.gallery.deliveredPathsForTesting.contains(itemA0.url.path),

@@ -2709,15 +2709,51 @@ extension ViewerViewController: FolderBrowserHost {
     /// for. The drawer's own path is separate only in *which view* it fills; the pipeline and its
     /// cache are the same actor, so a thumbnail decoded for one mode is a hit in the other.
     func requestGalleryThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int,
-                                 completion: @escaping (Int, CGImage?) -> Void) {
+                                 completion: @escaping (Int, CGImage?, GalleryThumbnailSkip) -> Void) {
         galleryThumbnailTasks[item.url.path]?.cancel()
+
+        // The drawer's rule, applied to the grid: the picture on screen is resampled from the bitmap
+        // the canvas already decoded rather than re-reading the whole compressed stream. That is what
+        // makes the drawer's own current cell instant, and it is the only way a grid cell can be
+        // filled at all for a file whose thumbnail would cost a whole-stream decode. The result is
+        // remembered at this size, so the grid and the drawer are free from then on.
+        if item.url == session.currentItem?.url, let bitmap = viewerState.currentImage {
+            let preview = Task { [weak self] in
+                guard let self else { return }
+                let image = await self.thumbnails.preview(from: bitmap, maxPixelSize: maxPixelSize)
+                if let image {
+                    await self.thumbnails.remember(image, for: item.url, maxPixelSize: maxPixelSize)
+                }
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.galleryThumbnailTasks[item.url.path] = nil
+                    completion(index, image, image == nil ? .failed : .none)
+                }
+            }
+            galleryThumbnailTasks[item.url.path] = preview
+            return
+        }
+
         let task = Task { [weak self] in
-            let image = try? await self?.thumbnails.thumbnail(for: item.url,
-                                                              maxPixelSize: maxPixelSize)
+            guard let self else { return }
+            // An oversized source costs the same whole-stream decode at *any* target size — measured
+            // on a real 48,000 × 32,000 PNG: 18.4 s at 320 px, and the same at 64 px and with
+            // `kCGImageSourceSubsampleFactor` 16 — so a grid of them would start one per visible cell
+            // and spend minutes. The drawer already refuses to pay it; the grid now agrees, and the
+            // thumbnail appears as soon as the file is opened, because then its pixels are in hand.
+            if await self.probe.isOversized(item.url) {
+                await MainActor.run {
+                    self.galleryThumbnailTasks[item.url.path] = nil
+                    completion(index, nil, .oversized)
+                }
+                return
+            }
+            let image = try? await self.thumbnails.thumbnail(for: item.url,
+                                                             maxPixelSize: maxPixelSize)
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                self?.galleryThumbnailTasks[item.url.path] = nil
-                completion(index, image)
+                self.galleryThumbnailTasks[item.url.path] = nil
+                completion(index, image, image == nil ? .failed : .none)
             }
         }
         galleryThumbnailTasks[item.url.path] = task

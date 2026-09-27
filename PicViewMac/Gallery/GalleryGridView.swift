@@ -90,14 +90,17 @@ final class GalleryItemView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// - Parameter placeholder: the sentence to show in the image area while there is no thumbnail —
+    ///   "载入中…" while one is being made, the oversized sentence when none will be — or nil to show
+    ///   nothing (a cell that simply has no picture yet).
     func configure(item: FolderItem, thumbnail: CGImage?, isCurrent: Bool,
-                   isLoading: Bool = false, loadingCaption: String = "载入中…") {
+                   placeholder: String? = nil) {
         representedURL = item.url
         nameLabel.stringValue = item.displayName
-        let showingPlaceholder = thumbnail == nil && isLoading
+        let showingPlaceholder = thumbnail == nil && placeholder != nil
         loadingPlate.isHidden = !showingPlaceholder
         loadingLabel.isHidden = !showingPlaceholder
-        loadingLabel.stringValue = loadingCaption
+        loadingLabel.stringValue = placeholder ?? ""
         // The image fills the cell's image area and fits inside it: `GalleryLayout` decided the
         // cell's *shape*, and scaleProportionallyUpOrDown centres the picture inside it, so a wide
         // adaptive cell and a square uniform slot both letterbox rather than crop.
@@ -207,6 +210,7 @@ final class GalleryGridView: NSView {
                 loadingPaths.removeAll()
                 onLoadingChanged?(0)
             }
+            skippedCaptions.removeAll()
         }
         needsLayout = true
     }
@@ -302,8 +306,9 @@ final class GalleryGridView: NSView {
         loadingPaths.remove(url.path)
         guard let cell = visibleCells[index] else { return false }
         let item = items[index]
+        skippedCaptions.removeValue(forKey: url.path)
         cell.configure(item: item, thumbnail: image, isCurrent: index == currentIndex,
-                       isLoading: false, loadingCaption: Self.loadingCaption(for: item))
+                       placeholder: image == nil ? placeholderCaption(for: item) : nil)
         return true
     }
 
@@ -341,6 +346,31 @@ final class GalleryGridView: NSView {
         onLoadingChanged?(loadingPaths.count)
     }
 
+    /// A request was not even started, with the sentence that explains why. The cell keeps a caption
+    /// — it is not "loading" any more, but it is also not a mystery.
+    func noteThumbnailSkipped(for url: URL, caption: String) {
+        loadingPaths.remove(url.path)
+        skippedCaptions[url.path] = caption
+        refreshVisibleCell(for: url)
+        onLoadingChanged?(loadingPaths.count)
+    }
+
+    /// What an oversized source's cell says instead of a picture.
+    ///
+    /// Measured: a 320 px thumbnail of a 48,000 × 32,000 PNG costs ImageIO 18.4 s, and so does a 64 px
+    /// one — the whole stream is read whatever is asked. Opening the file produces the thumbnail from
+    /// the decoded bitmap, so that is what the cell tells the user to do.
+    static let oversizedCaption = "超大图片，打开后生成缩略图"
+
+    /// Cells whose request was skipped, by path, with the sentence they show.
+    private var skippedCaptions: [String: String] = [:]
+
+    /// The caption a cell should show for this item, or nil when it should show nothing (yet).
+    private func placeholderCaption(for item: FolderItem) -> String? {
+        if let skipped = skippedCaptions[item.url.path] { return skipped }
+        return isLoading(item) ? Self.loadingCaption(for: item) : nil
+    }
+
     /// Re-draws one visible cell from its current state. Identity, not row number: the list may have
     /// been resorted since the request went out.
     private func refreshVisibleCell(for url: URL) {
@@ -349,8 +379,7 @@ final class GalleryGridView: NSView {
         let item = items[index]
         cell.configure(item: item, thumbnail: thumbnail(at: index),
                        isCurrent: index == currentIndex,
-                       isLoading: isLoading(item),
-                       loadingCaption: Self.loadingCaption(for: item))
+                       placeholder: placeholderCaption(for: item))
     }
 
     /// What the placeholder says. A picture whose dimensions are known to be enormous gets its own
@@ -458,8 +487,7 @@ final class GalleryGridView: NSView {
                 let item = items[cellFrame.index]
                 cell.configure(item: item, thumbnail: thumbnail(at: cellFrame.index),
                                isCurrent: cellFrame.index == currentIndex,
-                               isLoading: isLoading(item),
-                               loadingCaption: Self.loadingCaption(for: item))
+                               placeholder: placeholderCaption(for: item))
                 addSubview(cell)
                 visibleCells[cellFrame.index] = cell
                 if thumbnail(at: cellFrame.index) == nil { onThumbnailNeeded?(cellFrame.index, item) }

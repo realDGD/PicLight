@@ -5,14 +5,25 @@ import AppKit
 /// The two modes share these four things and are otherwise independent — the spec's requirement
 /// that they must not share a presentation hierarchy is what this protocol makes checkable: the
 /// browser cannot reach the canvas, the dock or the drawer through it.
+/// Why a gallery thumbnail is not coming. The grid shows a different thing in each case, and the
+/// difference matters to the user: an oversized source can be thumbnailed by opening it, a failure
+/// cannot be thumbnailed at all.
+enum GalleryThumbnailSkip {
+    case none
+    /// Too large to thumbnail without reading the whole compressed stream (the drawer's own rule).
+    case oversized
+    /// The decode failed, or the file is gone.
+    case failed
+}
+
 @MainActor
 protocol FolderBrowserHost: AnyObject {
     /// The one folder session both modes read.
     var session: FolderSession { get }
     /// Asks for a thumbnail for a gallery item. The pipeline and its cache are shared with the
     /// drawer, so a thumbnail already decoded for one mode is a cache hit in the other.
-    func requestGalleryThumbnail(for item: FolderItem, index: Int,
-                                 maxPixelSize: Int, completion: @escaping (Int, CGImage?) -> Void)
+    func requestGalleryThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int,
+                                 completion: @escaping (Int, CGImage?, GalleryThumbnailSkip) -> Void)
     /// Cancels any in-flight gallery thumbnails: the browser is going away.
     func cancelGalleryThumbnails()
     /// A folder was chosen in the tree.
@@ -397,7 +408,7 @@ final class FolderBrowserViewController {
         // and an empty cell for that long reads as a broken grid.
         view.gallery.noteThumbnailRequested(for: item.url)
         host.requestGalleryThumbnail(for: item, index: index, maxPixelSize: maxPixelSize) {
-            [weak self] _, image in
+            [weak self] _, image, skip in
             guard let self else { return }
             // Only the newest request for this file may apply. A lower-resolution completion that
             // arrives after the slider moved on, or any completion from a previous folder, is
@@ -406,8 +417,14 @@ final class FolderBrowserViewController {
                   self.pending[path]?.generation == generation else { return }
             self.pending[path] = nil
             guard let image else {
-                // A file that cannot be thumbnailed must not keep its placeholder forever.
-                self.view.gallery.noteThumbnailFailed(for: item.url)
+                // A file that cannot be thumbnailed must not keep its placeholder forever — and an
+                // oversized one says what to do about it.
+                if skip == .oversized {
+                    self.view.gallery.noteThumbnailSkipped(
+                        for: item.url, caption: GalleryGridView.oversizedCaption)
+                } else {
+                    self.view.gallery.noteThumbnailFailed(for: item.url)
+                }
                 return
             }
             self.view.gallery.noteDelivered(image, pixelSize: maxPixelSize,

@@ -67,7 +67,7 @@ final class GalleryReflowStabilityTests: XCTestCase {
         // The first tier arrives by hand, so the grid is showing real thumbnails.
         XCTAssertFalse(host.completions.isEmpty, "the first load asked for thumbnails")
         for entry in host.completions {
-            entry.completion(entry.index, solid(320, red: 0.2))
+            entry.completion(entry.index, solid(320, red: 0.2), .none)
         }
         pump(0.1)
         let grid = browser.view.gallery
@@ -111,7 +111,7 @@ final class GalleryReflowStabilityTests: XCTestCase {
         browser.reload()
         pump(0.3)
         for entry in host.completions {
-            entry.completion(entry.index, solid(320, red: 0.2))
+            entry.completion(entry.index, solid(320, red: 0.2), .none)
         }
         pump(0.1)
 

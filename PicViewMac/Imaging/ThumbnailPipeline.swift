@@ -70,6 +70,19 @@ public actor ThumbnailPipeline {
         return image
     }
 
+    /// Remembers an image the caller derived from pixels it already had, under the same key a decode
+    /// would use — so the next request for this file and size is a cache hit, and the disk copy
+    /// survives the launch.
+    public func remember(_ image: CGImage?, for url: URL, maxPixelSize: Int) {
+        guard let image else { return }
+        let identity = SourceFileIdentity.read(at: url)
+        let key = "\(identity.versionToken)|\(maxPixelSize)"
+        let cost = image.bytesPerRow * image.height
+        cache.setObject(CGImageBox(image), forKey: key as NSString, cost: cost)
+        accounting.noteInsert(cost: cost)
+        diskCache?.store(image, forKey: key)
+    }
+
     /// Downsamples an already-decoded image for the navigator preview. This is a
     /// resample of pixels the viewer already holds, not a second decoder, and it
     /// runs off the main actor.
