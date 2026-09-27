@@ -54,7 +54,23 @@ public class MaterialHostView: NSView {
         case chrome
         case drawer
         case dock
+        /// The image mode's top strip: the *sidebar* material, like the left column.
+        ///
+        /// It is not glass, on any OS. The strip is the titlebar and it carries text that has to be
+        /// read over whatever picture is behind it; glass — clear or regular — is a tint over the image,
+        /// and the file name washed out (reported as "why does the dock read better than the titlebar",
+        /// then "I want it like the left column's background"). `.sidebar` is the material the left
+        /// column uses: more opaque, less of the picture through it, and it is what macOS itself gives a
+        /// window's sidebar. Square, because the strip spans the window rather than floating in it.
+        case titleStrip
     }
+
+    /// Whether this surface is drawn with the regular glass variant rather than the clear one.
+    ///
+    /// Only `.chrome` asks for clear: it is for the overlays that sit *on* a picture and should stay
+    /// out of the way (the minimap). Everything that carries text worth reading — the dock, the
+    /// drawer, the title strip — wants the regular variant's tint and blur.
+    public var usesRegularGlass: Bool { style != .chrome }
 
     public let style: Style
 
@@ -79,6 +95,13 @@ public class MaterialHostView: NSView {
 
     /// The corner radius applied to the system surface, for tests and for callers
     /// that reshape the container after construction.
+    /// Whether this surface is drawn with the OS's own material rather than glass, and which material.
+    /// The title strip is the case that matters: it must read like the left column, not like a tint over
+    /// the picture.
+    public var isSidebarMaterial: Bool {
+        effectView?.material == .sidebar && effectView?.blendingMode == .withinWindow
+    }
+
     public func setCornerRadius(_ radius: CGFloat) {
         if #available(macOS 26.0, *), let glass = glassView as? NSGlassEffectView {
             glass.cornerRadius = radius
@@ -92,10 +115,13 @@ public class MaterialHostView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
 
-        if #available(macOS 26.0, *), style != .hud {
+        // `.titleStrip` deliberately stays on the system-material path even where glass exists: see the
+        // style's own comment.
+        if #available(macOS 26.0, *), style != .hud, style != .titleStrip {
             let glass = NSGlassEffectView()
-            glass.style = style == .chrome ? .clear : .regular
-            glass.cornerRadius = style == .drawer ? 0 : 10
+            glass.style = usesRegularGlass ? .regular : .clear
+            let square = style == .drawer || style == .titleStrip
+            glass.cornerRadius = square ? 0 : 10
             glass.translatesAutoresizingMaskIntoConstraints = false
             addSubview(glass)
             NSLayoutConstraint.activate([
@@ -107,7 +133,11 @@ public class MaterialHostView: NSView {
             glassView = glass
         } else {
             let effect = NSVisualEffectView()
-            effect.material = style == .drawer ? .sidebar : .hudWindow
+            // The strip takes the left column's material; the column itself blurs what is behind the
+            // *window*, which is right for a column at the window's edge and wrong for a strip over the
+            // picture the window is showing.
+            let sidebarLike = style == .drawer || style == .titleStrip
+            effect.material = sidebarLike ? .sidebar : .hudWindow
             effect.blendingMode = style == .drawer ? .behindWindow : .withinWindow
             effect.state = .followsWindowActiveState
             effect.translatesAutoresizingMaskIntoConstraints = false

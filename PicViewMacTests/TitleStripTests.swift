@@ -47,12 +47,15 @@ final class TitleStripTests: XCTestCase {
         XCTAssertEqual(view.renderedTitle, file.lastPathComponent, "the file name")
         XCTAssertEqual(view.renderedSize, "\(Int(expected.width)) × \(Int(expected.height))",
                        "and the source's own pixel size, not the window's")
-        let glassAvailable = ProcessInfo.processInfo.isOperatingSystemAtLeast(
-            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0))
-        XCTAssertEqual(view.usesNativeGlass, glassAvailable,
-                       "the strip is the same system surface the dock uses")
-        XCTAssertTrue(view.usesNativeGlass || view.usesSystemMaterial,
-                      "and never a hand-drawn blur")
+        // The strip reads like the left column: the sidebar material, not glass over the picture.
+        // Reported twice — "why does the dock read better than the titlebar", then "I want it like the
+        // left column's background" — and the answer is the material: glass is a tint over the image,
+        // `.sidebar` is what macOS gives a window's sidebar.
+        XCTAssertTrue(view.usesSystemMaterial, "the strip is a system surface")
+        XCTAssertFalse(view.usesNativeGlass,
+                       "and deliberately not glass: the picture must not show through the file name")
+        XCTAssertTrue(view.isSidebarMaterial,
+                      "the left column's material, blended within the window rather than behind it")
     }
 
     /// It *is* the titlebar in this mode: on screen when the bar is, gone when the bar is away — and
@@ -84,6 +87,20 @@ final class TitleStripTests: XCTestCase {
         XCTAssertEqual(view.frame.width, viewer.view.bounds.width, accuracy: 1,
                        "and it spans the window")
         XCTAssertGreaterThan(view.frame.height, 20, "with a titlebar's height")
+    }
+
+    /// A hairline separates the strip from the picture, the way a titlebar's separator does.
+    func testTheStripHasATitlebarHairline() throws {
+        let (controller, viewer) = try makeViewer()
+        defer { TestAppKit.close(controller) }
+        viewer.open(url: Fixtures.url("static.png"))
+        settle(0.8)
+        let view = try strip(viewer)
+        XCTAssertFalse(view.separatorForTesting.isHidden, "the separator is drawn")
+        XCTAssertEqual(view.separatorForTesting.frame.width, view.bounds.width, accuracy: 1,
+                       "and spans the strip")
+        XCTAssertLessThanOrEqual(view.separatorForTesting.frame.height, 1,
+                                 "a hairline, not a band")
     }
 
     /// The bottom-left readout is gone, together with its setting.

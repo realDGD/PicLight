@@ -8,9 +8,12 @@ import AppKit
 /// timer whose trigger nobody could predict; what it was actually consulted for was the size, which
 /// belongs next to the name.
 ///
-/// So: one glass surface, like the tool dock — `MaterialHostView(style: .chrome)` is
-/// `NSGlassEffectView` on macOS 26+ and the system material before it — with our own labels, which use
-/// the dynamic label colours and stay readable over any picture.
+/// So: one glass surface, and specifically the *regular* glass variant the tool dock uses —
+/// `MaterialHostView(style: .titleStrip)` — rather than the clear variant the floating overlays take.
+/// Measured complaint: with `.clear` the name and the size were still washed out over a bright picture,
+/// because "clear" is glass with almost no tint behind the text. Our own labels use the dynamic label
+/// colours on top of it, and a hairline under the strip separates it from the picture the way a
+/// titlebar's separator does.
 public final class TitleStripView: MaterialHostView {
     /// Where the strip's content starts: clear of the traffic lights (9…69 in window coordinates) and
     /// the left-column button beside them (78…108). The folder browser's merged toolbar uses the same
@@ -21,10 +24,13 @@ public final class TitleStripView: MaterialHostView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let sizeLabel = NSTextField(labelWithString: "")
+    /// A titlebar has a hairline under it; without one the strip reads as text floating on the picture.
+    private let separator = NSView()
 
-    public override init(style: Style = .chrome) {
+    public override init(style: Style = .titleStrip) {
         super.init(style: style)
-        material = .hudWindow
+        // Deliberately *not* overriding the material the way the drawer does: `.titleStrip` is defined
+        // by its material being the left column's `.sidebar`.
 
         titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
         titleLabel.textColor = .labelColor
@@ -39,8 +45,13 @@ public final class TitleStripView: MaterialHostView {
         sizeLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         sizeLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        separator.wantsLayer = true
+        separator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        separator.translatesAutoresizingMaskIntoConstraints = false
+
         addSubview(titleLabel)
         addSubview(sizeLabel)
+        addSubview(separator)
         NSLayoutConstraint.activate([
             titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -51,6 +62,11 @@ public final class TitleStripView: MaterialHostView {
 
             sizeLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             sizeLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+            separator.leadingAnchor.constraint(equalTo: leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
+            separator.bottomAnchor.constraint(equalTo: bottomAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 1 / (NSScreen.main?.backingScaleFactor ?? 2)),
         ])
     }
 
@@ -86,5 +102,7 @@ public final class TitleStripView: MaterialHostView {
     /// What the strip says, for tests and for the acceptance runner: "what does the window call this
     /// picture, and how big is it" is a question about the view.
     var renderedTitle: String { titleLabel.stringValue }
+    /// The hairline, for tests.
+    var separatorForTesting: NSView { separator }
     var renderedSize: String { sizeLabel.stringValue }
 }

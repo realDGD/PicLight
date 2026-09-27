@@ -43,6 +43,13 @@ final class GalleryLoadingStateTests: XCTestCase {
         viewer.view.layoutSubtreeIfNeeded()
         let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
         browser.view.layoutSubtreeIfNeeded()
+        // The folder's own thumbnails are still arriving at this point, and the tests below assert exact
+        // counts of what is left to load. Waiting for the grid to settle is what makes those counts
+        // about the test's own request instead of about the folder's.
+        let settled = Date().addingTimeInterval(20)
+        while browser.view.gallery.loadingThumbnailCount > 0, Date() < settled { pump(0.05) }
+        XCTAssertEqual(browser.view.gallery.loadingThumbnailCount, 0,
+                       "precondition: the folder's thumbnails are all in")
         return (directory, controller, viewer, browser)
     }
 
