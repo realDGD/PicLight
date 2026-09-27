@@ -14,6 +14,11 @@ public actor ThumbnailPipeline {
     /// *whatever* the target size or subsampling factor, so that cost has to be paid once ever rather
     /// than once per visit.
     private let diskCache: ThumbnailDiskCache?
+    /// macOS's thumbnail cache: the cascade's third leg, consulted only where a decode is expensive.
+    private let quickLook: QuickLookThumbnailProviding?
+    /// Requests already left running after their budget expired, so a folder of huge files cannot
+    /// pile up one per cell.
+    private var lateQuickLookRequests: Set<String> = []
     /// How many decodes run at once. Each one is a file read plus a decode; a folder of large images
     /// would otherwise start as many as there are visible cells and thrash the disk. An async gate,
     /// not a `DispatchSemaphore`: blocking a cooperative-pool thread is exactly what an `await` here
@@ -23,11 +28,128 @@ public actor ThumbnailPipeline {
     /// - Parameter diskCache: the persistent store, or nil for an in-memory-only pipeline. The app
     ///   passes `.default`; tests leave it out, so a thumbnail stored by one test can never make
     ///   another test's "this file was decoded" assertion false.
-    public init(cacheLimit: Int = 600, diskCache: ThumbnailDiskCache? = nil) {
+    public init(cacheLimit: Int = 600, diskCache: ThumbnailDiskCache? = nil,
+                quickLook: QuickLookThumbnailProviding? = nil) {
         cache.countLimit = cacheLimit
         cache.totalCostLimit = 48 * 1024 * 1024
         cache.delegate = accounting
         self.diskCache = diskCache
+        self.quickLook = quickLook
+    }
+
+    /// How long macOS's thumbnail cache gets before the caller stops waiting.
+    ///
+    /// Measured: 23 ms from the system cache, 20.7 s when it has to generate one from a 1.9 GB PNG.
+    /// The budget has to sit between those, and near the cheap end: the whole point is to avoid a
+    /// wait, not to trade one for a shorter one.
+    public static let quickLookBudget: TimeInterval = 0.4
+
+    /// The system's own thumbnail for this file, if it has one within `budget`.
+    ///
+    /// A request that outlives its budget is *not* cancelled: when it finally answers, the result is
+    /// put into the memory and disk caches, so the next look at that folder is instant. That is how a
+    /// folder of huge files fills itself in without the user opening each one.
+    public func systemThumbnail(for url: URL, maxPixelSize: Int,
+                                budget: TimeInterval = ThumbnailPipeline.quickLookBudget) async -> CGImage? {
+        guard let quickLook else { return nil }
+        let identity = SourceFileIdentity.read(at: url)
+        let cacheKey = "\(identity.versionToken)|\(maxPixelSize)"
+
+        let image = await Self.timeBoxedQuickLook(quickLook, url: url, maxPixelSize: maxPixelSize,
+                                                  budget: budget) { [weak self] late in
+            guard let self else { return }
+            Task { await self.keepLateQuickLook(late, forKey: cacheKey, url: url,
+                                                maxPixelSize: maxPixelSize) }
+        }
+        guard let image, let fitted = Self.fitting(image, maxPixelSize: maxPixelSize),
+              Self.isSharpEnough(fitted, forRequest: maxPixelSize) else {
+            return nil
+        }
+        // Same guard as the disk cache: a thumbnail that is not this file's shape cannot be this
+        // file's picture, whatever the system handed back.
+        guard Self.matchesShape(fitted, of: url) else { return nil }
+        await remember(fitted, for: url, maxPixelSize: maxPixelSize)
+        ThumbnailPipelineMetrics.noteQuickLookHit()
+        return fitted
+    }
+
+    /// Stores a late answer, so the work the system already did is not thrown away. Bounded to one
+    /// in flight per file and size.
+    private func keepLateQuickLook(_ image: CGImage, forKey key: String, url: URL,
+                                   maxPixelSize: Int) async {
+        lateQuickLookRequests.remove(key)
+        guard let fitted = Self.fitting(image, maxPixelSize: maxPixelSize),
+              Self.isSharpEnough(fitted, forRequest: maxPixelSize),
+              Self.matchesShape(fitted, of: url) else { return }
+        await remember(fitted, for: url, maxPixelSize: maxPixelSize)
+        ThumbnailPipelineMetrics.noteQuickLookLateArrival()
+    }
+
+    /// Waits for the system's answer, but no longer than `budget`. A later answer goes to `onLate`.
+    static func timeBoxedQuickLook(_ source: QuickLookThumbnailProviding, url: URL, maxPixelSize: Int,
+                                   budget: TimeInterval,
+                                   onLate: @escaping @Sendable (CGImage) -> Void) async -> CGImage? {
+        await withCheckedContinuation { continuation in
+            let once = ResumeOnce()
+            source.requestLowQualityThumbnail(for: url, maxPixelSize: maxPixelSize) { image in
+                guard let image else {
+                    once.resume(continuation, with: nil)
+                    return
+                }
+                if !once.resume(continuation, with: image) { onLate(image) }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + budget) {
+                once.resume(continuation, with: nil)
+            }
+        }
+    }
+
+    /// Scales a system thumbnail down to what was asked for. A warm system cache answers with
+    /// whatever size it stored — measured: 2048 × 1365 for a 320 px request — and holding that per
+    /// cell would cost megabytes for a picture that will be drawn 150 points wide.
+    static func fitting(_ image: CGImage, maxPixelSize: Int) -> CGImage? {
+        let longEdge = max(image.width, image.height)
+        guard maxPixelSize > 0 else { return nil }
+        if longEdge <= maxPixelSize { return image }
+        let scale = CGFloat(maxPixelSize) / CGFloat(longEdge)
+        let width = max(1, Int((CGFloat(image.width) * scale).rounded()))
+        let height = max(1, Int((CGFloat(image.height) * scale).rounded()))
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
+
+    /// Whether a system thumbnail is sharp enough for the size that was asked for.
+    ///
+    /// The grid decides how big a cell is; a thumbnail smaller than the cell is drawn *upscaled* by
+    /// `NSImageView`, which is exactly the blur the slider must not produce. macOS's cache holds
+    /// whatever it stored for the file — measured: a 2048 × 1365 answer for a 320 px request (fine,
+    /// scaled down) but a folder browsed in Finder at icon size can hold a 128 px one — so an answer
+    /// below the request is refused. A quarter under is allowed: a 1.33× stretch is not visible in a
+    /// photo grid, and refusing it would trade a slightly soft cell for no cell at all.
+    ///
+    /// This only ever applies to the oversized path, where the alternative is the placeholder.
+    static func isSharpEnough(_ image: CGImage, forRequest maxPixelSize: Int) -> Bool {
+        guard maxPixelSize > 0 else { return false }
+        let longEdge = max(image.width, image.height)
+        return CGFloat(longEdge) >= CGFloat(maxPixelSize) * 0.75
+    }
+
+    /// Whether an image has the shape the file at this URL does — the guard that keeps another
+    /// picture's pixels out of a cell.
+    static func matchesShape(_ image: CGImage, of url: URL) -> Bool {
+        guard let size = ImageHeaderProbe.pixelSize(of: url), size.height > 0, image.height > 0
+        else { return true }
+        let expected = size.width / size.height
+        let actual = CGFloat(image.width) / CGFloat(image.height)
+        let tolerance: CGFloat = 0.02
+        return abs(actual - expected) <= expected * tolerance
+            || abs(actual - 1 / expected) <= (1 / expected) * tolerance
     }
 
     public func thumbnail(for url: URL, maxPixelSize: Int) async throws -> CGImage {
@@ -233,6 +355,8 @@ public enum ThumbnailPipelineMetrics {
     nonisolated(unsafe) private static var paths: Set<String> = []
     nonisolated(unsafe) private static var previews = 0
     nonisolated(unsafe) private static var hits = 0
+    nonisolated(unsafe) private static var quickLook = 0
+    nonisolated(unsafe) private static var lateArrivals = 0
     nonisolated(unsafe) private static var running = 0
     nonisolated(unsafe) private static var peak = 0
 
@@ -246,6 +370,18 @@ public enum ThumbnailPipelineMetrics {
     public static var previewCount: Int {
         lock.lock(); defer { lock.unlock() }
         return previews
+    }
+
+    /// Thumbnails macOS's own cache answered with.
+    public static var quickLookHits: Int {
+        lock.lock(); defer { lock.unlock() }
+        return quickLook
+    }
+
+    /// Answers that arrived after their budget, and were kept for the next look.
+    public static var quickLookLateArrivals: Int {
+        lock.lock(); defer { lock.unlock() }
+        return lateArrivals
     }
 
     /// Thumbnails that came from the disk cache instead of the decoder.
@@ -262,7 +398,10 @@ public enum ThumbnailPipelineMetrics {
     }
 
     public static func reset() {
-        lock.lock(); paths.removeAll(); previews = 0; hits = 0; running = 0; peak = 0; lock.unlock()
+        lock.lock()
+        paths.removeAll(); previews = 0; hits = 0; running = 0; peak = 0
+        quickLook = 0; lateArrivals = 0
+        lock.unlock()
     }
 
     static func noteFileDecode(_ url: URL) {
@@ -275,6 +414,14 @@ public enum ThumbnailPipelineMetrics {
 
     static func noteDiskCacheHit() {
         lock.lock(); hits += 1; lock.unlock()
+    }
+
+    static func noteQuickLookHit() {
+        lock.lock(); quickLook += 1; lock.unlock()
+    }
+
+    static func noteQuickLookLateArrival() {
+        lock.lock(); lateArrivals += 1; lock.unlock()
     }
 
     static func noteDecodeStarted() {

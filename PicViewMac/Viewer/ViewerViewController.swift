@@ -86,7 +86,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The decoder and thumbnail pipeline are injectable so tests can drive the
     /// real viewer with a counting or deliberately slow implementation.
     public init(decoder: ImageDecoding = ImageIODecoder(),
-                thumbnails: ThumbnailPipeline = ThumbnailPipeline(diskCache: .default),
+                thumbnails: ThumbnailPipeline = ThumbnailPipeline(
+                    diskCache: .default, quickLook: SystemQuickLookThumbnails()),
                 probe: DimensionProbing = DimensionProbe(),
                 nativeDetail: NativeDetailScheduler = NativeDetailScheduler()) {
         // One probe instance is shared with the coordinator so the drawer's
@@ -1798,7 +1799,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
            let bitmap = viewerState.currentImage {
             return await thumbnails.preview(from: bitmap, maxPixelSize: Self.drawerThumbnailPixelSize)
         }
-        if await probe.isOversized(item.url) { return nil }
+        if await probe.isOversized(item.url) {
+            // Before giving up on a whole-stream decode, take macOS's own thumbnail if it has one:
+            // measured 23 ms from its cache against 18–23 s to decode the file.
+            return await thumbnails.systemThumbnail(for: item.url,
+                                                    maxPixelSize: Self.drawerThumbnailPixelSize)
+        }
         return try? await thumbnails.thumbnail(for: item.url, maxPixelSize: Self.drawerThumbnailPixelSize)
     }
 
@@ -2752,9 +2758,17 @@ extension ViewerViewController: FolderBrowserHost {
             // and spend minutes. The drawer already refuses to pay it; the grid now agrees, and the
             // thumbnail appears as soon as the file is opened, because then its pixels are in hand.
             if await self.probe.isOversized(item.url) {
+                // The cascade's third leg, before the placeholder: macOS usually has a thumbnail for a
+                // file the user has seen, and it costs 23 ms when it does.
+                let system = await self.thumbnails.systemThumbnail(for: item.url,
+                                                                   maxPixelSize: maxPixelSize)
                 await MainActor.run {
                     self.galleryThumbnailTasks[item.url.path] = nil
-                    completion(index, nil, .oversized)
+                    if let system {
+                        completion(index, system, .none)
+                    } else {
+                        completion(index, nil, .oversized)
+                    }
                 }
                 return
             }
