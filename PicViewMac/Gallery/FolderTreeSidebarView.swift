@@ -35,7 +35,7 @@ final class FolderTreeSidebarView: NSView {
     var onFolderExpansionChanged: ((URL, Bool) -> Void)?
 
     private let scrollView = NSScrollView()
-    private let material = NSVisualEffectView()
+    private let material = MaterialHostView(style: .sidebar)
     private let outline = NSOutlineView()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
     /// The tree's root node, which is what the outline expands from. Deliberately not a flattened
@@ -72,9 +72,6 @@ final class FolderTreeSidebarView: NSView {
         // (rounded selection, proper disclosure triangles) and the standard row metrics. The plain
         // outline with 12 pt labels and a 14 pt icon read as a small, foreign list next to the
         // rest of the window.
-        material.material = .sidebar
-        material.blendingMode = .withinWindow
-        material.state = .followsWindowActiveState
         material.translatesAutoresizingMaskIntoConstraints = false
         addSubview(material)
 
@@ -110,7 +107,32 @@ final class FolderTreeSidebarView: NSView {
             scrollView.topAnchor.constraint(equalTo: material.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: material.bottomAnchor),
         ])
+
+        // Same as the drawer: the rows must not be drawn under the traffic lights.
+        let cap = material.makeSurfaceCap()
+        cap.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(cap)
+        titlebarCap = cap
+        titlebarCapHeight = cap.heightAnchor.constraint(equalToConstant: TitleStripView.fallbackHeight)
+        NSLayoutConstraint.activate([
+            cap.leadingAnchor.constraint(equalTo: leadingAnchor),
+            cap.trailingAnchor.constraint(equalTo: trailingAnchor),
+            cap.topAnchor.constraint(equalTo: topAnchor),
+            titlebarCapHeight!,
+        ])
     }
+
+    private var titlebarCap: NSView?
+    private var titlebarCapHeight: NSLayoutConstraint?
+
+    /// Matches the cap to the window's titlebar; see `ThumbnailDrawerView.alignTitlebarCap`.
+    public func alignTitlebarCap(height: CGFloat) {
+        titlebarCapHeight?.constant = max(0, height)
+        needsLayout = true
+    }
+
+    /// The cap, for tests: it is the view that keeps scrolled rows out of the titlebar strip.
+    var titlebarCapForTesting: NSView? { titlebarCap }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -215,7 +237,7 @@ final class FolderTreeSidebarView: NSView {
 
     /// Whether the tree draws over the native sidebar material, for tests.
     var usesSidebarMaterialForTesting: Bool {
-        material.material == .sidebar && material.blendingMode == .withinWindow
+        material.isSidebarMaterial
             && material.superview === self
     }
 

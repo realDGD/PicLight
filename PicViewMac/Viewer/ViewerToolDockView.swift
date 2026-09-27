@@ -114,6 +114,17 @@ public final class ViewerToolDockView: MaterialHostView {
     private let pinButton = DockButton(symbol: ViewerToolDockView.pinSymbol,
                                        tooltip: ViewerToolDockView.pinTooltip)
 
+    /// The user's choice of surface: frosted material, native Liquid Glass, or the left column's
+    /// material. Applies live — the dock's buttons and readouts are the host's own subviews.
+    public func applySurface(_ surface: DockSurface) {
+        switch surface {
+        case .frosted: setStyle(.hud)
+        case .liquidGlass: setStyle(.dock)
+        case .sidebar: setStyle(.sidebar)
+        }
+        setCornerRadius(bounds.height > 0 ? bounds.height / 2 : 26)
+    }
+
     public override init(style: Style = .dock) {
         super.init(style: style)
         translatesAutoresizingMaskIntoConstraints = false

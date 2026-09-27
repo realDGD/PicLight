@@ -9,7 +9,7 @@ import AppKit
 /// belongs next to the name.
 ///
 /// So: one glass surface, and specifically the *regular* glass variant the tool dock uses —
-/// `MaterialHostView(style: .titleStrip)` — rather than the clear variant the floating overlays take.
+/// `MaterialHostView(style: .sidebar)` — rather than the clear variant the floating overlays take.
 /// Measured complaint: with `.clear` the name and the size were still washed out over a bright picture,
 /// because "clear" is glass with almost no tint behind the text. Our own labels use the dynamic label
 /// colours on top of it, and a hairline under the strip separates it from the picture the way a
@@ -27,10 +27,10 @@ public final class TitleStripView: MaterialHostView {
     /// A titlebar has a hairline under it; without one the strip reads as text floating on the picture.
     private let separator = NSView()
 
-    public override init(style: Style = .titleStrip) {
+    public override init(style: Style = .sidebar) {
         super.init(style: style)
-        // Deliberately *not* overriding the material the way the drawer does: `.titleStrip` is defined
-        // by its material being the left column's `.sidebar`.
+        // Deliberately *not* overriding the material the way the drawer does: this style *is* the left
+        // column's `.sidebar` material, and an override here would silently turn it back into a HUD.
 
         titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
         titleLabel.textColor = .labelColor

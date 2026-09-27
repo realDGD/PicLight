@@ -74,15 +74,26 @@ public struct GestureRouter: Sendable {
     public mutating func endGesture() { beginGesture() }
 
     /// Mouse wheel / scroll wheel. Default mode zooms centered on the pointer.
+    /// - Parameter isMouseWheel: `true` for a real wheel (`hasPreciseScrollingDeltas == false`).
+    ///
+    ///   The two devices mean opposite things by the same sign, which is why they cannot share one
+    ///   rule. A wheel is a *scroll command*: rolling it up means "go up the picture", so the picture
+    ///   moves down and you see what was above. A trackpad reports a finger position, and the picture
+    ///   follows the fingers — with natural scrolling on, a two-finger swipe up arrives as a *negative*
+    ///   delta, so following the sign is what makes it feel right. Measured on this machine:
+    ///   `wheel1 = +20` arrives as `scrollingDeltaY = +20` with `hasPreciseScrollingDeltas = false`,
+    ///   while the two-finger swipe that should reveal the same content is negative.
     public mutating func routeWheel(deltaY: CGFloat, deltaX: CGFloat, anchor: CGPoint,
-                                    modifierZoomOut: Bool = false) -> GestureIntent {
+                                    modifierZoomOut: Bool = false,
+                                    isMouseWheel: Bool = false) -> GestureIntent {
         switch wheelMode {
         case .zoom:
             guard deltaY != 0 else { return .none }
             let factor = pow(1.0015, -deltaY * (modifierZoomOut ? 0.5 : 1))
             return .zoom(factor: factor, anchor: anchor)
         case .pan:
-            return .pan(CGSize(width: deltaX, height: deltaY))
+            let sign: CGFloat = isMouseWheel ? -1 : 1
+            return .pan(CGSize(width: deltaX * sign, height: deltaY * sign))
         case .navigate:
             return routeSwipe(deltaX: deltaY != 0 ? deltaY : deltaX, viewWidth: 1,
                               isZoomedIn: false, canPanInDirection: false)

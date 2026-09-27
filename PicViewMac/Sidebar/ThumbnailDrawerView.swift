@@ -55,7 +55,38 @@ public final class ThumbnailDrawerView: MaterialHostView {
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+
+        // The titlebar strip is the column's background, not a window for its rows: the traffic lights
+        // and the left-column button sit in it, and thumbnails scrolled up were appearing underneath
+        // both (reported). This cap has the column's own material, is drawn over the scroll view, and
+        // takes no events, so a scroll that starts in the strip still scrolls the list.
+        let cap = makeSurfaceCap()
+        cap.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(cap)
+        titlebarCap = cap
+        titlebarCapHeight = cap.heightAnchor.constraint(equalToConstant: TitleStripView.fallbackHeight)
+        NSLayoutConstraint.activate([
+            cap.leadingAnchor.constraint(equalTo: leadingAnchor),
+            cap.trailingAnchor.constraint(equalTo: trailingAnchor),
+            cap.topAnchor.constraint(equalTo: topAnchor),
+            titlebarCapHeight!,
+        ])
     }
+
+    /// The strip of this column that belongs to the window's titlebar. Pinned to the real titlebar
+    /// height by the window that owns it.
+    private var titlebarCap: NSView?
+    private var titlebarCapHeight: NSLayoutConstraint?
+
+    /// Matches the cap to the window's titlebar, so nothing of the column is drawn under the traffic
+    /// lights or the left-column button. A zero height (no titlebar: full screen) removes it.
+    public func alignTitlebarCap(height: CGFloat) {
+        titlebarCapHeight?.constant = max(0, height)
+        needsLayout = true
+    }
+
+    /// The cap, for tests: it is the view that keeps scrolled rows out of the titlebar strip.
+    var titlebarCapForTesting: NSView? { titlebarCap }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 

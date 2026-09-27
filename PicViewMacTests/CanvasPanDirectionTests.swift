@@ -36,9 +36,21 @@ final class CanvasPanDirectionTests: XCTestCase {
         return canvas
     }
 
+    /// A real wheel: `hasPreciseScrollingDeltas == false`, which is what tells the canvas the deltas are
+    /// a scroll command rather than a finger position.
     private func scrollEvent(wheel1: Int32, wheel2: Int32) throws -> NSEvent {
+        // `.line` units are what a real wheel sends, and they are what makes
+        // `hasPreciseScrollingDeltas` false (measured: `.pixel` reports precise).
+        let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 2,
+                                       wheel1: wheel1, wheel2: wheel2, wheel3: 0))
+        return try XCTUnwrap(NSEvent(cgEvent: cg))
+    }
+
+    /// The same event, marked continuous: this is what a trackpad sends.
+    private func trackpadEvent(wheel1: Int32, wheel2: Int32) throws -> NSEvent {
         let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
                                        wheel1: wheel1, wheel2: wheel2, wheel3: 0))
+        cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
         return try XCTUnwrap(NSEvent(cgEvent: cg))
     }
 
@@ -48,7 +60,7 @@ final class CanvasPanDirectionTests: XCTestCase {
         for wheel in [Int32(20), Int32(-20)] {
             canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: 1.0,
                                             normalizedCenter: CGPoint(x: 0.5, y: 0.5))
-            let event = try scrollEvent(wheel1: wheel, wheel2: 0)
+            let event = try trackpadEvent(wheel1: wheel, wheel2: 0)
             let delta = event.scrollingDeltaY
             XCTAssertNotEqual(delta, 0, "precondition: the synthetic event carries a delta")
 
@@ -72,7 +84,7 @@ final class CanvasPanDirectionTests: XCTestCase {
         for wheel in [Int32(20), Int32(-20)] {
             canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: 1.0,
                                             normalizedCenter: CGPoint(x: 0.5, y: 0.5))
-            let event = try scrollEvent(wheel1: 0, wheel2: wheel)
+            let event = try trackpadEvent(wheel1: 0, wheel2: wheel)
             let delta = event.scrollingDeltaX
             XCTAssertNotEqual(delta, 0, "precondition: the synthetic event carries a delta")
 
@@ -88,12 +100,48 @@ final class CanvasPanDirectionTests: XCTestCase {
         }
     }
 
+    /// A mouse wheel is a scroll command, not a finger: rolling it up moves the picture *down*, so the
+    /// content that was above comes into view. This is the opposite of the trackpad rule above, on
+    /// purpose, and it is what the report was about ("鼠标滚轮为平移模式的时候是不是反了").
+    func testAMouseWheelScrollsTheDocumentRatherThanFollowingTheFingers() throws {
+        let canvas = makeCanvas()
+        for wheel in [Int32(20), Int32(-20)] {
+            canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: 1.0,
+                                            normalizedCenter: CGPoint(x: 0.5, y: 0.5))
+            let event = try scrollEvent(wheel1: wheel, wheel2: 0)
+            let delta = event.scrollingDeltaY
+            XCTAssertFalse(event.hasPreciseScrollingDeltas, "precondition: this is a wheel event")
+
+            let before = canvas.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+            canvas.scrollWheel(with: event)
+            let after = canvas.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+
+            // Wheel up (positive delta) = go up the picture: we end up looking at content that was
+            // *higher* in the image, i.e. a larger source y.
+            XCTAssertEqual(after.y > before.y, delta > 0,
+                           "delta \(delta): a wheel must scroll the picture like a document "
+                           + "(before y=\(before.y), after y=\(after.y))")
+            XCTAssertEqual(after.x, before.x, accuracy: 0.5,
+                           "and a vertical wheel must not move it sideways")
+        }
+    }
+
     /// The horizontal and vertical conventions must be the same one, which is what "follows the
     /// gesture" means: the two axes cannot disagree about the sign.
     func testBothAxesUseTheSameConvention() throws {
+        for device in ["wheel", "trackpad"] {
+            try assertBothAxesAgree(device: device)
+        }
+    }
+
+    private func assertBothAxesAgree(device: String) throws {
         let canvas = makeCanvas()
-        let vertical = try scrollEvent(wheel1: 20, wheel2: 0)
-        let horizontal = try scrollEvent(wheel1: 0, wheel2: 20)
+        let vertical = device == "wheel"
+            ? try scrollEvent(wheel1: 20, wheel2: 0)
+            : try trackpadEvent(wheel1: 20, wheel2: 0)
+        let horizontal = device == "wheel"
+            ? try scrollEvent(wheel1: 0, wheel2: 20)
+            : try trackpadEvent(wheel1: 0, wheel2: 20)
         XCTAssertEqual(vertical.scrollingDeltaY > 0, horizontal.scrollingDeltaX > 0,
                        "the fixture events ask for the same direction on both axes")
 
@@ -111,6 +159,7 @@ final class CanvasPanDirectionTests: XCTestCase {
 
         XCTAssertEqual(verticalAfter.y < verticalBefore.y,
                        horizontalAfter.x < horizontalBefore.x,
-                       "one convention: the same gesture direction must move both axes the same way")
+                       "\(device): one convention — the same gesture direction must move both axes "
+                       + "the same way")
     }
 }

@@ -41,6 +41,12 @@ public enum ViewerAppearanceMode: String, CaseIterable, Codable, Sendable {
 /// Hosts the native surface behind the auxiliary chrome: the hover bars, the
 /// thumbnail drawer and the minimap. On macOS 26+ that surface is the system's
 /// Liquid Glass (`NSGlassEffectView`); on macOS 14–15 it is a system
+/// A surface cap: it covers the titlebar strip of a column that scrolls, and takes no events, so a
+/// scroll or a click that starts in the strip goes to the list underneath it.
+public final class SurfaceCapView: MaterialHostView {
+    public override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// `NSVisualEffectView` material. Nothing is hand-drawn, and glass is never
 /// placed over the image canvas for decoration.
 public class MaterialHostView: NSView {
@@ -54,7 +60,7 @@ public class MaterialHostView: NSView {
         case chrome
         case drawer
         case dock
-        /// The image mode's top strip: the *sidebar* material, like the left column.
+        /// The left column's surface: the system *sidebar* material, square, never glass.
         ///
         /// It is not glass, on any OS. The strip is the titlebar and it carries text that has to be
         /// read over whatever picture is behind it; glass — clear or regular — is a tint over the image,
@@ -62,7 +68,7 @@ public class MaterialHostView: NSView {
         /// then "I want it like the left column's background"). `.sidebar` is the material the left
         /// column uses: more opaque, less of the picture through it, and it is what macOS itself gives a
         /// window's sidebar. Square, because the strip spans the window rather than floating in it.
-        case titleStrip
+        case sidebar
     }
 
     /// Whether this surface is drawn with the regular glass variant rather than the clear one.
@@ -72,7 +78,7 @@ public class MaterialHostView: NSView {
     /// drawer, the title strip — wants the regular variant's tint and blur.
     public var usesRegularGlass: Bool { style != .chrome }
 
-    public let style: Style
+    public private(set) var style: Style
 
     private var effectView: NSVisualEffectView?
     private var glassView: NSView?
@@ -95,6 +101,20 @@ public class MaterialHostView: NSView {
 
     /// The corner radius applied to the system surface, for tests and for callers
     /// that reshape the container after construction.
+    /// A cap that looks exactly like this surface, for covering the titlebar area of a column that
+    /// scrolls under it.
+    ///
+    /// A column pinned to the window's edges has its content drawn under the traffic lights and the
+    /// left-column button, because the window's content view spans the titlebar and the bar itself is
+    /// transparent in this mode. The column's *background* belongs there; its scrolled rows do not. A
+    /// cap of the same material, drawn above the scroll view, is what separates the two.
+    public func makeSurfaceCap() -> MaterialHostView {
+        let cap = SurfaceCapView(style: style)
+        cap.material = material
+        cap.blendingMode = blendingMode
+        return cap
+    }
+
     /// Whether this surface is drawn with the OS's own material rather than glass, and which material.
     /// The title strip is the case that matters: it must read like the left column, not like a tint over
     /// the picture.
@@ -114,16 +134,33 @@ public class MaterialHostView: NSView {
         self.style = style
         super.init(frame: .zero)
         wantsLayer = true
+        buildSurface()
+    }
 
-        // `.titleStrip` deliberately stays on the system-material path even where glass exists: see the
+    /// Swaps the surface under the content, keeping everything that sits on it. The labels and buttons
+    /// of the dock are the host's own subviews, so they survive a change.
+    public func setStyle(_ newStyle: Style) {
+        guard newStyle != style else { return }
+        style = newStyle
+        glassView?.removeFromSuperview()
+        effectView?.removeFromSuperview()
+        glassView = nil
+        effectView = nil
+        buildSurface()
+    }
+
+    private func buildSurface() {
+
+        // `.sidebar` deliberately stays on the system-material path even where glass exists: see the
         // style's own comment.
-        if #available(macOS 26.0, *), style != .hud, style != .titleStrip {
+        if #available(macOS 26.0, *), style != .hud, style != .sidebar {
             let glass = NSGlassEffectView()
             glass.style = usesRegularGlass ? .regular : .clear
-            let square = style == .drawer || style == .titleStrip
+            let square = style == .drawer || style == .sidebar
             glass.cornerRadius = square ? 0 : 10
             glass.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(glass)
+            // The bottom layer: a swap must not cover the content that is already on the surface.
+            addSubview(glass, positioned: .below, relativeTo: nil)
             NSLayoutConstraint.activate([
                 glass.leadingAnchor.constraint(equalTo: leadingAnchor),
                 glass.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -136,15 +173,15 @@ public class MaterialHostView: NSView {
             // The strip takes the left column's material; the column itself blurs what is behind the
             // *window*, which is right for a column at the window's edge and wrong for a strip over the
             // picture the window is showing.
-            let sidebarLike = style == .drawer || style == .titleStrip
+            let sidebarLike = style == .drawer || style == .sidebar
             effect.material = sidebarLike ? .sidebar : .hudWindow
             effect.blendingMode = style == .drawer ? .behindWindow : .withinWindow
             effect.state = .followsWindowActiveState
             effect.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(effect, positioned: .below, relativeTo: nil)
             effect.wantsLayer = true
             effect.layer?.cornerRadius = 10
             effect.layer?.masksToBounds = true
-            addSubview(effect)
             NSLayoutConstraint.activate([
                 effect.leadingAnchor.constraint(equalTo: leadingAnchor),
                 effect.trailingAnchor.constraint(equalTo: trailingAnchor),

@@ -133,6 +133,14 @@ final class SettingsViewController: NSViewController {
         stack.addArrangedSubview(row("打开文件", openBehaviorPopup))
         stack.addArrangedSubview(row("窗口大小", sizingPopup))
         stack.addArrangedSubview(row("标题栏", titlebarPopup))
+
+        let dockSurfacePopup = popup(DockSurface.allCases, title: { $0.localizedName },
+                                     selected: settings.dockSurface) { [weak self] value in
+            self?.settings.dockSurface = value
+        }
+        dockSurfacePopup.toolTip = "工具坞的材质：磨砂玻璃（系统 HUD 材质）、Liquid Glass（原生玻璃）、"
+            + "左栏材质（与左侧栏一致）"
+        stack.addArrangedSubview(row("工具坞材质", dockSurfacePopup))
         stack.addArrangedSubview(row("删除后", deletePopup))
         stack.addArrangedSubview(separator())
         let note = NSTextField(wrappingLabelWithString: "v0.1 只浏览当前文件夹，不递归子文件夹。")

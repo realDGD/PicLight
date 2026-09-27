@@ -361,6 +361,15 @@ public final class ImageCanvasView: NSView {
         // vertical axis keeps the configured wheel behaviour in every state, so
         // zooming does not turn into panning once the image is enlarged.
         if abs(deltaX) > abs(deltaY) * 1.5 {
+            // A wheel's sideways axis is a pan, not a swipe. A swipe means "the next picture", which is
+            // a trackpad gesture; a tilt wheel pushed sideways is asking to move the picture, and in pan
+            // mode it must scroll like the vertical axis does instead of navigating away.
+            if origin == .mouseWheel, router.wheelMode == .pan {
+                apply(router.routeWheel(deltaY: deltaY, deltaX: deltaX, anchor: point,
+                                        modifierZoomOut: event.modifierFlags.contains(.option),
+                                        isMouseWheel: true))
+                return
+            }
             if !isMomentum, event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
             let intent = router.routeSwipe(
                 deltaX: deltaX, deltaY: deltaY, viewWidth: bounds.width,
@@ -375,7 +384,8 @@ public final class ImageCanvasView: NSView {
 
         let intent = router.routeWheel(
             deltaY: deltaY, deltaX: deltaX, anchor: point,
-            modifierZoomOut: event.modifierFlags.contains(.option)
+            modifierZoomOut: event.modifierFlags.contains(.option),
+            isMouseWheel: origin == .mouseWheel
         )
         apply(intent)
     }

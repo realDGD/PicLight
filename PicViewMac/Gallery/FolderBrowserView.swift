@@ -216,6 +216,8 @@ public final class FolderBrowserView: NSView {
     /// to offset — the controls centre on the same line as the traffic lights and the drawer
     /// button, which is what the measurements below were for.
     func alignToolbarContent(withTitlebarHeight height: CGFloat) {
+        // The tree column scrolls under the titlebar strip, and this is the height it must not draw in.
+        treeSidebar.alignTitlebarCap(height: max(0, height))
         guard height > 0 else {
             toolbarHeightConstraint?.constant = Self.defaultToolbarHeight
             toolbarStackCenterConstraint?.constant = 0

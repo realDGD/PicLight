@@ -427,6 +427,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         guard let window = view.window else { return }
         let titlebarHeight = window.frame.height - window.contentLayoutRect.height
         titleStrip.alignToTitlebar(height: titlebarHeight)
+        // The thumbnail column scrolls under the strip: its rows must not be drawn on the traffic
+        // lights or the left-column button.
+        drawer.alignTitlebarCap(height: titlebarHeight)
     }
 
     /// Centres the browser's toolbar controls on the titlebar's own centre line — the line the
@@ -741,6 +744,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let settings = AppSettings.shared
         self.settings = settings
         applyTitlebarMode()
+        toolDock.applySurface(settings.dockSurface)
         canvas.wheelMode = settings.wheelMode
         canvas.swipeMode = settings.swipeMode
         canvas.doubleClickMode = settings.doubleClickMode
@@ -2605,7 +2609,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var isTitleStripVisible: Bool {
         guard viewerMode == .image else { return false }
         guard let window = view.window as? ViewerWindow else { return false }
-        return window.titlebarMode == .alwaysVisible || window.titlebarState == .full
+        // Only where it replaces a bar that hides. With the titlebar set to always visible the window
+        // draws its own bar — and the strip used to appear as well, which is two titlebars (reported).
+        return window.titlebarMode == .autoHide && window.titlebarState == .full
     }
 
     private func refreshTitleStrip() {
