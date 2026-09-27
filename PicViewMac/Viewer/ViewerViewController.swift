@@ -491,6 +491,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The item whose bitmap is on screen. Used to decide whether returning from the folder browser
     /// needs a decode at all — comparing against the *descriptor* asked the wrong question, because
     /// a descriptor's source URL is not always set.
+    /// Set when the user moves the viewport, cleared by each load and each publish. See
+    /// `refreshCanvas()`: it is what keeps a pinch made during a slow decode from being undone.
+    private var userMovedViewportWhileLoading = false
     private var displayedItemURL: URL?
     /// The `SourceFileIdentity.versionToken` of the file that bitmap was decoded from.
     ///
@@ -620,6 +623,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.pendingDirection = delta > 0 ? .forward : .backward
             self.perform(delta > 0 ? .nextImage : .previousImage)
         }
+        // A zoom somebody asked for while a picture is still decoding must survive its arrival: the
+        // fit the new picture requests is for a picture nobody has touched yet.
+        canvas.onUserViewportChange = { [weak self] in self?.userMovedViewportWhileLoading = true }
         canvas.onViewportChange = { [weak self] viewport in
             guard let self else { return }
             self.viewerState.viewport = viewport
@@ -834,6 +840,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         pendingDirection = .unknown
 
         viewerState.clearForNewImage()
+        // The new picture's own fit is allowed again: the flag only protects a zoom made *while this
+        // load was in flight*.
+        userMovedViewportWhileLoading = false
         stopAnimation()
         // Tiles belong to one source: drop them with the image, and stop any pass still
         // reading the previous file.
@@ -1573,8 +1582,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.refit()
         // A picture the user did not choose a zoom for starts fitted. The request comes from the
         // state (only a new image raises it), so a re-decode of the same picture at another level
-        // leaves the zoom alone.
-        if viewerState.consumeFitRequest() || viewerState.currentImage == nil {
+        // leaves the zoom alone — and so does a zoom the user asked for while this picture was
+        // still decoding, which is the case that made pinch-to-zoom look broken after opening a
+        // large file from the folder browser: the gesture worked, and then the arrival of the
+        // picture reset it seconds later.
+        let wantsFit = viewerState.consumeFitRequest()
+        let keepUserZoom = userMovedViewportWhileLoading
+        userMovedViewportWhileLoading = false
+        if viewerState.currentImage == nil || (wantsFit && !keepUserZoom) {
             canvas.setZoomToFit()
         }
         viewerState.viewport = canvas.viewport
@@ -2422,12 +2437,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .zoomOut:
             canvas.zoomBy(factor: 1 / ViewerToolDockView.zoomStep)
         case .zoomToFit:
+            // A zoom command is a user choice too, so a load that lands afterwards keeps it.
+            userMovedViewportWhileLoading = true
             canvas.setZoomToFit()
         case .zoomToFitWidth:
+            userMovedViewportWhileLoading = true
             canvas.setZoomToFitWidth()
         case .zoomActualPixels:
+            userMovedViewportWhileLoading = true
             canvas.setZoomToActualPixels()
         case .zoomDoubleFit:
+            userMovedViewportWhileLoading = true
             canvas.toggleFitAndDoubleFit()
         case .rotateClockwise:
             canvas.rotateClockwise()

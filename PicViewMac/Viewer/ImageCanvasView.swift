@@ -118,6 +118,18 @@ public final class ImageCanvasView: NSView {
     /// -1 previous, +1 next. The canvas never touches folder state itself.
     public var onNavigate: ((Int) -> Void)?
     public var onViewportChange: ((ViewportState) -> Void)?
+
+    /// Reports a viewport change the user asked for, so the publisher can tell it apart from the
+    /// fit the window performs on a new picture.
+    func noteUserViewportChange() {
+        onUserViewportChange?()
+    }
+
+    /// Fired when the *user* moves the viewport — a pinch, a wheel, a swipe, a drag, a zoom button —
+    /// and never for the fit the window performs on a new picture. The publisher needs the
+    /// difference: a picture that is still decoding may not throw away a zoom somebody asked for
+    /// while they waited (measured: ~20 s of waiting for a 1.9 GB PNG).
+    public var onUserViewportChange: (() -> Void)?
     public var onDoubleClickAction: (() -> Void)?
     public var onPointerActivity: (() -> Void)?
     public var onZoomChanged: (() -> Void)?
@@ -170,6 +182,7 @@ public final class ImageCanvasView: NSView {
     /// (never below a quarter of Fit, never above the 40× ceiling) and the "zoom is around a point"
     /// behaviour are one implementation rather than a second one that can drift.
     public func zoomBy(factor: CGFloat) {
+        noteUserViewportChange()
         guard renderImage != nil, factor > 0, factor.isFinite else { return }
         apply(.zoom(factor: factor, anchor: CGPoint(x: bounds.midX, y: bounds.midY)))
     }
@@ -371,6 +384,7 @@ public final class ImageCanvasView: NSView {
         case .none:
             break
         case let .zoom(factor, anchor):
+            noteUserViewportChange()
             var updated = viewport
             updated.zoom(to: updated.zoomScale * factor, around: anchor, viewPoints: bounds.size,
                          imagePixels: imagePixelSize,
@@ -379,6 +393,7 @@ public final class ImageCanvasView: NSView {
             viewport = updated
             onZoomChanged?()
         case let .pan(delta):
+            noteUserViewportChange()
             // Panning is not a zoom: reporting it as one made every drag re-evaluate the
             // whole-image decode level, which is the wrong job for a gesture that only
             // moves the viewport (spec §9.5 / the tile window owns pan).
@@ -414,6 +429,7 @@ public final class ImageCanvasView: NSView {
 
     public override func mouseDragged(with event: NSEvent) {
         guard isDragging else { return }
+        noteUserViewportChange()
         var updated = viewport
         updated.pan(byViewDelta: CGSize(width: event.deltaX, height: event.deltaY),
                     imagePixels: imagePixelSize, viewPoints: bounds.size)

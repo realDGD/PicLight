@@ -55,6 +55,34 @@ final class ViewerFitTests: XCTestCase {
         _ = CGImageDestinationFinalize(destination)
     }
 
+    /// A noisy PNG of `side × side`: cheap to write, slow enough to decode that the test can act
+    /// while it is in flight (a flat fill compresses to nothing and decodes instantly).
+    private func writeNoisePNG(to url: URL, side: Int) throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        let row = UnsafeMutablePointer<UInt8>.allocate(capacity: side * 4)
+        defer { row.deallocate() }
+        var seed: UInt64 = 0x2545F4914F6CDD1D
+        for y in 0..<side {
+            for x in 0..<side {
+                seed = seed &* 6364136223846793005 &+ 1442695040888963407
+                let value = UInt8((seed >> 33) & 0xFF)
+                row[x * 4] = value
+                row[x * 4 + 1] = value &+ UInt8(y & 0xFF)
+                row[x * 4 + 2] = UInt8(x & 0xFF)
+                row[x * 4 + 3] = 255
+            }
+            context.data?.advanced(by: y * context.bytesPerRow)
+                .copyMemory(from: row, byteCount: side * 4)
+        }
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(
+            url as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
     private func open(_ viewer: ViewerViewController, _ url: URL) {
         viewer.open(url: url)
         XCTAssertTrue(waitUntil(15) { viewer.viewerState.currentImage != nil },
@@ -170,6 +198,70 @@ final class ViewerFitTests: XCTestCase {
 
         XCTAssertEqual(canvas.viewport.zoomScale, canvas.viewport.fitScale, accuracy: 1e-6,
                        "the picture the user switched to opens fitted")
+    }
+
+    /// A zoom the user asks for *while* a picture is still loading must survive that picture's
+    /// arrival.
+    ///
+    /// Reported from the app: opening an image through the folder browser left pinch-to-zoom looking
+    /// dead. The gesture was arriving and the zoom was being applied — but the new picture's own
+    /// "start fitted" request was applied when the decode landed, seconds later for a large file
+    /// (measured: ~20 s for a 1.9 GB PNG), and wiped it out. Pinching during a load is exactly what a
+    /// person does when the picture takes a while to appear.
+    func testAZoomMadeWhileThePictureLoadsSurvivesItsArrival() throws {
+        let directory = try Fixtures.makeScratchDirectory("fit-while-loading")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let quick = directory.appendingPathComponent("quick.png")
+        writePNG(to: quick, width: 400, height: 300, red: 0.9)
+        // Slow enough that the test can ask for a zoom while its decode is still running.
+        let slow = directory.appendingPathComponent("slow.png")
+        try writeNoisePNG(to: slow, side: 5000)
+
+        let (controller, viewer) = makeViewer()
+        defer { TestAppKit.close(controller) }
+        open(viewer, quick)
+        let canvas = viewer.canvasViewForTesting
+
+        // Ask for the next picture and, before it can arrive, do what a pinch does.
+        viewer.perform(.nextImage)
+        XCTAssertNil(viewer.viewerState.currentImage, "precondition: the slow picture is still loading")
+        canvas.zoomBy(factor: 2.5)
+        let requested = canvas.viewport.zoomScale
+
+        XCTAssertTrue(waitUntil(30) { viewer.viewerState.currentImage != nil },
+                      "the slow picture arrived")
+        pump(0.6)
+        viewer.view.layoutSubtreeIfNeeded()
+        pump(0.3)
+
+        XCTAssertEqual(canvas.viewport.zoomScale, requested, accuracy: 1e-6,
+                       "the zoom the user asked for while loading is the zoom they keep "
+                       + "(fit is \(canvas.viewport.fitScale), requested \(requested), "
+                       + "now \(canvas.viewport.zoomScale))")
+        XCTAssertNotEqual(canvas.viewport.zoomScale, canvas.viewport.fitScale, accuracy: 1e-6)
+    }
+
+    /// A picture the user did *not* touch still opens fitted, however slow it is.
+    func testAnUntouchedPictureStillOpensFitted() throws {
+        let directory = try Fixtures.makeScratchDirectory("fit-untouched")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let quick = directory.appendingPathComponent("quick.png")
+        writePNG(to: quick, width: 400, height: 300, red: 0.9)
+        let slow = directory.appendingPathComponent("slow.png")
+        try writeNoisePNG(to: slow, side: 3000)
+
+        let (controller, viewer) = makeViewer()
+        defer { TestAppKit.close(controller) }
+        open(viewer, quick)
+        viewer.perform(.nextImage)
+        XCTAssertTrue(waitUntil(30) { viewer.viewerState.currentImage != nil })
+        pump(0.5)
+        viewer.view.layoutSubtreeIfNeeded()
+        pump(0.3)
+
+        let canvas = viewer.canvasViewForTesting
+        XCTAssertEqual(canvas.viewport.zoomScale, canvas.viewport.fitScale, accuracy: 1e-6,
+                       "a picture nobody zoomed opens fitted, slow or not")
     }
 
     /// The canvas is what receives gesture events: a pinch reaches the view under the pointer, and an
