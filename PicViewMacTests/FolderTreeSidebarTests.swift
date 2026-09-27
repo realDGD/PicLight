@@ -189,6 +189,44 @@ final class FolderTreeSidebarTests: XCTestCase {
         }
     }
 
+    /// Clicking a subfolder the way a user does — a real selection on the outline — keeps the root
+    /// where it was. This is the report that started the repair ("the left column keeps changing"):
+    /// every descent used to rebuild the tree with the subfolder as its root.
+    func testClickingASubfolderInTheOutlineKeepsTheRoot() throws {
+        let tree = try makeTree()
+        defer { try? FileManager.default.removeItem(at: tree.base) }
+        let (controller, viewer) = makeBrowser()
+        defer { TestAppKit.close(controller) }
+        let browser = try enterBrowser(viewer, on: tree.a.appendingPathComponent("img.png"))
+        let sidebar = browser.view.treeSidebar
+        let rootBefore = try XCTUnwrap(browser.visibleNodesForTesting.first?.url,
+                                       "the tree has a root")
+        XCTAssertEqual(rootBefore.standardizedFileURL.path, tree.a.standardizedFileURL.path)
+
+        // A real click on the outline's row for B, then for C: the rows the outline renders are what
+        // the user sees, and `selectRowIndexes` is what a click does.
+        for name in ["B", "C"] {
+            let row = try XCTUnwrap((0..<sidebar.outlineView.numberOfRows).first {
+                sidebar.renderedName(at: $0) == name
+            }, "\(name) is a row")
+            sidebar.outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            XCTAssertTrue(waitUntil(10) {
+                viewer.session.directory?.standardizedFileURL.path
+                    == (name == "B" ? tree.b : tree.c).standardizedFileURL.path
+            }, "clicking \(name) opens it")
+            pump(0.4)
+            sidebar.layoutSubtreeIfNeeded()
+
+            XCTAssertEqual(browser.visibleNodesForTesting.first?.url.standardizedFileURL.path,
+                           tree.a.standardizedFileURL.path,
+                           "the root is still A after descending into \(name) "
+                           + "(rows: \(renderedRows(sidebar)))")
+            XCTAssertEqual(sidebar.selectedPath,
+                           (name == "B" ? tree.b : tree.c).standardizedFileURL.path,
+                           "and the folder that was clicked is the highlighted one")
+        }
+    }
+
     /// Going up from the root is the one thing that moves the root: the tree grows upward.
     func testTheUpRowAboveTheRootExtendsTheTreeUpward() throws {
         let tree = try makeTree()

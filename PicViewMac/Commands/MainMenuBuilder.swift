@@ -42,6 +42,10 @@ public enum MainMenuBuilder {
     private static func viewMenu(shortcutStore: ShortcutStore) -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "显示")
+        // The zoom group in the order macOS apps use: the two steps, then the fitted views.
+        add(menu, .zoomIn, in: shortcutStore)
+        add(menu, .zoomOut, in: shortcutStore)
+        menu.addItem(.separator())
         add(menu, .zoomToFit, in: shortcutStore)
         add(menu, .zoomToFitWidth, in: shortcutStore)
         add(menu, .zoomActualPixels, in: shortcutStore)

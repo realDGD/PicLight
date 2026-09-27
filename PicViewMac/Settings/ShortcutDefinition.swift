@@ -106,6 +106,11 @@ public final class ShortcutStore {
         .previousImage: ShortcutDefinition(key: String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: []),
         .firstImage: ShortcutDefinition(key: String(UnicodeScalar(NSHomeFunctionKey)!), modifiers: []),
         .lastImage: ShortcutDefinition(key: String(UnicodeScalar(NSEndFunctionKey)!), modifiers: []),
+        // The two zoom steps carry the conventional system shortcuts. `=` is what the key event
+        // reports for both ⌘= and ⇧⌘= (AppKit matches on `charactersIgnoringModifiers`), so one
+        // binding covers the ⌘+ people actually press.
+        .zoomIn: ShortcutDefinition(key: "=", modifiers: [.command]),
+        .zoomOut: ShortcutDefinition(key: "-", modifiers: [.command]),
         .zoomToFit: ShortcutDefinition(key: "0", modifiers: [.command]),
         .zoomToFitWidth: ShortcutDefinition(key: "3", modifiers: [.command]),
         .zoomActualPixels: ShortcutDefinition(key: "1", modifiers: [.command]),

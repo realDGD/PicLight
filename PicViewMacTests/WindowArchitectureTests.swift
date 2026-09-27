@@ -266,6 +266,23 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertFalse(controller.viewerViewController.viewerState.isImmersive)
     }
 
+    /// The two zoom steps carry the conventional system shortcuts, in the menu macOS puts them in.
+    func testZoomStepsHaveConventionalShortcutsAndMenuItems() {
+        let store = ShortcutStore.shared
+        XCTAssertEqual(store.shortcut(for: .zoomIn)?.key, "=")
+        XCTAssertEqual(store.shortcut(for: .zoomIn)?.modifiers, [.command])
+        XCTAssertEqual(store.shortcut(for: .zoomOut)?.key, "-")
+        XCTAssertEqual(store.shortcut(for: .zoomOut)?.modifiers, [.command])
+
+        let menu = MainMenuBuilder.build(appName: "PicViewMac", shortcutStore: store)
+        let viewMenu = menu.items.compactMap(\.submenu).first {
+            $0.items.contains { $0.keyEquivalent == "0" && $0.keyEquivalentModifierMask == [.command] }
+        }
+        XCTAssertEqual(viewMenu?.items.first?.keyEquivalent, "=",
+                       "zoom in is the first item of the view menu")
+        XCTAssertEqual(viewMenu?.items[1].keyEquivalent, "-", "and zoom out is the second")
+    }
+
     func testImmersiveAndFullScreenAreIndependentStates() {
         let controller = makeViewer()
         let viewer = controller.viewerViewController

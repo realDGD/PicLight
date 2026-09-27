@@ -1421,11 +1421,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // This is the load/change trigger; it is deliberately not driven by the decode
             // starting, which would show a readout for an image that has not arrived.
             noteImageChangedForInfoHUD()
-            displayedItemURL = head.descriptor.sourceURL ?? session.currentItem?.url
-            displayedItemVersion = displayedItemURL.map {
-                SourceFileIdentity.read(at: $0).versionToken
-            }
-            viewerState.apply(head: head)
+            let url = head.descriptor.sourceURL ?? session.currentItem?.url
+            let version = url.map { SourceFileIdentity.read(at: $0).versionToken }
+            // A new *picture* starts fitted; another decode of the same file at another level is not
+            // a new picture and must not touch the zoom the user chose.
+            let isNewPicture = url != displayedItemURL || version != displayedItemVersion
+            displayedItemURL = url
+            displayedItemVersion = version
+            viewerState.apply(head: head, startsFitted: isNewPicture)
             displayedLevel = head.level
             inFlightLevel = nil
             isDecodingCurrentItem = false
@@ -1567,7 +1570,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.renderImage = nil
         }
         canvas.refit()
-        if viewerState.viewport.zoomScale == 1 || viewerState.currentImage == nil {
+        // A picture the user did not choose a zoom for starts fitted. The request comes from the
+        // state (only a new image raises it), so a re-decode of the same picture at another level
+        // leaves the zoom alone.
+        if viewerState.consumeFitRequest() || viewerState.currentImage == nil {
             canvas.setZoomToFit()
         }
         viewerState.viewport = canvas.viewport

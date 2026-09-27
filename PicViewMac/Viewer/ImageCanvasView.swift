@@ -148,10 +148,18 @@ public final class ImageCanvasView: NSView {
     /// Logical source size of the image being shown. Zero when nothing is loaded.
     public var imagePixelSize: CGSize { renderImage?.sourcePixelSize ?? .zero }
 
+    /// Recomputes the fit scale for the current geometry.
+    ///
+    /// Fit is *sticky*: a picture that was filling the window keeps filling it when the window (or the
+    /// canvas) changes size — the window is resized to the image when a file opens, and without this
+    /// the zoom stayed at the pre-resize fit and the picture sat with a margin all round. A zoom the
+    /// user chose is left exactly as it is.
     public func refit() {
         guard renderImage != nil, bounds.width > 0, bounds.height > 0 else { return }
         var updated = viewport
+        let wasAtFit = viewport.isAtFit
         updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
+        if wasAtFit { updated.zoomScale = updated.fitScale }
         updated.clampCenter(imagePixels: imagePixelSize, viewPoints: bounds.size, backingScale: backingScale)
         viewport = updated
     }
