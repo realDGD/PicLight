@@ -13,7 +13,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         environment.fileOpener.openHandler = { [weak self] url, behavior in
             self?.environment.open(url: url, behavior: behavior)
         }
-        NSApp.activate(ignoringOtherApps: false)
+        // Deliberately activates. A window that is not yet key draws its Liquid Glass in the inactive
+        // style — flatter, and much closer to the plain material — and the dock then "lights up" a
+        // moment later when the window becomes key (reported as a dock that was frosted glass and
+        // then switched). Activation is what the user asked for by opening a file, and on macOS 14+
+        // `activate()` is the cooperative form of it.
+        NSApp.activate()
 
         if let path = SelfTest.requestedFilePath {
             // No window is created here on purpose: the runner opens the file
@@ -51,6 +56,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func application(_ application: NSApplication, open urls: [URL]) {
         // A real open request supersedes the deferred default window.
         isDefaultWindowPending = false
+        // Same reason as at launch: an open from Finder has to bring the window forward, or the
+        // chrome appears in the inactive material and changes under the user's eyes.
+        NSApp.activate()
         environment.fileOpener.open(urls: urls)
     }
 

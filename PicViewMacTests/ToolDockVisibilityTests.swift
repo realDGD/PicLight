@@ -327,4 +327,35 @@ final class ToolDockVisibilityTests: XCTestCase {
         settle(0.4)
         XCTAssertFalse(dock.isHidden, "leaving immersive restores the dock")
     }
+
+    /// The dock's surface is chosen when the view is built, not when it is first shown, so the first
+    /// frame the user sees is already the material it keeps.
+    ///
+    /// Reported from a GUI pass: opening a picture showed the dock as frosted glass and it "switched"
+    /// to Liquid Glass a moment later. The app-side half of that is here — the glass exists before the
+    /// dock is ever revealed, and revealing it does not replace the surface. (The other half is the
+    /// window's own active state: a window that is not key draws Liquid Glass in its inactive style,
+    /// which is why the app now activates deliberately when it opens a file.)
+    func testTheDockSurfaceIsChosenBeforeItIsShownAndNeverReplaced() throws {
+        let controller = ViewerWindowController()
+        TestAppKit.presentOffScreen(controller)
+        controller.window?.setFrame(NSRect(x: 0, y: 0, width: 1000, height: 760), display: false)
+        controller.showWindow(nil)
+        let viewer = controller.viewerViewController
+        _ = viewer.view
+        defer { TestAppKit.close(controller) }
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
+
+        let glassAvailable = ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0))
+        XCTAssertTrue(dock.window === controller.window, "the dock is in the window from the start")
+        XCTAssertEqual(dock.usesNativeGlass, glassAvailable, "the surface is chosen at construction")
+
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.toolDockRevealZone.midX, y: viewer.toolDockRevealZone.midY), to: nil))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+
+        XCTAssertEqual(dock.usesNativeGlass, glassAvailable,
+                       "revealing the dock does not rebuild its surface")
+    }
 }
