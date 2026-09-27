@@ -481,6 +481,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                        toolDock, infoCard, floatingNavigation] {
             chrome.isHidden = hidden
         }
+        guard !hidden else { return }
+        // Coming back is not the same as showing everything: the empty state and the error label have
+        // their own reasons to be on screen, and forcing them visible left the empty state unhidden at
+        // alpha 0 — an invisible overlay over the whole window that took every gesture (see
+        // `EmptyStateView.hitTest`). Ask their own logic instead.
+        refreshEmptyState()
+        errorLabel.isHidden = (viewerState.errorMessage ?? "").isEmpty
     }
 
     /// Whether image mode's views are off screen because the browser is up.
