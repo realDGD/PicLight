@@ -1,0 +1,87 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "extended-srgb:0.85882,0.92549,0.98431,1.00000",
+          "extended-srgb:0.99608,0.99608,1.00000,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.1,
+            "y": 0.0
+          },
+          "stop": {
+            "x": 0.9,
+            "y": 1.0
+          }
+        }
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "extended-srgb:0.11373,0.18431,0.27451,1.00000",
+          "extended-srgb:0.02353,0.04314,0.07843,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.1,
+            "y": 0.0
+          },
+          "stop": {
+            "x": 0.9,
+            "y": 1.0
+          }
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Subject",
+      "lighting": "individual",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.45
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.0
+      },
+      "layers": [
+        {
+          "name": "Beam",
+          "image-name": "beam.svg",
+          "glass": false,
+          "blend-mode-specializations": [
+            {
+              "appearance": "light",
+              "value": "normal"
+            },
+            {
+              "appearance": "dark",
+              "value": "plus-lighter"
+            },
+            {
+              "appearance": "tinted",
+              "value": "normal"
+            }
+          ]
+        },
+        {
+          "name": "Flashlight",
+          "image-name": "artwork.svg",
+          "glass": false
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}

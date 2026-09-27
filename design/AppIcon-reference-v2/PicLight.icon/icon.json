@@ -1,0 +1,105 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.60,0.79,0.98,1",
+          "srgb:0.86,0.94,1,1"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.14,0.25,0.40,1",
+          "srgb:0.025,0.05,0.10,1"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Warm light",
+      "lighting": "individual",
+      "specular": false,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "layers": [
+        {
+          "name": "Beam",
+          "image-name": "beam.svg",
+          "glass": false
+        }
+      ]
+    },
+    {
+      "name": "Glove and flashlight",
+      "lighting": "individual",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.12
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "layers": [
+        {
+          "name": "Foreground",
+          "image-name": "foreground.png",
+          "glass": false,
+          "position": {
+            "scale": 0.75,
+            "translation-in-points": [
+              -100,
+              60
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Glass inset",
+      "lighting": "combined",
+      "specular": true,
+      "specular-highlight-placement": "inside",
+      "refractivity": {
+        "enabled": true,
+        "strength": 0.28,
+        "depth": 0.38
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.05
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.8
+      },
+      "layers": [
+        {
+          "name": "Clear blue glass",
+          "image-name": "glass.svg",
+          "glass": true
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  },
+  "features": [
+    "refractivity",
+    "specular-location"
+  ]
+}

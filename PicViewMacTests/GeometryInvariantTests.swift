@@ -176,6 +176,37 @@ final class GeometryInvariantTests: XCTestCase {
                           "the minimap viewport shrinks as the image is zoomed in")
     }
 
+    /// The absolute direction of a pan, which nothing pinned before: the horizontal sign was right
+    /// and the vertical one was mirrored, so panning in a zoomed view tracked the fingers sideways
+    /// and ran backwards up and down. Measured as "where did this image point end up on screen".
+    func testAPositivePanDeltaMovesTheContentRightAndUp() {
+        let source = CGSize(width: 4000, height: 2000)
+        let view = CGSize(width: 800, height: 600)
+        let reference = CGPoint(x: -300, y: 150)   // an arbitrary source point, away from the centre
+
+        func screenMovement(_ delta: CGSize) -> CGPoint {
+            var state = ViewportState(fitScale: 0.1, zoomScale: 1.2,
+                                      normalizedCenter: CGPoint(x: 0.5, y: 0.5))
+            let before = reference.applying(
+                state.imageToViewTransform(sourcePixelSize: source, viewSize: view))
+            state.pan(byViewDelta: delta, imagePixels: source, viewPoints: view)
+            let after = reference.applying(
+                state.imageToViewTransform(sourcePixelSize: source, viewSize: view))
+            return CGPoint(x: after.x - before.x, y: after.y - before.y)
+        }
+
+        let rightward = screenMovement(CGSize(width: 60, height: 0))
+        XCTAssertGreaterThan(rightward.x, 0,
+                             "a rightward delta moves the picture right (view space, y up)")
+        XCTAssertEqual(rightward.y, 0, accuracy: 0.001, "and does not move it vertically")
+
+        let upward = screenMovement(CGSize(width: 0, height: 60))
+        XCTAssertGreaterThan(upward.y, 0,
+                             "an upward delta moves the picture up — the same convention as x, "
+                             + "which is what a two-finger pan in a zoomed view follows")
+        XCTAssertEqual(upward.x, 0, accuracy: 0.001, "and does not move it horizontally")
+    }
+
     func testRotatedImageChangesTheMinimapAspect() {
         let image = CGSize(width: 4000, height: 1000)
         let minimap = NSRect(x: 0, y: 0, width: 168, height: 120).insetBy(dx: 4, dy: 4)
