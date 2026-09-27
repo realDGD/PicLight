@@ -9,11 +9,25 @@ public actor ThumbnailPipeline {
     private var inFlight: [String: Task<CGImage?, Never>] = [:]
     /// The cache's real occupancy — `NSCache` does not report it, so the delegate is counted.
     private let accounting = ThumbnailCacheAccounting()
+    /// Decoded thumbnails, kept between launches. The memory cache dies with the process; a
+    /// 1.5-gigapixel PNG (48,000 × 32,000, measured on a real file) costs ImageIO ≈18 s to thumbnail
+    /// *whatever* the target size or subsampling factor, so that cost has to be paid once ever rather
+    /// than once per visit.
+    private let diskCache: ThumbnailDiskCache?
+    /// How many decodes run at once. Each one is a file read plus a decode; a folder of large images
+    /// would otherwise start as many as there are visible cells and thrash the disk. An async gate,
+    /// not a `DispatchSemaphore`: blocking a cooperative-pool thread is exactly what an `await` here
+    /// must not do.
+    static let decodeGate = AsyncGate(limit: 4)
 
-    public init(cacheLimit: Int = 600) {
+    /// - Parameter diskCache: the persistent store, or nil for an in-memory-only pipeline. The app
+    ///   passes `.default`; tests leave it out, so a thumbnail stored by one test can never make
+    ///   another test's "this file was decoded" assertion false.
+    public init(cacheLimit: Int = 600, diskCache: ThumbnailDiskCache? = nil) {
         cache.countLimit = cacheLimit
         cache.totalCostLimit = 48 * 1024 * 1024
         cache.delegate = accounting
+        self.diskCache = diskCache
     }
 
     public func thumbnail(for url: URL, maxPixelSize: Int) async throws -> CGImage {
@@ -28,12 +42,27 @@ public actor ThumbnailPipeline {
             if let image = await existing.value { return image }
         }
 
+        let cacheKey = key as String
+        let diskCache = self.diskCache
         let task = Task.detached(priority: .utility) { () -> CGImage? in
-            Self.makeThumbnail(url: url, maxPixelSize: maxPixelSize)
+            if let onDisk = diskCache?.thumbnail(forKey: cacheKey) {
+                ThumbnailPipelineMetrics.noteDiskCacheHit()
+                return onDisk
+            }
+            // A bounded number of decodes at a time: the gate is held only around the decode itself.
+            await Self.decodeGate.acquire()
+            ThumbnailPipelineMetrics.noteDecodeStarted()
+            let decoded = Self.makeThumbnail(url: url, maxPixelSize: maxPixelSize)
+            ThumbnailPipelineMetrics.noteDecodeFinished()
+            await Self.decodeGate.release()
+            if let decoded {
+                diskCache?.store(decoded, forKey: cacheKey)
+            }
+            return decoded
         }
-        inFlight[key as String] = task
+        inFlight[cacheKey] = task
         let image = await task.value
-        inFlight[key as String] = nil
+        inFlight[cacheKey] = nil
         guard let image else { throw ImageDecodeError.noDisplayableImage }
         let cost = image.bytesPerRow * image.height
         cache.setObject(CGImageBox(image), forKey: key, cost: cost)
@@ -75,6 +104,14 @@ public actor ThumbnailPipeline {
         accounting.reset()
     }
 
+    /// Forgets the on-disk copies as well. Tests use it to prove a second decode really is a second
+    /// decode; the app has no reason to call it.
+    public func purgeDiskCache() {
+        diskCache?.removeAll()
+    }
+
+    public var diskCacheDirectory: URL? { diskCache?.directory }
+
     /// How many thumbnails the cache is actually holding right now. The effective-memory audit:
     /// the pipeline is the bounded cache authority, and this is its real occupancy.
     public var retainedImageCount: Int { accounting.snapshot.count }
@@ -92,6 +129,36 @@ public actor ThumbnailPipeline {
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
+}
+
+/// An async counting gate: at most `limit` holders at a time, first come first served.
+///
+/// A slot is handed straight to the next waiter on release rather than decremented and re-acquired,
+/// so the count cannot drift.
+actor AsyncGate {
+    private let limit: Int
+    private var inUse = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) { self.limit = max(1, limit) }
+
+    func acquire() async {
+        if inUse < limit {
+            inUse += 1
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            inUse = max(0, inUse - 1)
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+
+    var inUseForTesting: Int { inUse }
 }
 
 /// `NSCache` needs class values; `CGImage` is immutable so boxing is safe.
@@ -147,6 +214,9 @@ public enum ThumbnailPipelineMetrics {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var paths: Set<String> = []
     nonisolated(unsafe) private static var previews = 0
+    nonisolated(unsafe) private static var hits = 0
+    nonisolated(unsafe) private static var running = 0
+    nonisolated(unsafe) private static var peak = 0
 
     /// Files whose thumbnail was actually decoded from disk.
     public static var decodedFilePaths: Set<String> {
@@ -160,11 +230,40 @@ public enum ThumbnailPipelineMetrics {
         return previews
     }
 
+    /// Thumbnails that came from the disk cache instead of the decoder.
+    public static var diskCacheHits: Int {
+        lock.lock(); defer { lock.unlock() }
+        return hits
+    }
+
+    /// Decodes running right now, and the most that ever ran at once. The bound is what keeps a
+    /// folder of large images from starting one decode per visible cell.
+    public static var decodePeak: Int {
+        lock.lock(); defer { lock.unlock() }
+        return peak
+    }
+
+    public static func reset() {
+        lock.lock(); paths.removeAll(); previews = 0; hits = 0; running = 0; peak = 0; lock.unlock()
+    }
+
     static func noteFileDecode(_ url: URL) {
         lock.lock(); paths.insert(url.path); lock.unlock()
     }
 
     static func notePreview() {
         lock.lock(); previews += 1; lock.unlock()
+    }
+
+    static func noteDiskCacheHit() {
+        lock.lock(); hits += 1; lock.unlock()
+    }
+
+    static func noteDecodeStarted() {
+        lock.lock(); running += 1; peak = max(peak, running); lock.unlock()
+    }
+
+    static func noteDecodeFinished() {
+        lock.lock(); running = max(0, running - 1); lock.unlock()
     }
 }

@@ -68,14 +68,55 @@ final class FolderBrowserSliderTests: XCTestCase {
         ])
     }
 
-    /// The slider covers the spec's range and starts at the spec's default.
-    func testTheSliderCoversTheSpecifiedRange() throws {
+    /// In the adaptive layout the slider covers the spec's range continuously.
+    func testTheAdaptiveSliderCoversTheSpecifiedRange() throws {
+        let (directory, controller, _, browser) = try makeViewer()
+        defer { cleanup(directory, controller) }
+        browser.view.onLayoutChanged?(.adaptiveGrid)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        let slider = browser.view.thumbnailSizeSlider
+        XCTAssertEqual(browser.view.gallery.layoutKindForTesting, .adaptiveGrid)
+        XCTAssertEqual(slider.minValue, 80)
+        XCTAssertEqual(slider.maxValue, 320)
+        XCTAssertFalse(slider.allowsTickMarkValuesOnly, "the adaptive layout has no levels to snap to")
+        XCTAssertEqual(slider.numberOfTickMarks, 0)
+
+        // A value between the spec's ends is applied as-is: this layout has no column count.
+        slider.doubleValue = 137
+        slider.sendAction(slider.action, to: slider.target)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(browser.view.gallery.thumbnailSizeForTesting, 137, accuracy: 0.001,
+                       "the adaptive slider is continuous")
+    }
+
+    /// In the uniform layout the slider steps through the sizes that fill a row exactly, because the
+    /// number of columns is what the user is choosing.
+    func testTheUniformSliderStepsThroughTheSizesThatFillARow() throws {
         let (directory, controller, _, browser) = try makeViewer()
         defer { cleanup(directory, controller) }
         let slider = browser.view.thumbnailSizeSlider
-        XCTAssertEqual(slider.minValue, 80)
-        XCTAssertEqual(slider.maxValue, 320)
-        XCTAssertEqual(slider.doubleValue, 160, accuracy: 0.5, "the default is 160 pt")
+        let width = browser.view.galleryScrollView.contentSize.width
+        let levels = GalleryLayout.uniformSizeLevels(containerWidth: width)
+        XCTAssertGreaterThan(levels.count, 1, "precondition: this window has levels")
+
+        XCTAssertTrue(slider.allowsTickMarkValuesOnly,
+                      "the uniform slider only takes the values that fill a row")
+        XCTAssertEqual(slider.numberOfTickMarks, levels.count)
+        XCTAssertEqual(slider.minValue, 0, "the slider indexes the levels")
+        XCTAssertEqual(slider.maxValue, Double(levels.count - 1))
+        XCTAssertTrue(levels.contains { abs($0 - browser.view.gallery.thumbnailSizeForTesting) < 0.51 },
+                      "the grid starts on a level")
+
+        // Driving the control the way a click on the track does: the value is an index, and the size
+        // the grid receives is that level — never something in between.
+        for index in [levels.count - 1, 0, levels.count / 2] {
+            slider.doubleValue = Double(index)
+            slider.sendAction(slider.action, to: slider.target)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            XCTAssertEqual(browser.view.gallery.thumbnailSizeForTesting, levels[index], accuracy: 0.001,
+                           "index \(index) applies that level's size, not the index")
+        }
     }
 
     /// Dragging the slider reflows the grid: the number of cells on screen changes with the size.
@@ -150,12 +191,18 @@ final class FolderBrowserSliderTests: XCTestCase {
 
         var settled: [CGFloat] = []
         browser.view.onThumbnailSizeSettled = { settled.append($0) }
-        // The way the real gesture arrives: the slider's value has already moved, then the drag
-        // ends and the settle reports where it landed.
-        browser.view.onThumbnailSizeChanged?(200)
-        slider.doubleValue = 200
+        // The way the real gesture arrives: the slider's value has already moved, then the drag ends
+        // and the settle reports where it landed. In the uniform layout the value is a level index,
+        // so the settle reports that level's size — the size the grid is actually showing.
+        let levels = GalleryLayout.uniformSizeLevels(
+            containerWidth: browser.view.galleryScrollView.contentSize.width)
+        let index = max(0, levels.count - 2)
+        slider.doubleValue = Double(index)
+        // A real drag moves the value *and* fires the action; only then is the size the slider is on
+        // current. Without the action the settle would report the previous position.
+        slider.sendAction(slider.action, to: slider.target)
         dragEnded()
-        XCTAssertEqual(settled, [200],
+        XCTAssertEqual(settled, [levels[index]],
                        "the drag's end is the settle the resolution escalation waits for")
     }
 

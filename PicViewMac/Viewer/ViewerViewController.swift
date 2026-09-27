@@ -86,7 +86,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The decoder and thumbnail pipeline are injectable so tests can drive the
     /// real viewer with a counting or deliberately slow implementation.
     public init(decoder: ImageDecoding = ImageIODecoder(),
-                thumbnails: ThumbnailPipeline = ThumbnailPipeline(),
+                thumbnails: ThumbnailPipeline = ThumbnailPipeline(diskCache: .default),
                 probe: DimensionProbing = DimensionProbe(),
                 nativeDetail: NativeDetailScheduler = NativeDetailScheduler()) {
         // One probe instance is shared with the coordinator so the drawer's
@@ -1421,8 +1421,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // This is the load/change trigger; it is deliberately not driven by the decode
             // starting, which would show a readout for an image that has not arrived.
             noteImageChangedForInfoHUD()
-            let url = head.descriptor.sourceURL ?? session.currentItem?.url
-            let version = url.map { SourceFileIdentity.read(at: $0).versionToken }
+            let url = head.descriptor.sourceURL
+            let version = SourceFileIdentity.read(at: url).versionToken
             // A new *picture* starts fitted; another decode of the same file at another level is not
             // a new picture and must not touch the zoom the user chose.
             let isNewPicture = url != displayedItemURL || version != displayedItemVersion

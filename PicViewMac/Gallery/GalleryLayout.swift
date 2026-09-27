@@ -84,6 +84,38 @@ public enum GalleryLayout {
     /// nothing a person can see.
     public static let thumbnailSizeStep: CGFloat = 1
 
+    /// The sizes a uniform grid can take and still fill its row exactly: one per column count.
+    ///
+    /// The uniform slider is stepped through these, because the number of columns is what a person is
+    /// really choosing — a size between two levels leaves a margin at the right edge that nobody
+    /// asked for, and the window width already decides which sizes are reachable. The adaptive layout
+    /// keeps the continuous slider: its items are each their own width, so there is no column count
+    /// to snap to.
+    ///
+    /// Returned ascending, so a slider can index it directly. Sizes above the maximum are skipped and
+    /// the list stops at the minimum, so a wide window yields fewer, larger levels.
+    public static func uniformSizeLevels(containerWidth: CGFloat,
+                                         minimum: CGFloat = minimumThumbnailSize,
+                                         maximum: CGFloat = maximumThumbnailSize) -> [CGFloat] {
+        let usable = containerWidth - 2 * contentInset
+        guard usable >= minimum, maximum >= minimum else { return [] }
+        var levels: [CGFloat] = []
+        // A column count larger than this cannot produce a level inside the range: the size shrinks by
+        // more than the spacing each step, so the loop always stops long before it.
+        for columns in 1...1024 {
+            let size = (usable - CGFloat(columns - 1) * itemSpacing) / CGFloat(columns)
+            if size < minimum { break }
+            if size <= maximum { levels.append(size) }
+        }
+        return levels.reversed()
+    }
+
+    /// The level nearest to a requested size, or the size itself when the list is empty.
+    public static func nearestSizeLevel(to size: CGFloat, in levels: [CGFloat]) -> CGFloat {
+        guard let nearest = levels.min(by: { abs($0 - size) < abs($1 - size) }) else { return size }
+        return nearest
+    }
+
     /// Layout A: identical slots of `slot × slot` for the image, with the filename slot under it,
     /// packed into as many columns as fit.
     ///
@@ -94,7 +126,10 @@ public enum GalleryLayout {
         let usable = containerWidth - 2 * contentInset
         let slot = clampThumbnailSize(thumbnailSize)
         guard usable >= slot, !aspects.isEmpty else { return [] }
-        let columns = max(1, Int((usable + itemSpacing) / (slot + itemSpacing)))
+        // The tolerance matters for the stepped sizes: a level is *exactly* `n` columns wide, and
+        // without it floating point can land a hair below the integer and drop the row to `n - 1`
+        // columns, leaving the margin the level exists to remove.
+        let columns = max(1, Int((usable + itemSpacing + 0.01) / (slot + itemSpacing)))
         let rows = Int(ceil(Double(aspects.count) / Double(columns)))
         var result: [GalleryRow] = []
         result.reserveCapacity(rows)

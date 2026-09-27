@@ -9,6 +9,11 @@ final class GalleryItemView: NSView {
     private let imageView2 = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let selectionRing = PassthroughView()
+    /// Shown while this cell has no thumbnail yet: a plate in the image area with a caption, so a
+    /// folder of large pictures reads as "loading" rather than as empty. A 48,000 × 32,000 PNG costs
+    /// ImageIO ≈18 s to thumbnail, and a blank cell for that long looks like a broken grid.
+    private let loadingPlate = NSView()
+    private let loadingLabel = NSTextField(labelWithString: "")
 
     /// The item this view is currently showing, so a delivery can be matched by identity rather
     /// than by a row number captured when the request started.
@@ -27,6 +32,19 @@ final class GalleryItemView: NSView {
         nameLabel.alignment = .center
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        loadingPlate.wantsLayer = true
+        loadingPlate.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.18).cgColor
+        loadingPlate.layer?.cornerRadius = 4
+        loadingPlate.isHidden = true
+        loadingPlate.translatesAutoresizingMaskIntoConstraints = false
+
+        loadingLabel.font = .systemFont(ofSize: 10)
+        loadingLabel.textColor = .tertiaryLabelColor
+        loadingLabel.alignment = .center
+        loadingLabel.lineBreakMode = .byTruncatingMiddle
+        loadingLabel.isHidden = true
+        loadingLabel.translatesAutoresizingMaskIntoConstraints = false
+
         selectionRing.wantsLayer = true
         selectionRing.layer?.borderWidth = 2
         selectionRing.layer?.borderColor = NSColor.controlAccentColor.cgColor
@@ -35,6 +53,8 @@ final class GalleryItemView: NSView {
         selectionRing.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(imageView2)
+        addSubview(loadingPlate)
+        addSubview(loadingLabel)
         addSubview(selectionRing)
         addSubview(nameLabel)
         NSLayoutConstraint.activate([
@@ -43,6 +63,17 @@ final class GalleryItemView: NSView {
             imageView2.topAnchor.constraint(equalTo: topAnchor),
             imageView2.bottomAnchor.constraint(equalTo: bottomAnchor,
                                                constant: -GalleryLayout.filenameSlotHeight),
+
+            loadingPlate.leadingAnchor.constraint(equalTo: leadingAnchor),
+            loadingPlate.trailingAnchor.constraint(equalTo: trailingAnchor),
+            loadingPlate.topAnchor.constraint(equalTo: topAnchor),
+            loadingPlate.bottomAnchor.constraint(equalTo: bottomAnchor,
+                                                 constant: -GalleryLayout.filenameSlotHeight),
+
+            loadingLabel.centerXAnchor.constraint(equalTo: loadingPlate.centerXAnchor),
+            loadingLabel.centerYAnchor.constraint(equalTo: loadingPlate.centerYAnchor),
+            loadingLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
+            loadingLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
 
             selectionRing.leadingAnchor.constraint(equalTo: leadingAnchor),
             selectionRing.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -59,9 +90,14 @@ final class GalleryItemView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func configure(item: FolderItem, thumbnail: CGImage?, isCurrent: Bool) {
+    func configure(item: FolderItem, thumbnail: CGImage?, isCurrent: Bool,
+                   isLoading: Bool = false, loadingCaption: String = "载入中…") {
         representedURL = item.url
         nameLabel.stringValue = item.displayName
+        let showingPlaceholder = thumbnail == nil && isLoading
+        loadingPlate.isHidden = !showingPlaceholder
+        loadingLabel.isHidden = !showingPlaceholder
+        loadingLabel.stringValue = loadingCaption
         // The image fills the cell's image area and fits inside it: `GalleryLayout` decided the
         // cell's *shape*, and scaleProportionallyUpOrDown centres the picture inside it, so a wide
         // adaptive cell and a square uniform slot both letterbox rather than crop.
@@ -76,6 +112,8 @@ final class GalleryItemView: NSView {
     var selectionSurface: NSView { selectionRing }
     /// The thumbnail this cell is currently showing, for tests.
     var imageForTesting: NSImage? { imageView2.image }
+    /// The loading placeholder's caption, or nil when the cell is not showing one.
+    var loadingCaptionForTesting: String? { loadingLabel.isHidden ? nil : loadingLabel.stringValue }
 }
 
 /// One delivered thumbnail: the image, the resolution tier it was actually decoded at, and the
@@ -161,7 +199,15 @@ final class GalleryGridView: NSView {
         // Everything on screen belongs to the old list.
         for (_, cell) in visibleCells { recycle(cell) }
         visibleCells.removeAll()
-        if !sameFiles { delivered.removeAll() }
+        if !sameFiles {
+            delivered.removeAll()
+            // And the placeholders: another folder's pending requests are not this folder's loading
+            // state (the completions are dropped by the browser's own generation check).
+            if !loadingPaths.isEmpty {
+                loadingPaths.removeAll()
+                onLoadingChanged?(0)
+            }
+        }
         needsLayout = true
     }
 
@@ -236,6 +282,7 @@ final class GalleryGridView: NSView {
     func noteDelivered(_ image: CGImage, pixelSize: Int, versionToken: String, for url: URL) {
         delivered[url.path] = DeliveredThumbnail(image: image, pixelSize: pixelSize,
                                                  versionToken: versionToken)
+        if loadingPaths.remove(url.path) != nil { onLoadingChanged?(loadingPaths.count) }
         trimDeliveredToWindow()
     }
 
@@ -252,9 +299,67 @@ final class GalleryGridView: NSView {
     @discardableResult
     func updateThumbnail(for url: URL, image: CGImage?) -> Bool {
         guard let index = items.firstIndex(where: { $0.url == url }) else { return false }
+        loadingPaths.remove(url.path)
         guard let cell = visibleCells[index] else { return false }
-        cell.configure(item: items[index], thumbnail: image, isCurrent: index == currentIndex)
+        let item = items[index]
+        cell.configure(item: item, thumbnail: image, isCurrent: index == currentIndex,
+                       isLoading: false, loadingCaption: Self.loadingCaption(for: item))
         return true
+    }
+
+    /// The items whose thumbnail has been asked for and has not arrived. Kept per URL, not per
+    /// index: a re-sort while a request is in flight must not move the placeholder to another file.
+    private var loadingPaths: Set<String> = []
+
+    /// Whether this item is waiting for its thumbnail.
+    func isLoading(_ item: FolderItem) -> Bool { loadingPaths.contains(item.url.path) }
+
+    /// How many visible items are still waiting. The browser shows this as a progress readout, which
+    /// is what tells the user a slow folder is working rather than empty.
+    var loadingThumbnailCount: Int { loadingPaths.count }
+
+    /// Called after the count changes, so the progress readout follows the deliveries.
+    var onLoadingChanged: ((Int) -> Void)?
+
+    /// How many requests have been announced, for tests that prove the loading state was reached at
+    /// all (the deliveries for small pictures can land before a test looks).
+    private(set) var thumbnailRequestAnnouncementsForTesting = 0
+
+    /// A thumbnail was asked for: show the placeholder until something arrives for this URL.
+    func noteThumbnailRequested(for url: URL) {
+        guard loadingPaths.insert(url.path).inserted else { return }
+        thumbnailRequestAnnouncementsForTesting += 1
+        refreshVisibleCell(for: url)
+        onLoadingChanged?(loadingPaths.count)
+    }
+
+    /// A request finished without an image. The placeholder goes away, so a file that cannot be
+    /// thumbnailed does not spin forever.
+    func noteThumbnailFailed(for url: URL) {
+        guard loadingPaths.remove(url.path) != nil else { return }
+        refreshVisibleCell(for: url)
+        onLoadingChanged?(loadingPaths.count)
+    }
+
+    /// Re-draws one visible cell from its current state. Identity, not row number: the list may have
+    /// been resorted since the request went out.
+    private func refreshVisibleCell(for url: URL) {
+        guard let index = items.firstIndex(where: { $0.url == url }),
+              let cell = visibleCells[index] else { return }
+        let item = items[index]
+        cell.configure(item: item, thumbnail: thumbnail(at: index),
+                       isCurrent: index == currentIndex,
+                       isLoading: isLoading(item),
+                       loadingCaption: Self.loadingCaption(for: item))
+    }
+
+    /// What the placeholder says. A picture whose dimensions are known to be enormous gets its own
+    /// sentence: ImageIO needs tens of seconds for those, and "载入中…" would read as a hang.
+    static func loadingCaption(for item: FolderItem) -> String {
+        guard let size = item.pixelSize, size.width * size.height > 50_000_000 else {
+            return "载入中…"
+        }
+        return "超大图片，正在生成缩略图…"
     }
 
     /// The cells a layout produces for the current width, for tests.
@@ -352,7 +457,9 @@ final class GalleryGridView: NSView {
                 cell.frame = cellFrame.frame
                 let item = items[cellFrame.index]
                 cell.configure(item: item, thumbnail: thumbnail(at: cellFrame.index),
-                               isCurrent: cellFrame.index == currentIndex)
+                               isCurrent: cellFrame.index == currentIndex,
+                               isLoading: isLoading(item),
+                               loadingCaption: Self.loadingCaption(for: item))
                 addSubview(cell)
                 visibleCells[cellFrame.index] = cell
                 if thumbnail(at: cellFrame.index) == nil { onThumbnailNeeded?(cellFrame.index, item) }

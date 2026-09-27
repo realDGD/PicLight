@@ -109,6 +109,11 @@ final class FolderBrowserViewController {
         view.gallery.onThumbnailNeeded = { [weak self] index, item in
             self?.requestThumbnail(for: item, index: index)
         }
+        view.gallery.onLoadingChanged = { [weak self] loading in
+            guard let self else { return }
+            self.view.updateThumbnailProgress(loading: loading,
+                                              total: self.view.gallery.materializedCellCount)
+        }
         view.gallery.onSelectionChanged = { [weak self] index in
             // A single click selects, and may move the session: the spec allows the sync, and it is
             // what makes Return / double-click open the item the user is looking at.
@@ -388,6 +393,9 @@ final class FolderBrowserViewController {
         let folderGenerationAtRequest = folderGeneration
         pending[path] = PendingRequest(generation: generation, maxPixelSize: maxPixelSize)
         thumbnailRequestCount += 1
+        // The cell shows a placeholder from here until an image arrives: a big picture takes seconds,
+        // and an empty cell for that long reads as a broken grid.
+        view.gallery.noteThumbnailRequested(for: item.url)
         host.requestGalleryThumbnail(for: item, index: index, maxPixelSize: maxPixelSize) {
             [weak self] _, image in
             guard let self else { return }
@@ -397,7 +405,11 @@ final class FolderBrowserViewController {
             guard self.folderGeneration == folderGenerationAtRequest,
                   self.pending[path]?.generation == generation else { return }
             self.pending[path] = nil
-            guard let image else { return }
+            guard let image else {
+                // A file that cannot be thumbnailed must not keep its placeholder forever.
+                self.view.gallery.noteThumbnailFailed(for: item.url)
+                return
+            }
             self.view.gallery.noteDelivered(image, pixelSize: maxPixelSize,
                                             versionToken: identity.versionToken, for: item.url)
             self.view.gallery.updateThumbnail(for: item.url, image: image)

@@ -54,7 +54,26 @@ public final class FolderBrowserView: NSView {
     private let uniformButton = DockButton(symbol: "square.grid.2x2", tooltip: "规则网格")
     private let adaptiveButton = DockButton(symbol: "rectangle.grid.1x2", tooltip: "自适应网格")
     private let sizeSlider = ThumbnailSizeSlider()
+
+    /// The sizes the uniform grid can take, ascending: one per column count that fills the row
+    /// exactly. Empty in the adaptive layout (and when the window is too narrow for any level), where
+    /// the slider stays continuous.
+    private var sizeLevels: [CGFloat] = []
+
+    /// The size the slider represents, in points. In stepped mode `sizeSlider`'s value is an *index*
+    /// into `sizeLevels`, so the two cannot be read from each other.
+    private var sliderSize: CGFloat = GalleryLayout.defaultThumbnailSize
+
+    /// The width the gallery lays its rows out for, matching `GalleryGridView.layoutWidth`.
+    private var galleryLayoutWidth: CGFloat {
+        let width = galleryScroll.contentSize.width
+        return width > 0 ? width : gallery.bounds.width
+    }
     private let titleLabel = NSTextField(labelWithString: "")
+    /// "缩略图 3 / 12" while the visible cells are waiting for their pictures, and nothing at all when
+    /// they are not. A folder of large images spends seconds per thumbnail (ImageIO needs ≈18 s for a
+    /// 48,000 × 32,000 PNG), and without this the grid just looks empty.
+    private let thumbnailProgressLabel = NSTextField(labelWithString: "")
     private let sortKeyPopup = NSPopUpButton()
     private let sortDirectionButton = DockButton(symbol: "arrow.up.arrow.down", tooltip: "排序方向")
 
@@ -106,9 +125,6 @@ public final class FolderBrowserView: NSView {
         adaptiveButton.target = self
         adaptiveButton.action = #selector(chooseAdaptive)
 
-        sizeSlider.minValue = Double(GalleryLayout.minimumThumbnailSize)
-        sizeSlider.maxValue = Double(GalleryLayout.maximumThumbnailSize)
-        sizeSlider.doubleValue = Double(GalleryLayout.defaultThumbnailSize)
         sizeSlider.isContinuous = true
         sizeSlider.target = self
         sizeSlider.action = #selector(sliderMoved)
@@ -125,6 +141,12 @@ public final class FolderBrowserView: NSView {
         titleLabel.lineBreakMode = .byTruncatingMiddle
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        thumbnailProgressLabel.font = .systemFont(ofSize: 11)
+        thumbnailProgressLabel.textColor = .tertiaryLabelColor
+        thumbnailProgressLabel.isHidden = true
+        thumbnailProgressLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        thumbnailProgressLabel.translatesAutoresizingMaskIntoConstraints = false
 
         for key in ImageSortKey.allCases { sortKeyPopup.addItem(withTitle: key.localizedName) }
         sortKeyPopup.target = self
@@ -144,7 +166,8 @@ public final class FolderBrowserView: NSView {
             equalToConstant: Self.defaultToolbarHeight)
         toolbarHeightConstraint = toolbarHeight
         self.toolbarHeightForBody = toolbarHeight
-        let stack = NSStackView(views: [leading, titleLabel, sortKeyPopup, sortDirectionButton])
+        let stack = NSStackView(views: [leading, titleLabel, thumbnailProgressLabel,
+                                        sortKeyPopup, sortDirectionButton])
         stack.orientation = .horizontal
         stack.spacing = 12
         stack.alignment = .centerY
@@ -277,8 +300,9 @@ public final class FolderBrowserView: NSView {
         uniformButton.setAccessibilityLabel(layout == .uniformGrid ? "规则网格（当前）" : "规则网格")
         adaptiveButton.setAccessibilityLabel(layout == .adaptiveGrid ? "自适应网格（当前）" : "自适应网格")
 
-        if abs(sizeSlider.doubleValue - Double(thumbnailSize)) > 0.5 {
-            sizeSlider.doubleValue = Double(GalleryLayout.clampThumbnailSize(thumbnailSize))
+        refreshSizeSteps()
+        if abs(sliderSize - thumbnailSize) > 1 {
+            setSliderSize(thumbnailSize)
         }
         if let index = ImageSortKey.allCases.firstIndex(of: sortKey) {
             sortKeyPopup.selectItem(at: index)
@@ -313,19 +337,102 @@ public final class FolderBrowserView: NSView {
 
     // MARK: - Actions
 
+    /// Reports how many visible cells are still waiting for a thumbnail.
+    ///
+    /// `total` is the number of cells on screen: the readout is about what the user is looking at, not
+    /// about the folder (whose size has nothing to do with how long the wait is).
+    public func updateThumbnailProgress(loading: Int, total: Int) {
+        guard loading > 0 else {
+            thumbnailProgressLabel.isHidden = true
+            thumbnailProgressLabel.stringValue = ""
+            return
+        }
+        thumbnailProgressLabel.stringValue = "缩略图 \(max(0, total - loading)) / \(total)"
+        thumbnailProgressLabel.toolTip = "正在载入缩略图，已完成 \(max(0, total - loading)) 张"
+        thumbnailProgressLabel.isHidden = false
+    }
+
+    /// The progress readout's text, or nil when it is hidden, for tests.
+    var thumbnailProgressTextForTesting: String? {
+        thumbnailProgressLabel.isHidden ? nil : thumbnailProgressLabel.stringValue
+    }
+
+    /// Recomputes the uniform grid's size levels for the current width and re-scales the slider.
+    ///
+    /// Cheap and idempotent, so it can run on every layout pass: it does nothing unless the mode or
+    /// the width actually changed the list.
+    public func refreshSizeSteps() {
+        let levels = layoutKind == .uniformGrid
+            ? GalleryLayout.uniformSizeLevels(containerWidth: galleryLayoutWidth)
+            : []
+        guard levels.count > 1 || sizeLevels.count > 1 || levels != sizeLevels else { return }
+        sizeLevels = levels
+        let reported = sliderSize
+        let wasStepped = sizeSlider.allowsTickMarkValuesOnly
+        let isStepped = levels.count > 1
+        if isStepped {
+            sizeSlider.minValue = 0
+            sizeSlider.maxValue = Double(levels.count - 1)
+            sizeSlider.numberOfTickMarks = levels.count
+            sizeSlider.allowsTickMarkValuesOnly = true
+        } else {
+            sizeSlider.numberOfTickMarks = 0
+            sizeSlider.allowsTickMarkValuesOnly = false
+            sizeSlider.minValue = Double(GalleryLayout.minimumThumbnailSize)
+            sizeSlider.maxValue = Double(GalleryLayout.maximumThumbnailSize)
+        }
+        // Snap to a level when the mode or the width changed, so the row fills exactly from the first
+        // tick onwards. A drag in progress is not interrupted: the value is already a level's index.
+        if wasStepped != isStepped || !isStepped { setSliderSize(sliderSize) }
+        // The grid draws the size the slider is on, so a level the slider snapped to has to reach it.
+        // A reflow only — no settle here: a window resize must not start decodes for every step.
+        if sliderSize != reported {
+            lastReportedSize = sliderSize
+            onThumbnailSizeChanged?(sliderSize)
+        }
+    }
+
+    /// The last size this view reported, so a snap is reported once.
+    private var lastReportedSize: CGFloat?
+
+    /// Puts the slider on the level nearest to `size` (or on the size itself when continuous).
+    private func setSliderSize(_ size: CGFloat) {
+        sliderSize = GalleryLayout.clampThumbnailSize(size)
+        if sizeLevels.count > 1 {
+            let level = GalleryLayout.nearestSizeLevel(to: sliderSize, in: sizeLevels)
+            sliderSize = level
+            let index = sizeLevels.firstIndex(of: level) ?? 0
+            if sizeSlider.doubleValue != Double(index) { sizeSlider.doubleValue = Double(index) }
+        } else if sizeSlider.doubleValue != Double(sliderSize) {
+            sizeSlider.doubleValue = Double(sliderSize)
+        }
+    }
+
+    public override func layout() {
+        super.layout()
+        refreshSizeSteps()
+    }
+
     @objc private func goBack() { onBack?() }
     @objc private func chooseUniform() { onLayoutChanged?(.uniformGrid) }
     @objc private func chooseAdaptive() { onLayoutChanged?(.adaptiveGrid) }
 
     @objc private func sliderMoved() {
-        onThumbnailSizeChanged?(CGFloat(sizeSlider.doubleValue))
+        if sizeLevels.count > 1 {
+            let index = min(max(Int(sizeSlider.doubleValue.rounded()), 0), sizeLevels.count - 1)
+            sliderSize = sizeLevels[index]
+        } else {
+            sliderSize = GalleryLayout.clampThumbnailSize(CGFloat(sizeSlider.doubleValue))
+        }
+        lastReportedSize = sliderSize
+        onThumbnailSizeChanged?(sliderSize)
     }
 
     /// Called when the slider's drag ends. The distinction matters: the grid reflows on every tick,
     /// but a sharper thumbnail is only requested once the user has stopped moving — otherwise every
     /// pixel of travel would start a decode.
     public func noteSliderDragEnded() {
-        onThumbnailSizeSettled?(CGFloat(sizeSlider.doubleValue))
+        onThumbnailSizeSettled?(sliderSize)
     }
 
     @objc private func sortKeyChanged() {
