@@ -210,6 +210,9 @@ final class FolderTreeSidebarView: NSView {
 
     var outlineView: NSOutlineView { outline }
 
+    /// The row that carried the selection before the change, so it can be repainted without it.
+    private var lastSelectedRow = -1
+
     /// Whether the tree draws over the native sidebar material, for tests.
     var usesSidebarMaterialForTesting: Bool {
         material.material == .sidebar && material.blendingMode == .withinWindow
@@ -220,6 +223,12 @@ final class FolderTreeSidebarView: NSView {
     func renderedName(at row: Int) -> String? {
         guard let item = outline.item(atRow: row) as? FolderSidebarItem else { return nil }
         return displayName(for: item)
+    }
+
+    /// The cell a row is actually drawn with, for tests about how a row looks — the selected row's
+    /// colours are what the folder sidebar got wrong.
+    func cellViewForTesting(at row: Int) -> FolderTreeCellView? {
+        outline.view(atColumn: 0, row: row, makeIfNecessary: true) as? FolderTreeCellView
     }
 }
 
@@ -257,11 +266,17 @@ extension FolderTreeSidebarView: NSOutlineViewDelegate {
             ?? FolderTreeCellView(identifier: identifier)
         cell.configure(name: displayName(for: row),
                        isCurrent: row.node != nil && row.url.path == currentPath,
+                       isSelected: outlineView.selectedRowIndexes.contains(
+                        outlineView.row(forItem: item)),
                        symbol: row.node == nil ? "arrow.up" : "folder")
         return cell
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
+        // Repaint the rows whose selected state changed. A cell's colours are set when it is built, so
+        // without this the row that just lost the selection would keep the selected colours (and the
+        // new one would keep the accent label the selection hides).
+        defer { repaintSelectionChange() }
         guard !isApplyingModelState else { return }
         let row = outline.selectedRow
         // The clicked *item*, not a row index into a model array: rows and model entries are only
@@ -269,6 +284,15 @@ extension FolderTreeSidebarView: NSOutlineViewDelegate {
         guard row >= 0, let item = outline.item(atRow: row) as? FolderSidebarItem else { return }
         onFolderChosen?(item.url)
     }
+
+    /// Rebuilds the two rows a selection change affects, so their colours follow the selection.
+    private func repaintSelectionChange() {
+        let rows = IndexSet([lastSelectedRow, outline.selectedRow].filter { $0 >= 0 })
+        lastSelectedRow = outline.selectedRow
+        guard !rows.isEmpty else { return }
+        outline.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+    }
+
 
     /// A disclosure click is a request to expand or collapse, and the model owns that decision: the
     /// view reports it and re-renders whatever the model says afterwards.
@@ -294,6 +318,10 @@ extension FolderTreeSidebarView: NSOutlineViewDelegate {
 final class FolderTreeCellView: NSTableCellView {
     private let label = NSTextField(labelWithString: "")
     private let icon = NSImageView()
+    /// Whether this row is the folder being browsed, which is drawn with the accent colour.
+    private var isCurrentRow = false
+    /// Whether this row carries the selection, which overrides that accent.
+    private var isSelectedRow = false
 
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -321,14 +349,40 @@ final class FolderTreeCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func configure(name: String, isCurrent: Bool, symbol: String = "folder") {
+    func configure(name: String, isCurrent: Bool, isSelected: Bool = false,
+                   symbol: String = "folder") {
         label.stringValue = name
-        label.font = .systemFont(ofSize: 13, weight: isCurrent ? .semibold : .regular)
-        label.textColor = isCurrent ? .controlAccentColor : .labelColor
+        isCurrentRow = isCurrent
+        isSelectedRow = isSelected
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
-        icon.contentTintColor = isCurrent ? .controlAccentColor : .secondaryLabelColor
+        applyColors()
+    }
+
+    /// The table view sets this for the selected row; the sidebar also passes the selection in
+    /// explicitly, because a cell's colours are decided when it is configured.
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { applyColors() }
+    }
+
+    /// A selected row's background *is* the accent colour, so the folder being browsed — drawn with
+    /// an accent label — vanished into its own highlight, leaving the highlighted row with nothing
+    /// but an icon (reported from the folder sidebar). A selected row uses the selected-content
+    /// colours; an unselected row keeps the accent for the folder being browsed.
+    private func applyColors() {
+        label.font = .systemFont(ofSize: 13, weight: isCurrentRow ? .semibold : .regular)
+        guard isSelectedRow || backgroundStyle == .emphasized else {
+            label.textColor = isCurrentRow ? .controlAccentColor : .labelColor
+            icon.contentTintColor = isCurrentRow ? .controlAccentColor : .secondaryLabelColor
+            return
+        }
+        label.textColor = .selectedMenuItemTextColor
+        icon.contentTintColor = .selectedMenuItemTextColor
     }
 
     var renderedName: String { label.stringValue }
+
+    /// The colours actually in force, for tests: the selected state is what the user reported.
+    var labelColorForTesting: NSColor? { label.textColor }
+    var iconTintForTesting: NSColor? { icon.contentTintColor }
 }

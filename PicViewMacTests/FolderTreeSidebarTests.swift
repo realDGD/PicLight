@@ -227,6 +227,71 @@ final class FolderTreeSidebarTests: XCTestCase {
         }
     }
 
+    /// The row the user reported: the folder being browsed is drawn in the accent colour, and a
+    /// selected row's background *is* that accent colour, so the name disappeared into the highlight
+    /// — the selected row showed nothing but its folder icon. A selected row now uses the
+    /// selected-content colours.
+    func testTheSelectedRowKeepsItsNameVisible() throws {
+        let tree = try makeTree()
+        defer { try? FileManager.default.removeItem(at: tree.base) }
+        let (controller, viewer) = makeBrowser()
+        defer { TestAppKit.close(controller) }
+        let browser = try enterBrowser(viewer, on: tree.a.appendingPathComponent("img.png"))
+        let sidebar = browser.view.treeSidebar
+        sidebar.layoutSubtreeIfNeeded()
+
+        // Click the folder that becomes the one being browsed, so the row carries both states at
+        // once: current (accent label) and selected (accent background).
+        let row = try XCTUnwrap((0..<sidebar.outlineView.numberOfRows).first {
+            sidebar.renderedName(at: $0) == "C"
+        }, "C has a row")
+        sidebar.outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        XCTAssertTrue(waitUntil(10) { viewer.session.directory?.lastPathComponent == "C" })
+        pump(0.4)
+        sidebar.layoutSubtreeIfNeeded()
+
+        let rowOfC = try XCTUnwrap((0..<sidebar.outlineView.numberOfRows).first {
+            sidebar.outlineView.item(atRow: $0) as? FolderSidebarItem != nil
+                && sidebar.renderedName(at: $0) == "C"
+        })
+        let cell = try XCTUnwrap(sidebar.cellViewForTesting(at: rowOfC), "the row has a cell")
+        XCTAssertEqual(cell.renderedName, "C", "the name is still the row's name")
+        XCTAssertTrue(sidebar.outlineView.selectedRowIndexes.contains(rowOfC),
+                      "precondition: the current folder's row is the selected one")
+        XCTAssertEqual(cell.labelColorForTesting, NSColor.selectedMenuItemTextColor,
+                       "a selected row uses the selected-content colour for its label — the accent "
+                       + "label is invisible on the accent selection background")
+        XCTAssertEqual(cell.iconTintForTesting, NSColor.selectedMenuItemTextColor,
+                       "and for its icon")
+
+        // Going up makes A the folder being browsed. The sidebar *always* selects the current
+        // folder's row, so this is the normal case: current + selected, which is exactly the state
+        // whose name used to disappear.
+        let upRow = try XCTUnwrap((0..<sidebar.outlineView.numberOfRows).first {
+            sidebar.renderedName(at: $0) == "上一级"
+        })
+        sidebar.outlineView.selectRowIndexes(IndexSet(integer: upRow), byExtendingSelection: false)
+        XCTAssertTrue(waitUntil(10) { viewer.session.directory?.lastPathComponent == "A" })
+        pump(0.4)
+        sidebar.layoutSubtreeIfNeeded()
+
+        let rowOfA = try XCTUnwrap((0..<sidebar.outlineView.numberOfRows).first {
+            sidebar.renderedName(at: $0) == "A"
+        })
+        XCTAssertTrue(sidebar.outlineView.selectedRowIndexes.contains(rowOfA),
+                      "the folder being browsed is the selected row")
+        let currentCell = try XCTUnwrap(sidebar.cellViewForTesting(at: rowOfA))
+        XCTAssertEqual(currentCell.labelColorForTesting, NSColor.selectedMenuItemTextColor,
+                       "the current folder's name stays readable on its selection")
+
+        // And the row that stopped being the current folder goes back to the plain label colour,
+        // rather than keeping the accent for a folder the browser has left.
+        let plainCell = try XCTUnwrap(sidebar.cellViewForTesting(at: rowOfC))
+        XCTAssertFalse(sidebar.outlineView.selectedRowIndexes.contains(rowOfC))
+        XCTAssertEqual(plainCell.labelColorForTesting, NSColor.labelColor,
+                       "a row that is neither current nor selected is plain")
+    }
+
     /// Going up from the root is the one thing that moves the root: the tree grows upward.
     func testTheUpRowAboveTheRootExtendsTheTreeUpward() throws {
         let tree = try makeTree()
