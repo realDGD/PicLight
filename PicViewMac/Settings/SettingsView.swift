@@ -134,6 +134,14 @@ final class SettingsViewController: NSViewController {
         stack.addArrangedSubview(row("窗口大小", sizingPopup))
         stack.addArrangedSubview(row("标题栏", titlebarPopup))
 
+        let wheelPanPopup = popup(WheelPanDirection.allCases, title: { $0.localizedName },
+                                  selected: settings.wheelPanDirection) { [weak self] value in
+            self?.settings.wheelPanDirection = value
+        }
+        wheelPanPopup.toolTip = "滚轮平移模式下的方向。自动按事件判断设备；如果你的鼠标发送的是连续滚动事件，"
+            + "可能被判成触控板，此时手动选一个方向即可。"
+        stack.addArrangedSubview(row("滚轮平移方向", wheelPanPopup))
+
         let dockSurfacePopup = popup(DockSurface.allCases, title: { $0.localizedName },
                                      selected: settings.dockSurface) { [weak self] value in
             self?.settings.dockSurface = value

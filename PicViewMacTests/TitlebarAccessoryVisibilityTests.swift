@@ -107,14 +107,12 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
         XCTAssertFalse(isInTitlebar(controller, window), "and it leaves with the bar")
     }
 
-    /// The name the bar shows belongs to the viewer's own strip, and the system's title field is out
-    /// of the way — so nothing can be drawn on top of the left-column button.
+    /// The bar's title keeps clear of the left-column button when the bar comes back.
     ///
     /// Measured before this: while the bar was away the title was hidden, and the frame AppKit computed
     /// when the bar came back was the leading-edge one — the title field at x=82 while the button
-    /// occupied 78…108, so the file name sat on the left-column control, and it only moved back to the
-    /// centre when something else changed the title. The bar is now the viewer's glass strip: the system
-    /// title is hidden in this mode, and the name is drawn by a label that is laid out with the strip.
+    /// occupied 78…108, so the file name sat on the left-column control. The window lays the title out
+    /// again once the accessory is back in the bar, and this is the test that keeps it that way.
     func testTheTitleStaysClearOfTheDrawerButtonWhenTheBarComesBack() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { TestAppKit.close(controller) }
@@ -132,16 +130,17 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
             settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
         }
         func assertTitlePlaced(_ label: String) throws {
-            XCTAssertEqual(window.titleVisibility, .hidden,
-                           "\(label): the system title is not the bar's title in this mode")
-            let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
-            XCTAssertFalse(strip.isHidden, "\(label): the strip is the revealed bar")
-            let stripFrame = strip.convert(strip.bounds, to: nil)
-            let buttonFrame = strip.convert(button.bounds, from: button)
-            XCTAssertGreaterThanOrEqual(stripFrame.width, viewer.view.bounds.width - 1,
-                                        "\(label): the strip spans the window")
-            XCTAssertGreaterThan(buttonFrame.minX, 0,
-                                 "\(label): the drawer button sits inside the strip, not outside it")
+            // The bar is the system's own: its title is the file name, and it must not land on the
+            // left-column button.
+            XCTAssertEqual(window.titleVisibility, .visible, "\(label): the bar shows its title")
+            // The window's title field is not exposed, so the question is asked of the theme frame: the
+            // title is centred, and the centre must be clear of the button.
+            let theme = try XCTUnwrap(window.contentView?.superview, "\(label): the theme frame")
+            let buttonFrame = theme.convert(button.bounds, from: button)
+            let titleCentre = theme.bounds.width / 2
+            XCTAssertGreaterThan(titleCentre, buttonFrame.maxX + 4,
+                                 "\(label): the bar's title is centred, clear of the drawer button "
+                                 + "(button \(buttonFrame), centre \(titleCentre))")
         }
 
         reveal()

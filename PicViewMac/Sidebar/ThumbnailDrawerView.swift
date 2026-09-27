@@ -64,7 +64,7 @@ public final class ThumbnailDrawerView: MaterialHostView {
         cap.translatesAutoresizingMaskIntoConstraints = false
         addSubview(cap)
         titlebarCap = cap
-        titlebarCapHeight = cap.heightAnchor.constraint(equalToConstant: TitleStripView.fallbackHeight)
+        titlebarCapHeight = cap.heightAnchor.constraint(equalToConstant: MaterialHostView.titlebarFallbackHeight)
         NSLayoutConstraint.activate([
             cap.leadingAnchor.constraint(equalTo: leadingAnchor),
             cap.trailingAnchor.constraint(equalTo: trailingAnchor),

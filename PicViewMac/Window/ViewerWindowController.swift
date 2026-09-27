@@ -23,6 +23,8 @@ public final class ViewerWindowController: NSWindowController {
 
     private var drawerButton: NSButton?
     private var drawerAccessory: NSTitlebarAccessoryViewController?
+    private var sizeAccessory: NSTitlebarAccessoryViewController?
+    private let sizeLabel = NSTextField(labelWithString: "")
 
     public convenience init() {
         self.init(viewer: ViewerViewController())
@@ -44,6 +46,9 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onDescriptorAvailable = { [weak self] descriptor in
             self?.applyImageSizedFrameIfNeeded(imagePixels: descriptor.displayPixelSize)
         }
+        viewerViewController.onSizeReadoutChanged = { [weak self] text in
+            self?.updateSizeReadout(text)
+        }
         viewerViewController.onTitleChanged = { [weak self] name in
             self?.window?.title = name ?? "PicLight"
         }
@@ -61,11 +66,44 @@ public final class ViewerWindowController: NSWindowController {
         }
         viewerViewController.applyTitlebarModeForWindow()
         installDrawerTitlebarButton()
+        installSizeReadout()
+        // Both accessories were added after the window applied its titlebar state, so they have to be
+        // brought into line with it now: an accessory that appears afterwards would sit in the bar on
+        // its own, and with the auto-hide bar away that means floating over the picture.
+        (window as? ViewerWindow)?.refreshTrafficLights()
         window.setFrame(contentRect, display: false)
         window.center()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    // MARK: - Pixel size in the titlebar
+
+    /// The picture's pixel size, in the titlebar's trailing corner — a native accessory, so it lives in
+    /// the bar the system draws rather than on a surface of our own. Empty while nothing is on screen.
+    private func installSizeReadout() {
+        sizeLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        sizeLabel.textColor = .secondaryLabelColor
+        sizeLabel.alignment = .right
+        sizeLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        sizeLabel.setFrameSize(NSSize(width: 120, height: 16))
+
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .trailing
+        accessory.view = sizeLabel
+        window?.addTitlebarAccessoryViewController(accessory)
+        sizeAccessory = accessory
+        (window as? ViewerWindow)?.viewerAccessories.append(accessory)
+    }
+
+    /// Called by the viewer whenever the picture changes.
+    fileprivate func updateSizeReadout(_ text: String) {
+        sizeLabel.stringValue = text
+        sizeLabel.isHidden = text.isEmpty
+    }
+
+    /// What the bar says, for tests.
+    var sizeReadoutTextForTesting: String { sizeLabel.stringValue }
 
     // MARK: - Drawer control in the titlebar
 

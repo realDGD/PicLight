@@ -92,12 +92,9 @@ final class TrafficLightRevealTests: XCTestCase {
         settle()
 
         XCTAssertEqual(window.titlebarState, .full)
-        // The revealed bar is the viewer's own glass strip (the file name and the pixel size), so the
-        // window's bar stays transparent and its own title stays hidden: nothing is drawn twice, and
-        // no white system title lands on a bright picture.
-        XCTAssertTrue(window.titlebarAppearsTransparent,
-                      "the strip is the bar's surface, not the window's")
-        XCTAssertEqual(window.titleVisibility, .hidden, "and the system title stays out of it")
+        // Zone B is the whole bar: its background and its title, drawn by the system.
+        XCTAssertFalse(window.titlebarAppearsTransparent, "the bar itself is on screen")
+        XCTAssertEqual(window.titleVisibility, .visible, "with its title")
         for type in Self.buttonTypes {
             XCTAssertEqual(window.standardWindowButton(type)?.isHidden, false)
         }

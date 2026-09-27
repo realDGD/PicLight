@@ -117,8 +117,8 @@ final class ToolDockZoomTests: XCTestCase {
 
     /// A zoom change updates the dock's readout, which is the only zoom readout left.
     ///
-    /// There used to be a second one in a bottom-left HUD; it is gone (see `TitleStripView` for what
-    /// replaced it), so this asserts the dock is the single source and that it follows a zoom.
+    /// There used to be a second one in a bottom-left HUD; it is gone, and the pixel size now lives in
+    /// the native titlebar, so this asserts the dock is the single zoom readout and that it follows.
     func testZoomingUpdatesTheDockReadout() throws {
         let (controller, viewer, dock) = try makeViewer()
         defer { controller.close() }

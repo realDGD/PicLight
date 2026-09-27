@@ -111,11 +111,12 @@ final class ColumnTitlebarCapTests: XCTestCase {
                        "the tree's rows must not be drawn under the traffic lights either")
     }
 
-    /// The strip exists only where it replaces a bar that hides: with the titlebar set to always
-    /// visible, the window draws its own bar and there must not be a second one.
+    /// The bar is the system's, one bar at a time: in the always-visible mode the window draws it, and
+    /// in the auto-hide mode it appears on the same terms — with its own title, not a surface of ours.
     ///
-    /// Reported exactly this way: "在设置中设置标题栏为始终显示的时候，会有两套标题栏".
-    func testOnlyOneTitlebarWhenTheBarIsAlwaysVisible() throws {
+    /// Reported: "在设置中设置标题栏为始终显示的时候，会有两套标题栏", then "删除我们刚刚说的标题栏，采用
+    /// 原生标题栏".
+    func testTheTitlebarIsTheSystemsOwn() throws {
         let settings = AppSettings.shared
         let original = settings.titlebar
         settings.titlebar = .alwaysVisible
@@ -129,14 +130,19 @@ final class ColumnTitlebarCapTests: XCTestCase {
         settle(0.6)
 
         XCTAssertEqual(window.titlebarMode, .alwaysVisible, "precondition: the setting is in force")
-        let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
-        XCTAssertTrue(strip.isHidden, "the native bar is the only titlebar in this mode")
-        XCTAssertFalse(window.titlebarAppearsTransparent, "because the window's bar is showing")
-        XCTAssertEqual(window.titleVisibility, .visible, "with the system's own title")
+        XCTAssertNil(viewer.chromeViewsForTesting["titleStrip"],
+                     "the viewer draws no titlebar surface of its own")
+        XCTAssertFalse(window.titlebarAppearsTransparent, "the window's bar is showing")
+        XCTAssertEqual(window.titleVisibility, .visible, "with its own title")
+        XCTAssertEqual(window.title, "static.png", "which is the file name")
+
+        // The size readout is a native accessory in that bar, not a view of ours.
+        XCTAssertFalse(controller.sizeReadoutTextForTesting.isEmpty,
+                       "the pixel size sits in the bar's trailing corner")
     }
 
-    /// And in the auto-hide mode the strip is the bar: the system title steps aside for it.
-    func testTheStripIsTheBarWhenTheTitlebarIsAutoHidden() throws {
+    /// And in the auto-hide mode the bar comes back as the system's bar too.
+    func testTheAutoHiddenBarIsAlsoTheSystemsOwn() throws {
         let settings = AppSettings.shared
         let original = settings.titlebar
         settings.titlebar = .autoHide
@@ -151,9 +157,11 @@ final class ColumnTitlebarCapTests: XCTestCase {
             CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
         settle(0.8)
 
-        let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
         XCTAssertEqual(window.titlebarState, .full)
-        XCTAssertFalse(strip.isHidden, "the strip replaces the auto-hidden bar")
-        XCTAssertEqual(window.titleVisibility, .hidden, "so the system title steps aside")
+        XCTAssertFalse(window.titlebarAppearsTransparent, "a real bar, with its own material")
+        XCTAssertEqual(window.titleVisibility, .visible, "and its own title")
+        XCTAssertEqual(window.title, "static.png")
+        XCTAssertFalse(controller.sizeReadoutTextForTesting.isEmpty,
+                       "with the pixel size in its trailing corner")
     }
 }

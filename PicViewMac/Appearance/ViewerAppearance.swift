@@ -50,6 +50,10 @@ public final class SurfaceCapView: MaterialHostView {
 /// `NSVisualEffectView` material. Nothing is hand-drawn, and glass is never
 /// placed over the image canvas for decoration.
 public class MaterialHostView: NSView {
+    /// Titlebar height assumed before the window reports the real one (and in a window without a
+    /// titlebar at all). Only the columns' titlebar caps read it.
+    public static let titlebarFallbackHeight: CGFloat = 28
+
     public enum Style {
         /// Plain system material. Used for the viewer's own chrome (tool dock,
         /// info card, bottom bar) where readability matters more than effect.

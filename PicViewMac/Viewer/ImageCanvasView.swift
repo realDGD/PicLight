@@ -112,6 +112,21 @@ public final class ImageCanvasView: NSView {
     }
 
     public var wheelMode: WheelMode = .zoom { didSet { router.wheelMode = wheelMode } }
+    /// Which way a wheel pans; `.automatic` decides per event. See `WheelPanDirection`.
+    public var wheelPanDirection: WheelPanDirection = .automatic
+
+    /// Whether this event came from a wheel rather than a trackpad.
+    ///
+    /// `hasPreciseScrollingDeltas` cannot answer it: a smooth-scrolling mouse sends continuous events
+    /// exactly like a trackpad's, which is why a wheel kept feeling reversed after the first fix
+    /// (reported: "滚轮现在还是反的"). What a trackpad always has and a wheel never has is a *gesture
+    /// phase*: real two-finger scrolling arrives with `.began`/`.changed`/`.ended` and momentum, while a
+    /// wheel's events carry no phase at all. The setting overrides the guess either way.
+    nonisolated static func cameFromAWheel(phase: NSEvent.Phase, momentumPhase: NSEvent.Phase,
+                                           hasPreciseDeltas: Bool) -> Bool {
+        if phase != [] || momentumPhase != [] { return false }
+        return true
+    }
     public var swipeMode: SwipeMode = .smart { didSet { router.swipeMode = swipeMode } }
     public var doubleClickMode: DoubleClickMode = .fitDoubleFit
 
@@ -364,7 +379,7 @@ public final class ImageCanvasView: NSView {
             // A wheel's sideways axis is a pan, not a swipe. A swipe means "the next picture", which is
             // a trackpad gesture; a tilt wheel pushed sideways is asking to move the picture, and in pan
             // mode it must scroll like the vertical axis does instead of navigating away.
-            if origin == .mouseWheel, router.wheelMode == .pan {
+            if treatsAsAWheel(event), router.wheelMode == .pan {
                 apply(router.routeWheel(deltaY: deltaY, deltaX: deltaX, anchor: point,
                                         modifierZoomOut: event.modifierFlags.contains(.option),
                                         isMouseWheel: true))
@@ -385,9 +400,22 @@ public final class ImageCanvasView: NSView {
         let intent = router.routeWheel(
             deltaY: deltaY, deltaX: deltaX, anchor: point,
             modifierZoomOut: event.modifierFlags.contains(.option),
-            isMouseWheel: origin == .mouseWheel
+            isMouseWheel: treatsAsAWheel(event)
         )
         apply(intent)
+    }
+
+    /// The device question, with the user's answer taking precedence over the detection.
+    nonisolated func treatsAsAWheel(_ event: NSEvent) -> Bool {
+        switch wheelPanDirection {
+        case .automatic:
+            return Self.cameFromAWheel(phase: event.phase, momentumPhase: event.momentumPhase,
+                                       hasPreciseDeltas: event.hasPreciseScrollingDeltas)
+        case .document:
+            return true
+        case .followGesture:
+            return false
+        }
     }
 
     public override func magnify(with event: NSEvent) {

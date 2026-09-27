@@ -116,7 +116,7 @@ final class ChromeStateIndependenceTests: XCTestCase {
     func testTheSurfacesAreDistinctViewsDrivenByTheTick() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
-        let names = ["drawer", "toolDock", "titleStrip", "floatingNavigation", "minimap"]
+        let names = ["drawer", "toolDock", "infoCard", "floatingNavigation", "minimap"]
         let views = try names.map { try XCTUnwrap(viewer.chromeViewsForTesting[$0]) }
         XCTAssertEqual(Set(views.map(ObjectIdentifier.init)).count, names.count,
                        "five surfaces, five views")

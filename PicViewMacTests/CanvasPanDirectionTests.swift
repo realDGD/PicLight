@@ -51,6 +51,9 @@ final class CanvasPanDirectionTests: XCTestCase {
         let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
                                        wheel1: wheel1, wheel2: wheel2, wheel3: 0))
         cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        // …and a gesture phase, which is what actually tells the canvas this is a trackpad: a wheel's
+        // events carry none.
+        cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(NSEvent.Phase.began.rawValue))
         return try XCTUnwrap(NSEvent(cgEvent: cg))
     }
 
@@ -61,6 +64,7 @@ final class CanvasPanDirectionTests: XCTestCase {
             canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: 1.0,
                                             normalizedCenter: CGPoint(x: 0.5, y: 0.5))
             let event = try trackpadEvent(wheel1: wheel, wheel2: 0)
+            XCTAssertNotEqual(event.phase, [], "precondition: a trackpad sends a gesture phase")
             let delta = event.scrollingDeltaY
             XCTAssertNotEqual(delta, 0, "precondition: the synthetic event carries a delta")
 
@@ -111,6 +115,7 @@ final class CanvasPanDirectionTests: XCTestCase {
             let event = try scrollEvent(wheel1: wheel, wheel2: 0)
             let delta = event.scrollingDeltaY
             XCTAssertFalse(event.hasPreciseScrollingDeltas, "precondition: this is a wheel event")
+            XCTAssertEqual(event.phase, [], "precondition: a wheel has no gesture phase")
 
             let before = canvas.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
             canvas.scrollWheel(with: event)
@@ -124,6 +129,44 @@ final class CanvasPanDirectionTests: XCTestCase {
             XCTAssertEqual(after.x, before.x, accuracy: 0.5,
                            "and a vertical wheel must not move it sideways")
         }
+    }
+
+    /// A smooth-scrolling mouse sends continuous events with no phase — indistinguishable from a
+    /// trackpad by delta shape, which is why the first fix did not change anything for the report
+    /// ("滚轮现在还是反的"). The phase is what separates them, and the setting overrides the guess.
+    func testASmoothScrollingMouseIsStillAWheel() throws {
+        let cg = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                       wheel1: 20, wheel2: 0, wheel3: 0))
+        cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        let event = try XCTUnwrap(NSEvent(cgEvent: cg))
+        XCTAssertTrue(event.hasPreciseScrollingDeltas, "precondition: its deltas look like a trackpad's")
+        XCTAssertEqual(event.phase, [], "but it has no gesture phase")
+
+        let canvas = makeCanvas()
+        XCTAssertTrue(canvas.treatsAsAWheel(event), "so it is treated as a wheel")
+
+        // And the user's answer beats the detection, both ways.
+        canvas.wheelPanDirection = .followGesture
+        XCTAssertFalse(canvas.treatsAsAWheel(event), "跟手式")
+        let trackpad = try trackpadEvent(wheel1: 20, wheel2: 0)
+        canvas.wheelPanDirection = .document
+        XCTAssertTrue(canvas.treatsAsAWheel(trackpad), "文档式")
+
+        // The direction each choice produces, on the same event.
+        canvas.wheelPanDirection = .document
+        canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: 1.0,
+                                        normalizedCenter: CGPoint(x: 0.5, y: 0.5))
+        let before = canvas.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+        canvas.scrollWheel(with: event)
+        let documentAfter = canvas.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+        XCTAssertGreaterThan(documentAfter.y, before.y, "文档式: wheel up looks further up the picture")
+
+        canvas.wheelPanDirection = .followGesture
+        canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: 1.0,
+                                        normalizedCenter: CGPoint(x: 0.5, y: 0.5))
+        canvas.scrollWheel(with: event)
+        let followAfter = canvas.viewport.imagePointUnderViewCenter(sourcePixelSize: source)
+        XCTAssertLessThan(followAfter.y, before.y, "跟手式: the picture follows the wheel")
     }
 
     /// The horizontal and vertical conventions must be the same one, which is what "follows the

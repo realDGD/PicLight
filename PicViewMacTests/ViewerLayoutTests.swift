@@ -798,7 +798,7 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         controller.window?.layoutIfNeeded()
         let button = try XCTUnwrap(controller.drawerTitlebarButton)
         XCTAssertTrue(controller.window?.titlebarAccessoryViewControllers.isEmpty ?? false,
-                      "with the bar away the accessory is not in the titlebar at all")
+                      "with the bar away neither accessory is in the titlebar at all")
 
         // Reveal the bar, which is where the button is meant to be used.
         let zones = viewer.titlebarRevealZones
@@ -807,8 +807,9 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         controller.window?.layoutIfNeeded()
 
-        let accessory = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first,
-                                      "the revealed bar carries the drawer accessory")
+        let accessory = try XCTUnwrap(
+            controller.window?.titlebarAccessoryViewControllers.first { $0.layoutAttribute == .leading },
+            "the revealed bar carries the drawer accessory")
         let accessoryView = accessory.view
         XCTAssertGreaterThan(accessoryView.frame.width, 0,
                              "a zero-width accessory is invisible in the titlebar")
@@ -840,9 +841,14 @@ final class DrawerTitlebarButtonTests: XCTestCase {
 
         XCTAssertFalse(button.isDescendant(of: controller.window!.contentView!),
                        "the button lives in a titlebar accessory, not in the content area")
-        XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.count, 1)
-        XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.first?.layoutAttribute,
-                       .leading, "it sits next to the traffic lights")
+        // Two accessories now: this one at the leading edge, and the native pixel-size readout at the
+        // trailing one. The button must be the leading one, next to the traffic lights.
+        let accessories = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers)
+        XCTAssertEqual(accessories.count, 2, "the drawer control and the size readout")
+        let leading = accessories.first { $0.layoutAttribute == .leading }
+        XCTAssertEqual(leading?.view, button, "the button sits next to the traffic lights")
+        XCTAssertEqual(controller.sizeReadoutTextForTesting.isEmpty, true,
+                       "and the size readout is empty until a picture is on screen")
         XCTAssertNotNil(button.image)
         XCTAssertEqual(button.toolTip, "打开左栏")
         _ = viewer

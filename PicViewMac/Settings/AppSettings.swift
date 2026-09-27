@@ -23,6 +23,28 @@ public enum DockSurface: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// Which way a mouse wheel (or a smooth-scrolling mouse) moves the picture in pan mode.
+///
+/// The two devices genuinely disagree, so the default detects which one sent the event and the user
+/// can override it when the detection guesses wrong for their hardware — which is exactly what happened
+/// with a smooth-scrolling mouse, whose events look like a trackpad's.
+public enum WheelPanDirection: String, CaseIterable, Codable, Sendable {
+    /// Decide per event: a trackpad reports a gesture phase, a wheel does not.
+    case automatic
+    /// Wheel up means "go up the picture": the picture moves down and what was above comes into view.
+    case document
+    /// Wheel up moves the picture up, following the wheel the way a finger drag does.
+    case followGesture
+
+    public var localizedName: String {
+        switch self {
+        case .automatic: return "自动（按设备判断）"
+        case .document: return "上滚看上方（文档式）"
+        case .followGesture: return "上滚看下方（跟手式）"
+        }
+    }
+}
+
 public enum TitlebarBehavior: String, CaseIterable, Codable, Sendable {
     case autoHide
     case alwaysVisible
@@ -107,6 +129,7 @@ public final class AppSettings {
             Key.sortKey: ImageSortKey.filename.rawValue,
             Key.titlebar: TitlebarBehavior.autoHide.rawValue,
             Key.dockSurface: DockSurface.liquidGlass.rawValue,
+            Key.wheelPanDirection: WheelPanDirection.automatic.rawValue,
             Key.sortDirection: SortDirection.ascending.rawValue,
             Key.openBehavior: OpenBehavior.newWindow.rawValue,
             Key.showTopFilename: true,
@@ -126,6 +149,7 @@ public final class AppSettings {
         static let sortKey = "sortKey"
         static let titlebar = "titlebar"
         static let dockSurface = "dockSurface"
+        static let wheelPanDirection = "wheelPanDirection"
         static let sortDirection = "sortDirection"
         static let openBehavior = "openBehavior"
         static let showTopFilename = "showTopFilename"
@@ -153,6 +177,15 @@ public final class AppSettings {
 
     /// The titlebar behaviour. Auto-hide by default: `register(defaults:)` supplies it, so an
     /// install that has never written the key reads "auto-hide" and one that has keeps its choice.
+    /// Which way a wheel pans. Defaults to detecting the device per event.
+    public var wheelPanDirection: WheelPanDirection {
+        get {
+            WheelPanDirection(rawValue: defaults.string(forKey: Key.wheelPanDirection) ?? "")
+                ?? .automatic
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.wheelPanDirection); notify() }
+    }
+
     /// The tool dock's surface. Defaults to the native glass the dock has always used.
     public var dockSurface: DockSurface {
         get { DockSurface(rawValue: defaults.string(forKey: Key.dockSurface) ?? "") ?? .liquidGlass }

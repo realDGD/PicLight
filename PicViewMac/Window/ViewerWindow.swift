@@ -149,14 +149,12 @@ public final class ViewerWindow: NSWindow {
             titlebarAppearsTransparent = true
             titleVisibility = .hidden
         case .full:
-            // The revealed bar in auto-hide mode is the viewer's own glass strip (`TitleStripView`),
-            // which carries the file name and the pixel size in the window's dynamic label colours.
-            // The system title used to be drawn here instead: transparent bar, white text straight on
-            // the picture — unreadable over a bright image (reported). The bar itself stays transparent
-            // so the strip is what the user sees, and the native title is hidden so nothing is drawn
-            // twice.
-            titlebarAppearsTransparent = true
-            titleVisibility = .hidden
+            // The native titlebar, with the native title: the system draws the bar's material and its
+            // own title, which is what "use the native titlebar" asks for and what reads correctly over
+            // any picture. (A custom strip lived here for one round; it was the wrong trade — one more
+            // surface to keep in step with the window, for less than the system gives.)
+            titlebarAppearsTransparent = false
+            titleVisibility = .visible
         }
         refreshTrafficLights()
     }

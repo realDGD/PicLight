@@ -174,10 +174,10 @@ final class ViewerRealFileAcceptanceTests: XCTestCase {
         XCTAssertFalse(cell.nameLabelView.isHidden, "with its filename always visible")
         XCTAssertEqual((cell.nameLabelView as? NSTextField)?.stringValue, "万萝图.png")
 
-        // The top strip names the picture and gives its real pixel size, in the window's own label
-        // colours (the bottom-left HUD that used to carry this is gone).
-        let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
-        XCTAssertEqual(strip.renderedSize, "48000 × 32000",
+        // The window's title is the file name, and its titlebar accessory gives the real pixel size
+        // (the bottom-left HUD and the custom strip that used to carry this are both gone).
+        let windowController = try XCTUnwrap(viewer.view.window?.windowController as? ViewerWindowController)
+        XCTAssertEqual(windowController.sizeReadoutTextForTesting, "48000 × 32000",
                        "the real dimensions, from the descriptor")
 
         // The drawer never opens from a pointer position.
@@ -243,12 +243,13 @@ final class ViewerRealFileAcceptanceTests: XCTestCase {
             CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
         settle(0.4)
         XCTAssertEqual(window.titlebarState, .full)
-        // The revealed bar is the viewer's own glass strip; the system title stays hidden so white text
-        // is never drawn straight onto the picture.
-        XCTAssertEqual(window.titleVisibility, .hidden)
-        let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
-        XCTAssertFalse(strip.isHidden)
-        XCTAssertFalse(strip.renderedSize.isEmpty, "the strip reports the real dimensions")
+        // The bar is the system's own, with its own title and material; the picture's pixel size is a
+        // native trailing accessory in it.
+        XCTAssertFalse(window.titlebarAppearsTransparent, "a real bar, not text on the picture")
+        XCTAssertEqual(window.titleVisibility, .visible)
+        let readout = try XCTUnwrap(viewer.view.window?.windowController as? ViewerWindowController)
+        XCTAssertEqual(readout.sizeReadoutTextForTesting, "48000 × 32000",
+                       "the real dimensions, in the bar's trailing corner")
     }
 
     // MARK: - 18.2 Folder browser on the real folders

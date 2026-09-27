@@ -281,7 +281,7 @@ enum SelfTest {
         drainRunLoop(0.6)
         var notHidden: [String] = []
         for (name, chrome) in viewer.chromeViewsForTesting
-        where ["topBar", "titleStrip", "drawer", "minimap"].contains(name) {
+        where ["topBar", "drawer", "minimap"].contains(name) {
             if !chrome.isHidden { notHidden.append("\(name) alpha=\(chrome.alphaValue)") }
         }
         check("chrome starts genuinely hidden, not just transparent",
@@ -492,6 +492,11 @@ enum SelfTest {
 
     /// The viewer layout refactor: standard titlebar, fixed dock, canvas-anchored
     /// panels, and an information card instead of a separate window.
+    /// The pixel size the window's titlebar is showing, if this viewer's window has one.
+    private static func sizeReadout(in viewer: ViewerViewController) -> String? {
+        (viewer.view.window?.windowController as? ViewerWindowController)?.sizeReadoutTextForTesting
+    }
+
     private static func verifyViewerLayout(_ viewer: ViewerViewController,
                                            _ reporter: SelfTestReporter) {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {
@@ -501,7 +506,7 @@ enum SelfTest {
         guard let dock = chrome["toolDock"] as? ViewerToolDockView,
               let canvas = chrome["canvas"],
               let minimap = chrome["minimap"],
-              let titleStrip = chrome["titleStrip"] as? TitleStripView,
+
               let card = chrome["infoCard"] as? ImageInfoCardView else {
             check("viewer layout views exist", false)
             return
@@ -598,11 +603,11 @@ enum SelfTest {
         check("panels sit inside the canvas area",
               minimap.frame.maxX <= canvas.frame.maxX + 1,
               "minimap \(minimap.frame) canvas \(canvas.frame)")
-        // The strip *is* the titlebar in this mode: full width, at the top.
-        check("the title strip spans the window at the top",
-              titleStrip.frame.minY == viewer.view.bounds.maxY - titleStrip.frame.height
-                && titleStrip.frame.width == viewer.view.bounds.width,
-              "strip \(titleStrip.frame) root \(viewer.view.bounds)")
+        // The bar is the system's: the name is the window's title and the size is its trailing readout.
+        check("the titlebar carries the file name and the pixel size",
+              (viewer.view.window?.title.isEmpty == false)
+                && (SelfTest.sizeReadout(in: viewer)?.isEmpty == false),
+              "title \(viewer.view.window?.title ?? "nil") size \(SelfTest.sizeReadout(in: viewer) ?? "-")")
         check("tool dock is centred on the canvas",
               abs(dock.frame.midX - canvas.frame.midX) <= 2,
               "dock \(dock.frame.midX) canvas \(canvas.frame.midX)")
@@ -853,7 +858,7 @@ enum SelfTest {
         check("immersive hides overlay chrome",
               viewer.chromeSnapshot.drawer == false
                 && viewer.chromeViewsForTesting["toolDock"]!.isHidden
-                && viewer.chromeViewsForTesting["titleStrip"]!.isHidden)
+                && viewer.chromeViewsForTesting["drawer"]!.isHidden)
         check("immersive does not touch the window or its titlebar",
               viewer.view.window?.frame == frameBeforeImmersive
                 && viewer.view.window?.styleMask.contains(.fullScreen) == false,
