@@ -396,6 +396,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // tree, which is this mode's left column.
         onLeftColumnChanged?(isFolderTreeSidebarVisible)
         view.window?.makeFirstResponder(browser.view.gallery)
+        GestureTrace.note("enterFolderBrowser responder=\(String(describing: view.window?.firstResponder))")
     }
 
     /// Room the browser's toolbar leaves for the native controls in the merged top row: the traffic
@@ -452,6 +453,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // is what makes entering and leaving the browser free.
         showCurrentItemIfNeeded()
         view.window?.makeFirstResponder(canvas)
+        GestureTrace.note("leaveFolderBrowser key=\(view.window?.isKeyWindow ?? false) "
+                          + "responder=\(String(describing: view.window?.firstResponder)) "
+                          + "canvasHidden=\(canvas.isHidden) metal=\(canvas.isUsingMetalForCurrentImage)")
     }
 
     private func makeFolderBrowser() -> FolderBrowserViewController? {
@@ -1589,8 +1593,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let wantsFit = viewerState.consumeFitRequest()
         let keepUserZoom = userMovedViewportWhileLoading
         userMovedViewportWhileLoading = false
-        if viewerState.currentImage == nil || (wantsFit && !keepUserZoom) {
+        let appliesFit = viewerState.currentImage == nil || (wantsFit && !keepUserZoom)
+        GestureTrace.note("refreshCanvas wantsFit=\(wantsFit) keepUserZoom=\(keepUserZoom) "
+                          + "appliesFit=\(appliesFit) zoom=\(canvas.viewport.zoomScale) "
+                          + "fit=\(canvas.viewport.fitScale)")
+        if appliesFit {
             canvas.setZoomToFit()
+            GestureTrace.note("refreshCanvas fitted -> \(canvas.viewport.zoomScale)")
         }
         viewerState.viewport = canvas.viewport
         refreshEmptyState()

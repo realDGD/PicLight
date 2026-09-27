@@ -167,7 +167,11 @@ public final class ImageCanvasView: NSView {
     /// the zoom stayed at the pre-resize fit and the picture sat with a margin all round. A zoom the
     /// user chose is left exactly as it is.
     public func refit() {
-        guard renderImage != nil, bounds.width > 0, bounds.height > 0 else { return }
+        guard renderImage != nil, bounds.width > 0, bounds.height > 0 else {
+            GestureTrace.note("canvas.refit skipped (no image or no bounds)")
+            return
+        }
+        GestureTrace.note("canvas.refit wasAtFit=\(viewport.isAtFit) before=\(viewport.zoomScale)")
         var updated = viewport
         let wasAtFit = viewport.isAtFit
         updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
@@ -340,6 +344,9 @@ public final class ImageCanvasView: NSView {
 
     public override func scrollWheel(with event: NSEvent) {
         onPointerActivity?()
+        GestureTrace.note("canvas.scrollWheel d=\(event.scrollingDeltaX),\(event.scrollingDeltaY) "
+                          + "phase=\(event.phase.rawValue) precise=\(event.hasPreciseScrollingDeltas) "
+                          + "momentum=\(event.momentumPhase.rawValue)")
         let point = convert(event.locationInWindow, from: nil)
         let deltaX = event.scrollingDeltaX
         let deltaY = event.scrollingDeltaY
@@ -376,7 +383,11 @@ public final class ImageCanvasView: NSView {
     public override func magnify(with event: NSEvent) {
         onPointerActivity?()
         let point = convert(event.locationInWindow, from: nil)
-        apply(router.routePinch(magnification: event.magnification, anchor: point))
+        let before = viewport.zoomScale
+        let intent = router.routePinch(magnification: event.magnification, anchor: point)
+        apply(intent)
+        GestureTrace.note("canvas.magnify magnification=\(event.magnification) at=(\(Int(point.x)),\(Int(point.y))) "
+                          + "intent=\(intent) zoom \(before) -> \(viewport.zoomScale) fit=\(viewport.fitScale)")
     }
 
     private func apply(_ intent: GestureIntent) {

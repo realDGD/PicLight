@@ -7,6 +7,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isDefaultWindowPending = false
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Opt-in gesture diagnostics, first thing: every line after this one is trustworthy.
+        GestureTrace.start()
         // Native window tabbing is disabled app-wide; the viewer never uses tabs.
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.mainMenu = MainMenuBuilder.build(appName: "PicLight", shortcutStore: environment.shortcuts)
