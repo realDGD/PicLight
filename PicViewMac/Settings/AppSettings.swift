@@ -52,25 +52,6 @@ public enum DeleteFollowUp: String, CaseIterable, Codable, Sendable {
     }
 }
 
-public enum BottomInfoField: String, CaseIterable, Codable, Sendable {
-    case index
-    case zoom
-    case dimensions
-    case fileSize
-    case fileType
-    case colorSpace
-
-    public var localizedName: String {
-        switch self {
-        case .index: return "序号 / 总数"
-        case .zoom: return "缩放"
-        case .dimensions: return "像素尺寸"
-        case .fileSize: return "文件大小"
-        case .fileType: return "类型"
-        case .colorSpace: return "色彩空间"
-        }
-    }
-}
 
 public enum AnimationLoopPreference: String, CaseIterable, Codable, Sendable {
     case followSource
@@ -107,8 +88,6 @@ public final class AppSettings {
             Key.sortDirection: SortDirection.ascending.rawValue,
             Key.openBehavior: OpenBehavior.newWindow.rawValue,
             Key.showTopFilename: true,
-            Key.bottomFields: [BottomInfoField.index, .zoom, .dimensions]
-                .map(\.rawValue),
             Key.windowSizing: WindowSizingPolicy.rememberLastSize.rawValue,
             Key.wheelMode: WheelMode.zoom.rawValue,
             Key.swipeMode: SwipeMode.smart.rawValue,
@@ -127,7 +106,6 @@ public final class AppSettings {
         static let sortDirection = "sortDirection"
         static let openBehavior = "openBehavior"
         static let showTopFilename = "showTopFilename"
-        static let bottomFields = "bottomFields"
         static let windowSizing = "windowSizing"
         static let lastWindowSize = "lastWindowSize"
         static let wheelMode = "wheelMode"
@@ -179,17 +157,6 @@ public final class AppSettings {
         set { defaults.set(newValue, forKey: Key.showTopFilename); notify() }
     }
 
-    public var bottomFields: [BottomInfoField] {
-        get {
-            let raw = defaults.stringArray(forKey: Key.bottomFields) ?? []
-            let fields = raw.compactMap(BottomInfoField.init(rawValue:))
-            return fields.isEmpty ? [.index, .zoom, .dimensions] : fields
-        }
-        set {
-            defaults.set(newValue.map(\.rawValue), forKey: Key.bottomFields)
-            notify()
-        }
-    }
 
     public var windowSizing: WindowSizingPolicy {
         get { WindowSizingPolicy(rawValue: defaults.string(forKey: Key.windowSizing) ?? "") ?? .rememberLastSize }

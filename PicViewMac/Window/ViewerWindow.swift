@@ -125,11 +125,18 @@ public final class ViewerWindow: NSWindow {
         }
         guard titlebarMode == .autoHide else {
             // Always-visible mode is the standard window: the titlebar and its buttons are AppKit's.
-            guard appliedTitlebarState != .full else { return }
-            appliedTitlebarState = .full
-            titleVisibility = .visible
-            titlebarAppearsTransparent = false
-            refreshTrafficLights()
+            if appliedTitlebarState != .full {
+                appliedTitlebarState = .full
+                titleVisibility = .visible
+                titlebarAppearsTransparent = false
+                refreshTrafficLights()
+            }
+            // Also on the transition into this state: the accessory may have just landed, and AppKit
+            // computes the title's frame before it does — measured at x=82 with the left-column button
+            // at 78…108, i.e. the name on top of the control. (Repeated hide/reveal cycles in this mode
+            // put it back at the leading edge on their own; the auto-hide mode does not use the system
+            // title at all any more, which is where the report came from.)
+            relayoutTitleWithAccessoriesInPlace()
             return
         }
         guard state != appliedTitlebarState else { return }
@@ -142,8 +149,14 @@ public final class ViewerWindow: NSWindow {
             titlebarAppearsTransparent = true
             titleVisibility = .hidden
         case .full:
-            titlebarAppearsTransparent = false
-            titleVisibility = .visible
+            // The revealed bar in auto-hide mode is the viewer's own glass strip (`TitleStripView`),
+            // which carries the file name and the pixel size in the window's dynamic label colours.
+            // The system title used to be drawn here instead: transparent bar, white text straight on
+            // the picture — unreadable over a bright image (reported). The bar itself stays transparent
+            // so the strip is what the user sees, and the native title is hidden so nothing is drawn
+            // twice.
+            titlebarAppearsTransparent = true
+            titleVisibility = .hidden
         }
         refreshTrafficLights()
     }

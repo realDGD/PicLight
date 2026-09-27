@@ -107,13 +107,14 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
         XCTAssertFalse(isInTitlebar(controller, window), "and it leaves with the bar")
     }
 
-    /// The title keeps its place when the bar comes back with the drawer button in it.
+    /// The name the bar shows belongs to the viewer's own strip, and the system's title field is out
+    /// of the way — so nothing can be drawn on top of the left-column button.
     ///
-    /// Measured before: while the bar was away the title was hidden, and the frame AppKit computed
+    /// Measured before this: while the bar was away the title was hidden, and the frame AppKit computed
     /// when the bar came back was the leading-edge one — the title field at x=82 while the button
-    /// occupied 78…108, so the file name sat on top of the left-column control, and it only moved
-    /// back to the centre (x=351 of a 900 pt window) when something else changed the title. The
-    /// window lays the title out again once the accessory is in place.
+    /// occupied 78…108, so the file name sat on the left-column control, and it only moved back to the
+    /// centre when something else changed the title. The bar is now the viewer's glass strip: the system
+    /// title is hidden in this mode, and the name is drawn by a label that is laid out with the strip.
     func testTheTitleStaysClearOfTheDrawerButtonWhenTheBarComesBack() throws {
         let (controller, viewer, window) = try makeViewer()
         defer { TestAppKit.close(controller) }
@@ -131,17 +132,16 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
             settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
         }
         func assertTitlePlaced(_ label: String) throws {
-            let title = try XCTUnwrap(titleField(of: window),
-                                      "\(label): the title field is in the titlebar")
-            let buttonFrame = title.superview.map { _ in title.convert(button.bounds, from: button) }
-            XCTAssertGreaterThanOrEqual(title.frame.minX, (buttonFrame?.maxX ?? 0) + 4,
-                                        "\(label): the title must not sit on the drawer button "
-                                        + "(title \(title.frame), button \(String(describing: buttonFrame)))")
-            let theme = try XCTUnwrap(window.contentView?.superview)
-            let frameInWindow = theme.convert(title.bounds, from: title)
-            XCTAssertEqual(frameInWindow.midX, theme.bounds.width / 2, accuracy: 4,
-                           "\(label): the title is the window's, so it is centred "
-                           + "(measured \(frameInWindow))")
+            XCTAssertEqual(window.titleVisibility, .hidden,
+                           "\(label): the system title is not the bar's title in this mode")
+            let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
+            XCTAssertFalse(strip.isHidden, "\(label): the strip is the revealed bar")
+            let stripFrame = strip.convert(strip.bounds, to: nil)
+            let buttonFrame = strip.convert(button.bounds, from: button)
+            XCTAssertGreaterThanOrEqual(stripFrame.width, viewer.view.bounds.width - 1,
+                                        "\(label): the strip spans the window")
+            XCTAssertGreaterThan(buttonFrame.minX, 0,
+                                 "\(label): the drawer button sits inside the strip, not outside it")
         }
 
         reveal()
@@ -153,26 +153,6 @@ final class TitlebarAccessoryVisibilityTests: XCTestCase {
         reveal()
         XCTAssertEqual(window.titlebarState, .full)
         try assertTitlePlaced("after a hide and reveal")
-    }
-
-    /// The native title text field, as AppKit lays it out in the titlebar strip.
-    ///
-    /// Found by walking the theme frame for a text field that is *not* part of the viewer's own
-    /// hierarchy and carries the window's title: the titlebar is AppKit's, so its view is the only
-    /// way to assert where the title actually is.
-    private func titleField(of window: NSWindow) -> NSTextField? {
-        guard let theme = window.contentView?.superview,
-              let content = window.contentView else { return nil }
-        let contentViews = Set(([content] + allSubviews(of: content)).map(ObjectIdentifier.init))
-        return allSubviews(of: theme).compactMap { $0 as? NSTextField }
-            .first { field in
-                field.stringValue == window.title
-                    && !contentViews.contains(ObjectIdentifier(field))
-            }
-    }
-
-    private func allSubviews(of view: NSView) -> [NSView] {
-        view.subviews + view.subviews.flatMap { allSubviews(of: $0) }
     }
 
     /// A reveal after a hide cycle is the sequence that exposed the stale floating position: the

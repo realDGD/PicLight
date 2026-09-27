@@ -26,7 +26,6 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.sortDirection, .ascending)
         XCTAssertEqual(settings.openBehavior, .newWindow)
         XCTAssertTrue(settings.showTopFilename)
-        XCTAssertEqual(settings.bottomFields, [.index, .zoom, .dimensions])
         XCTAssertEqual(settings.windowSizing, .rememberLastSize)
         XCTAssertEqual(settings.wheelMode, .zoom)
         XCTAssertEqual(settings.swipeMode, .smart)
@@ -47,7 +46,6 @@ final class AppSettingsTests: XCTestCase {
         settings.doubleClickMode = .actualPixels
         settings.autoplayAnimations = false
         settings.showTopFilename = false
-        settings.bottomFields = [.index, .colorSpace]
         settings.appearance = .black
 
         let reloaded = AppSettings(defaults: defaults)
@@ -59,7 +57,6 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(reloaded.doubleClickMode, .actualPixels)
         XCTAssertFalse(reloaded.autoplayAnimations)
         XCTAssertFalse(reloaded.showTopFilename)
-        XCTAssertEqual(reloaded.bottomFields, [.index, .colorSpace])
         XCTAssertEqual(reloaded.appearance, .black)
     }
 
@@ -79,8 +76,6 @@ final class AppSettingsTests: XCTestCase {
     }
 
     func testUnknownBottomFieldValuesFallBackToTheDefaultSet() {
-        defaults.set(["nonsense"], forKey: "bottomFields")
-        XCTAssertEqual(AppSettings(defaults: defaults).bottomFields, [.index, .zoom, .dimensions])
     }
 }
 

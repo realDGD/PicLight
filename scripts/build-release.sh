@@ -13,6 +13,10 @@ DIST="$ROOT/dist"
 APP_NAME="PicLight"
 APP="$DIST/$APP_NAME.app"
 BUNDLE_ID="com.example.picviewmac"
+# Declared in LSMinimumSystemVersion *and* passed to actool, which uses it to
+# decide which icon renditions to flatten: a minimum that is not the real one
+# would build the wrong back-compat icon.
+MINIMUM_SYSTEM_VERSION="${MINIMUM_SYSTEM_VERSION:-14.0}"
 
 echo "==> Building $CONFIGURATION binary"
 swift build -c "$CONFIGURATION"
@@ -23,8 +27,6 @@ echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
-
-cp "$ROOT/Resources/Assets.xcassets/Contents.json" "$APP/Contents/Resources/Assets.json" 2>/dev/null || true
 
 # --------------------------------------------------------------- Metal shader
 # A shipped app must carry a *compiled* Metal library: MetalLibraryLocator prefers it
@@ -61,6 +63,76 @@ else
 fi
 rm -rf "$WORK"
 
+# ------------------------------------------------------------------- app icon
+# macOS reads an app icon out of the bundle, never out of the executable, so
+# without these two files PicLight.app shows the generic application icon in
+# Finder, in the Dock and in ⌘-Tab.
+#
+#   macOS 26 / 27   CFBundleIconName -> Assets.car    (the Icon Composer icon
+#                   stack: the system renders the light, dark, clear and tinted
+#                   appearances from it)
+#   macOS 14 / 15   CFBundleIconFile -> PicLight.icns (flat renditions, 16–1024)
+#
+# actool emits a PicLight.icns of its own, but only 16–256 px: the document is
+# full-bleed artwork and there is no 512/1024 flat source for it to flatten, so
+# its fallback would be upscaled in Finder on macOS 14/15. The complete,
+# reviewed .icns is shipped here instead. See Resources/AppIcon/README.md.
+ICON_DIR="$ROOT/Resources/AppIcon"
+ICON_NAME="PicLight"
+ICON_DOC="$ICON_DIR/$ICON_NAME.icon"
+ICON_ICNS="$ICON_DIR/$ICON_NAME.icns"
+ICON_WORK="$(mktemp -d)"
+mkdir -p "$ICON_WORK/car"
+
+ASSET_CAR_READY=0
+if [ ! -d "$ICON_DOC" ]; then
+    echo "error: icon document not found at $ICON_DOC" >&2
+    rm -rf "$ICON_WORK" "$APP"
+    exit 1
+fi
+if xcrun actool --output-format human-readable-text --notices --warnings --errors \
+    --platform macosx --target-device mac \
+    --minimum-deployment-target "$MINIMUM_SYSTEM_VERSION" \
+    --app-icon "$ICON_NAME" \
+    --output-partial-info-plist "$ICON_WORK/partial.plist" \
+    --compile "$ICON_WORK/car" "$ICON_DOC" >"$ICON_WORK/actool.log" 2>&1; then
+    cp "$ICON_WORK/car/Assets.car" "$APP/Contents/Resources/Assets.car"
+    ASSET_CAR_READY=1
+    echo "==> Compiled $ICON_NAME.icon -> Assets.car ($(stat -f%z "$APP/Contents/Resources/Assets.car") bytes)"
+elif [ "${PICLIGHT_ALLOW_LOOSE_ICON:-0}" = "1" ]; then
+    echo "WARNING: actool could not compile $ICON_NAME.icon; shipping the .icns only." >&2
+    echo "         macOS 26/27 then wrap that in their own generic material and" >&2
+    echo "         verify-release.sh reports the icon stack as SKIPPED." >&2
+    sed 's/^/       /' "$ICON_WORK/actool.log" >&2 || true
+else
+    echo "error: actool could not compile $ICON_NAME.icon into Assets.car." >&2
+    sed 's/^/       /' "$ICON_WORK/actool.log" >&2 || true
+    echo "       actool ships with Xcode: xcrun actool. macOS 26/27 take the icon from it." >&2
+    echo "       Development-only override: PICLIGHT_ALLOW_LOOSE_ICON=1" >&2
+    rm -rf "$ICON_WORK" "$APP"
+    exit 1
+fi
+
+if [ -f "$ICON_ICNS" ]; then
+    cp "$ICON_ICNS" "$APP/Contents/Resources/$ICON_NAME.icns"
+    echo "==> Packaged $ICON_NAME.icns ($(stat -f%z "$APP/Contents/Resources/$ICON_NAME.icns") bytes)"
+else
+    echo "error: loose icon not found at $ICON_ICNS" >&2
+    rm -rf "$ICON_WORK" "$APP"
+    exit 1
+fi
+rm -rf "$ICON_WORK"
+
+# Frame the icon keys for the Info.plist below. CFBundleIconName is written only
+# when the catalog that defines it was actually compiled.
+ICON_PLIST_ENTRIES=""
+if [ "$ASSET_CAR_READY" = "1" ]; then
+    ICON_PLIST_ENTRIES="    <key>CFBundleIconName</key><string>$ICON_NAME</string>
+"
+fi
+ICON_PLIST_ENTRIES="$ICON_PLIST_ENTRIES    <key>CFBundleIconFile</key><string>$ICON_NAME</string>
+"
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -74,7 +146,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
+${ICON_PLIST_ENTRIES}    <key>LSMinimumSystemVersion</key><string>$MINIMUM_SYSTEM_VERSION</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.photography</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
@@ -107,3 +179,8 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 
 echo "==> Built $APP"
 /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
+if [ "$ASSET_CAR_READY" = "1" ]; then
+    echo "    icon: Assets.car (macOS 26/27) + $ICON_NAME.icns (macOS 14/15)"
+else
+    echo "    icon: $ICON_NAME.icns only — no Assets.car (development build)"
+fi

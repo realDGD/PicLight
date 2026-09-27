@@ -246,7 +246,7 @@ final class ChromeHideGuaranteeTests: XCTestCase {
         while Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
 
         for (name, chrome) in viewer.chromeViewsForTesting
-        where ["topBar", "bottomBar", "drawer", "minimap"].contains(name) {
+        where ["topBar", "titleStrip", "drawer", "minimap"].contains(name) {
             XCTAssertTrue(chrome.isHidden,
                           "\(name) is still in the hierarchy at alpha \(chrome.alphaValue); "
                             + "hiding must not rely on the animation callback")

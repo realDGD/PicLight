@@ -359,12 +359,12 @@ final class ViewerLayoutTests: XCTestCase {
         let minimap = try XCTUnwrap(viewer.chromeViewsForTesting["minimap"])
         let infoCard = try XCTUnwrap(viewer.chromeViewsForTesting["infoCard"])
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"])
-        let bottomBar = try XCTUnwrap(viewer.chromeViewsForTesting["bottomBar"])
+
 
         func checkAnchors(_ label: String) {
             let canvasFrame = canvas.frame
             for (name, view) in [("minimap", minimap), ("infoCard", infoCard),
-                                 ("toolDock", dock), ("bottomBar", bottomBar)] {
+                                 ("toolDock", dock)] {
                 XCTAssertGreaterThanOrEqual(view.frame.minX, canvasFrame.minX - 1,
                                             "\(label): \(name) must sit inside the canvas area")
             }

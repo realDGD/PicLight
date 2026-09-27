@@ -1,6 +1,10 @@
 # PicLight · 原生图标 v4（独立审阅文件）
 
-本版按最新反馈去掉浅色与深色的蓝色底板、额外雾化、手绘双层玻璃边框。保留手套、手电筒及黄色光束；图标蒙版和外缘高光由 Apple 渲染。没有接入应用，没有修改应用构建配置。
+本版按最新反馈去掉浅色与深色的蓝色底板、额外雾化、手绘双层玻璃边框。保留手套、手电筒及黄色光束；图标蒙版和外缘高光由 Apple 渲染。
+
+> **接入状态（2026-09-27 定稿）**：**v4 是最终采用的出厂图标。** 文档装在 `Resources/AppIcon/PicLight.icon/`，`scripts/build-release.sh` 用 `actool` 编译成 `Assets.car`，`Resources/AppIcon/build-icons.sh` 从同一份文档重打 10 档 `.icns`（与 `exports/PicLight-native.icns` 逐字节相同，`cmp` 通过），`scripts/verify-release.sh` 33 项检查全过（其中 10 项是图标）。中途曾按要求试装 v3（transparency），比对后切回 v4；v3 文档仍留在 `design/AppIcon-transparency-v3/`，切换命令见 `Resources/AppIcon/README.md`。
+>
+> 实测补充：v4 的静态导出（`preview/native/*.png`）与 v3 的三份文档在 `ictool --export-image` 下几乎一致——v3 的底板透明度（0.05/0.18/0.45）不参与扁平化（三份导出 SHA-256 完全相同），`specular`、`translucency`、`refractivity` 与玻璃层只在系统实时合成时生效。因此这两版的差别只能在桌面/Dock 上看，PNG 不能作为判据；同时系统设置 → 外观 →「图标与小组件样式」必须留在"默认"，否则图标不会跟随浅色/深色。
 
 ## 先看效果
 

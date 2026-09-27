@@ -78,7 +78,7 @@ final class FolderBrowserModeTests: XCTestCase {
         settle()
 
         XCTAssertTrue(viewer.isImageModeHidden)
-        for name in ["canvas", "toolDock", "bottomBar", "drawer", "floatingNavigation"] {
+        for name in ["canvas", "toolDock", "titleStrip", "drawer", "floatingNavigation"] {
             let chrome = try XCTUnwrap(viewer.chromeViewsForTesting[name])
             XCTAssertTrue(chrome.isHidden, "\(name) belongs to image mode and must be away")
         }
@@ -98,7 +98,7 @@ final class FolderBrowserModeTests: XCTestCase {
         // Several timer ticks: the tick interval is 0.1 s.
         settle(0.6)
 
-        for name in ["toolDock", "bottomBar", "canvas"] {
+        for name in ["toolDock", "titleStrip", "canvas"] {
             XCTAssertTrue(try XCTUnwrap(viewer.chromeViewsForTesting[name]).isHidden, name)
         }
     }

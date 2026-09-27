@@ -30,7 +30,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let canvas = ImageCanvasView()
     private let toolDock = ViewerToolDockView()
     private let infoCard = ImageInfoCardView()
-    private let bottomBar = BottomInfoBarView(style: .hud)
+    /// The image mode's top strip: the file name and the pixel size, on glass. See `TitleStripView`.
+    private let titleStrip = TitleStripView()
+    /// Height constraint for the strip, set from the window's real titlebar height.
+    private var titleStripHeight: NSLayoutConstraint?
     /// The auto-hiding previous/next controls. An overlay on the canvas.
     private let floatingNavigation = FloatingNavigationView()
     /// Hosts the folder browser. Empty until the mode is first entered.
@@ -81,6 +84,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// fails. The empty state uses it to say "decoding" instead of blaming the folder.
     private var isDecodingCurrentItem = false
 
+    /// Whether this viewer has a picture to show: on screen, or on its way. An empty viewer is a
+    /// placeholder — the window the app opens with — and that is what decides where a newly opened file
+    /// goes.
+    var isShowingPicture: Bool {
+        viewerState.currentImage != nil || isDecodingCurrentItem
+    }
+
     public private(set) var settings = AppSettings.shared
 
     /// The decoder and thumbnail pipeline are injectable so tests can drive the
@@ -113,7 +123,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// Chrome views by name, for hit-testing and layering tests.
     var chromeViewsForTesting: [String: NSView] {
-        ["bottomBar": bottomBar, "drawer": drawer, "minimap": minimap,
+        ["titleStrip": titleStrip, "drawer": drawer, "minimap": minimap,
          "floatingNavigation": floatingNavigation,
          "canvas": canvas, "emptyState": emptyState,
          "toolDock": toolDock, "infoCard": infoCard]
@@ -121,7 +131,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// Chrome that participates in hover/idle visibility (the titlebar does not:
     /// it is AppKit's and always visible).
-    static let hoverChromeNames: Set<String> = ["bottomBar", "drawer", "minimap", "toolDock",
+    static let hoverChromeNames: Set<String> = ["drawer", "minimap", "toolDock",
                                                 "floatingNavigation"]
     /// Usable canvas width the window's minimum size must leave.
     static let minimumCanvasWidth: CGFloat = 320
@@ -216,7 +226,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.translatesAutoresizingMaskIntoConstraints = false
         toolDock.translatesAutoresizingMaskIntoConstraints = false
         infoCard.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+        titleStrip.translatesAutoresizingMaskIntoConstraints = false
+        let stripHeight = titleStrip.heightAnchor.constraint(
+            equalToConstant: TitleStripView.fallbackHeight)
+        titleStrip.useHeightConstraint(stripHeight)
         drawer.translatesAutoresizingMaskIntoConstraints = false
         minimap.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -231,7 +244,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         root.addSubview(canvas)
         root.addSubview(emptyState)
         root.addSubview(errorLabel)
-        root.addSubview(bottomBar)
+        root.addSubview(titleStrip)
         root.addSubview(drawer)
         root.addSubview(minimap)
         root.addSubview(toolDock)
@@ -274,9 +287,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
             // The bottom cluster is anchored to the canvas, so pinning the drawer
             // moves it with the image instead of leaving it off-centre.
-            bottomBar.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
-            bottomBar.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -8),
-            bottomBar.heightAnchor.constraint(equalToConstant: BottomInfoBarView.height),
+            // The strip spans the window, not the canvas: it *is* the titlebar in this mode, and the
+            // traffic lights sit in it.
+            titleStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            titleStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            titleStrip.topAnchor.constraint(equalTo: root.topAnchor),
+            stripHeight,
 
             drawer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             drawer.topAnchor.constraint(equalTo: root.topAnchor),
@@ -293,7 +309,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                              constant: -ViewerToolDockView.bottomInset),
 
             infoCard.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
-            infoCard.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
+            // Lower-left of the image area, where it has always been: the readout it used to sit above
+            // (the bottom info bar) is gone, so it anchors to the canvas itself.
+            infoCard.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -8),
             infoCard.widthAnchor.constraint(lessThanOrEqualToConstant: ImageInfoCardView.maximumWidth),
 
             // The navigation overlay is *anchored to* the canvas on every side, and nothing anchors
@@ -326,7 +344,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // no longer has, must not be handed to the cells that are about to be created.
             self.pruneThumbnailCache()
             self.rebuildDrawer()
-            self.refreshBottomBar()
+            self.refreshTitleStrip()
             // The gallery draws the same list, so a change to it has to reach the grid — or the grid
             // shows one list while the session holds another, and a click in a cell opens the file
             // that happens to share its index. A hidden gallery is not rebuilt: it reads the session
@@ -403,6 +421,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// lights (9…69 in window coordinates) plus the drawer button beside them (78…108) plus a gap.
     static let mergedToolbarLeadingInset: CGFloat = 120
 
+    /// Gives the top strip the window's titlebar height, so the traffic lights and the left-column
+    /// button sit on it.
+    private func alignTitleStripWithTitlebar() {
+        guard let window = view.window else { return }
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        titleStrip.alignToTitlebar(height: titlebarHeight)
+    }
+
     /// Centres the browser's toolbar controls on the titlebar's own centre line — the line the
     /// traffic lights and the left-column button sit on in the merged row.
     private func alignBrowserToolbarWithTitlebar() {
@@ -477,7 +503,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Hides or shows every view that belongs to image mode. One list, so a view added to image
     /// mode later cannot be forgotten here and float over the gallery.
     private func setImageModeViewsHidden(_ hidden: Bool) {
-        for chrome in [canvas as NSView, emptyState, errorLabel, bottomBar, drawer, minimap,
+        for chrome in [canvas as NSView, emptyState, errorLabel, titleStrip, drawer, minimap,
                        toolDock, infoCard, floatingNavigation] {
             chrome.isHidden = hidden
         }
@@ -544,7 +570,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // that reads the index still follows it.
             drawer.setCurrentIndex(session.currentIndex)
             if revealSelection { drawer.scrollCurrentIntoView() }
-            refreshBottomBar()
+            refreshTitleStrip()
             return
         }
         if let requested = requestedItem, requested.url == item.url, requested.version == version {
@@ -640,18 +666,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.onViewportChange = { [weak self] viewport in
             guard let self else { return }
             self.viewerState.viewport = viewport
-            // A viewport the user moved is a meaningful change: the readout describes it, so it
-            // comes back while the gesture is happening and fades when the gesture stops.
-            self.chrome.infoHUD.noteMeaningfulChange(at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
-            self.refreshBottomBar()
+            self.refreshTitleStrip()
             // Pan moves the tile window; it never re-evaluates the whole-image level.
             self.scheduleNativeDetailUpdate()
         }
         canvas.onZoomChanged = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.chrome.infoHUD.noteMeaningfulChange(at: now)
             self.chrome.zoomActivity(at: now)
             self.chrome.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
@@ -727,7 +749,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // setting was removed from `AppSettings` outright, so a value left in the defaults by an
         // older build cannot reach the drawer even by accident.
         applyAppearance()
-        refreshBottomBar()
+        refreshTitleStrip()
     }
 
     private func applyAppearance() {
@@ -834,7 +856,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.renderImage = nil
             errorLabel.isHidden = true
             onTitleChanged?(nil)
-            refreshBottomBar()
+            refreshTitleStrip()
             renderEmptyState()
             // No image, so no native detail: without this the pass for the deleted image kept
             // running, its tile arrivals kept scheduling publications, and its textures stayed
@@ -869,7 +891,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         onTitleChanged?(item.displayName)
         drawer.setCurrentIndex(index)
         drawer.scrollCurrentIntoView()
-        refreshBottomBar()
+        refreshTitleStrip()
 
         // Remember what is being asked for, so the second callback of the same publication does not
         // ask again. The version travels with it: a replacement while the decode runs is a different
@@ -1441,7 +1463,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // The image (or its replacement) is on screen, so the HUD's readout is worth showing.
             // This is the load/change trigger; it is deliberately not driven by the decode
             // starting, which would show a readout for an image that has not arrived.
-            noteImageChangedForInfoHUD()
             let url = head.descriptor.sourceURL
             let version = SourceFileIdentity.read(at: url).versionToken
             // A new *picture* starts fitted; another decode of the same file at another level is not
@@ -1620,7 +1641,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // frames were ever drawn. It runs when the image changes instead, which is what
         // its own documentation already promised.
         refreshMinimap()
-        refreshBottomBar()
+        refreshTitleStrip()
     }
 
     // MARK: - Animation
@@ -2017,7 +2038,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let now = Date().timeIntervalSinceReferenceDate
         let hasImage = viewerState.currentImage != nil
         chrome.toolDock.setHasImage(hasImage, at: now)
-        chrome.infoHUD.setHasImage(hasImage, at: now)
         chrome.navigation.setHasImage(hasImage, at: now)
         // A first image has no previous and a last one has no next, so the control is not merely
         // disabled: it is not there.
@@ -2053,8 +2073,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         appliedTitlebarState = nil
         refreshTitlebarBlocks()
         applyTitlebarVisibility()
-        // A resize or a full-screen transition can give the strip a different height, and the
-        // browser's controls are aligned to it.
+        // A resize or a full-screen transition can give the strip a different height: both the
+        // browser's toolbar and the image mode's own strip are aligned to it.
+        alignTitleStripWithTitlebar()
         if viewerMode == .folderBrowser { alignBrowserToolbarWithTitlebar() }
         _ = window.titlebarState
     }
@@ -2168,12 +2189,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private var appliedNavigationSnapshot: (previous: Bool, next: Bool)?
 
-    /// An image arrived, or a different one did. The HUD reports on the image, so this is the
-    /// change that brings it back — and it does so on both the load and the switch.
-    private func noteImageChangedForInfoHUD() {
-        chrome.infoHUD.noteMeaningfulChange(at: Date().timeIntervalSinceReferenceDate)
-    }
-
     /// The chrome state the views are currently showing, so a tick can tell whether anything
     /// needs re-applying.
     private var appliedChromeSnapshot: ViewerChromeModel.Snapshot?
@@ -2195,7 +2210,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         setDockChrome(visible: !immersive && snapshot.toolDock)
         // The HUD auto-hides: it follows its own idle model, which already folds in the image's
         // presence and the immersive state.
-        setChrome(bottomBar, visible: snapshot.infoHUD)
+        // The strip is the window's titlebar in this mode: it is on screen exactly when the bar is.
+        setChrome(titleStrip, visible: isTitleStripVisible)
         setChrome(drawer, visible: snapshot.drawer && !immersive)
         setChrome(minimap, visible: snapshot.minimap && !immersive)
         setChrome(infoCard, visible: !immersive && isInfoCardVisible)
@@ -2524,7 +2540,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             if let frame = try? await decoder.decodeFrame(url, index: next) {
                 await MainActor.run {
                     self?.viewerState.apply(frame: frame)
-                    self?.refreshBottomBar()
+                    self?.refreshTitleStrip()
                 }
             }
         }
@@ -2585,13 +2601,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Chrome refresh
 
-    private func refreshBottomBar() {
-        bottomBar.update(fields: settings.bottomFields, session: session,
-                         descriptor: viewerState.descriptor, viewport: canvas.viewport,
-                         metadata: viewerState.metadata,
-                         pageDescription: viewerState.pageDescription)
-        // The dock's readouts come from the same two sources as the HUD's: one viewport and one
-        // folder session, so the two surfaces can never disagree about either number.
+    /// Whether the top strip should be on screen: the image mode's revealed titlebar.
+    private var isTitleStripVisible: Bool {
+        guard viewerMode == .image else { return false }
+        guard let window = view.window as? ViewerWindow else { return false }
+        return window.titlebarMode == .alwaysVisible || window.titlebarState == .full
+    }
+
+    private func refreshTitleStrip() {
+        titleStrip.update(title: session.currentItem?.displayName,
+                          pixelSize: viewerState.descriptor?.displayPixelSize)
+        // The dock's readouts come from the same two sources: one viewport and one folder session, so
+        // the two surfaces can never disagree about either number.
         toolDock.setZoomPercent(canvas.viewport.zoomPercent)
         toolDock.setPosition(session.positionDescription)
     }
@@ -2670,7 +2691,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     var chromeSnapshot: ChromeSnapshot {
         ChromeSnapshot(
-            top: false, bottom: !bottomBar.isHidden,
+            top: !titleStrip.isHidden, bottom: false,
             previousNavigation: chrome.snapshot.previousNavigation,
             nextNavigation: chrome.snapshot.nextNavigation,
             titlebar: chrome.snapshot.titlebar,
@@ -2681,7 +2702,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvasFrame: canvas.frame,
             zoomScale: canvas.viewport.zoomScale,
             fitScale: canvas.viewport.fitScale,
-            usesNativeSurface: bottomBar.usesNativeGlass || drawer.usesNativeGlass
+            usesNativeSurface: titleStrip.usesNativeGlass || drawer.usesNativeGlass
                 || toolDock.usesNativeGlass || infoCard.usesNativeGlass,
             canvasView: canvas,
             drawerView: drawer,

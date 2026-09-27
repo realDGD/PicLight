@@ -6,6 +6,21 @@ import AppKit
 public final class ViewerWindowController: NSWindowController {
     public let viewerViewController: ViewerViewController
 
+    /// Whether this window has a picture to show — on screen, or still decoding. An empty window is a
+    /// placeholder, and a file opened while one is up belongs in it (see `AppEnvironment.open`).
+    public var isShowingPicture: Bool {
+        viewerViewController.isShowingPicture
+    }
+
+    /// Whether this window has already been handed a file. A window that has is not the empty
+    /// placeholder any more, even before its picture arrives: opening three files in a row must produce
+    /// three windows, not one window that keeps replacing itself.
+    public private(set) var hasReceivedFileRequest = false
+
+    public func noteFileRequested() {
+        hasReceivedFileRequest = true
+    }
+
     private var drawerButton: NSButton?
     private var drawerAccessory: NSTitlebarAccessoryViewController?
 

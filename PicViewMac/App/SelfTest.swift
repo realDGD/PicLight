@@ -281,7 +281,7 @@ enum SelfTest {
         drainRunLoop(0.6)
         var notHidden: [String] = []
         for (name, chrome) in viewer.chromeViewsForTesting
-        where ["topBar", "bottomBar", "drawer", "minimap"].contains(name) {
+        where ["topBar", "titleStrip", "drawer", "minimap"].contains(name) {
             if !chrome.isHidden { notHidden.append("\(name) alpha=\(chrome.alphaValue)") }
         }
         check("chrome starts genuinely hidden, not just transparent",
@@ -501,7 +501,7 @@ enum SelfTest {
         guard let dock = chrome["toolDock"] as? ViewerToolDockView,
               let canvas = chrome["canvas"],
               let minimap = chrome["minimap"],
-              let bottomBar = chrome["bottomBar"],
+              let titleStrip = chrome["titleStrip"] as? TitleStripView,
               let card = chrome["infoCard"] as? ImageInfoCardView else {
             check("viewer layout views exist", false)
             return
@@ -596,9 +596,13 @@ enum SelfTest {
         drainRunLoop(0.3)
         let unpinnedCanvas = canvas.frame
         check("panels sit inside the canvas area",
-              minimap.frame.maxX <= canvas.frame.maxX + 1
-                && bottomBar.frame.minX >= canvas.frame.minX - 1,
+              minimap.frame.maxX <= canvas.frame.maxX + 1,
               "minimap \(minimap.frame) canvas \(canvas.frame)")
+        // The strip *is* the titlebar in this mode: full width, at the top.
+        check("the title strip spans the window at the top",
+              titleStrip.frame.minY == viewer.view.bounds.maxY - titleStrip.frame.height
+                && titleStrip.frame.width == viewer.view.bounds.width,
+              "strip \(titleStrip.frame) root \(viewer.view.bounds)")
         check("tool dock is centred on the canvas",
               abs(dock.frame.midX - canvas.frame.midX) <= 2,
               "dock \(dock.frame.midX) canvas \(canvas.frame.midX)")
@@ -714,11 +718,12 @@ enum SelfTest {
         check("drawer lists the whole folder", before.drawerRows == viewer.session.items.count,
               "\(before.drawerRows) rows")
 
-        // The bottom info bar is fixed chrome; the tool dock auto-hides and comes
-        // back through the invisible strip along the bottom of the image area.
+        // The tool dock auto-hides and comes back through the invisible strip along the bottom of the
+        // image area. (The bottom info bar that used to sit here is gone: the title strip carries the
+        // name and the pixel size.)
         var snapshot = viewer.chromeSnapshot
-        check("bottom info bar is fixed chrome, not hover-revealed",
-              !viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
+        check("the old bottom info bar is gone",
+              viewer.chromeViewsForTesting["bottomBar"] == nil)
 
         guard let dock = viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView else {
             check("the tool dock exists", false)
@@ -848,7 +853,7 @@ enum SelfTest {
         check("immersive hides overlay chrome",
               viewer.chromeSnapshot.drawer == false
                 && viewer.chromeViewsForTesting["toolDock"]!.isHidden
-                && viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
+                && viewer.chromeViewsForTesting["titleStrip"]!.isHidden)
         check("immersive does not touch the window or its titlebar",
               viewer.view.window?.frame == frameBeforeImmersive
                 && viewer.view.window?.styleMask.contains(.fullScreen) == false,

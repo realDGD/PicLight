@@ -86,10 +86,6 @@ final class ToolDockPositionTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
             let description = viewer.session.positionDescription
             XCTAssertEqual(dock.positionReadoutText, description)
-            // The HUD builds its line from the same property, so its first field is that value.
-            let bar = try XCTUnwrap(viewer.chromeViewsForTesting["bottomBar"] as? BottomInfoBarView)
-            XCTAssertTrue(bar.renderedText.hasPrefix(description),
-                          "the HUD leads with the position: \(bar.renderedText)")
         }
     }
 

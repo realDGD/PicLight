@@ -48,7 +48,6 @@ final class SettingsViewController: NSViewController {
     private var deletePopup = NSPopUpButton()
     private var autoplayCheckbox = NSButton(checkboxWithTitle: "自动播放动画", target: nil, action: nil)
     private var topFilenameCheckbox = NSButton(checkboxWithTitle: "显示顶部文件名", target: nil, action: nil)
-    private var fieldCheckboxes: [BottomInfoField: NSButton] = [:]
     private var conflictLabel = NSTextField(labelWithString: "")
     private var shortcutButtons: [ViewerCommand: NSButton] = [:]
     private let tabView = NSTabView()
@@ -136,15 +135,6 @@ final class SettingsViewController: NSViewController {
         stack.addArrangedSubview(row("标题栏", titlebarPopup))
         stack.addArrangedSubview(row("删除后", deletePopup))
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(sectionTitle("底部信息字段"))
-        for field in BottomInfoField.allCases {
-            let checkbox = NSButton(checkboxWithTitle: field.localizedName, target: self,
-                                    action: #selector(toggleBottomField(_:)))
-            checkbox.identifier = NSUserInterfaceItemIdentifier(field.rawValue)
-            checkbox.state = settings.bottomFields.contains(field) ? .on : .off
-            fieldCheckboxes[field] = checkbox
-            stack.addArrangedSubview(checkbox)
-        }
         let note = NSTextField(wrappingLabelWithString: "v0.1 只浏览当前文件夹，不递归子文件夹。")
         note.textColor = .secondaryLabelColor
         note.font = .systemFont(ofSize: 11)
@@ -234,17 +224,6 @@ final class SettingsViewController: NSViewController {
     }
 
     // MARK: - Actions
-
-    @objc private func toggleBottomField(_ sender: NSButton) {
-        guard let raw = sender.identifier?.rawValue, let field = BottomInfoField(rawValue: raw) else { return }
-        var fields = settings.bottomFields
-        if sender.state == .on {
-            if !fields.contains(field) { fields.append(field) }
-        } else {
-            fields.removeAll { $0 == field }
-        }
-        settings.bottomFields = fields
-    }
 
     @objc private func toggleAutoplay(_ sender: NSButton) {
         settings.autoplayAnimations = sender.state == .on

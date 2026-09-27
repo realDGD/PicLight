@@ -117,81 +117,6 @@ public struct ToolDockVisibilityModel: Sendable {
     public var snapshot: Bool { visible }
 }
 
-/// Pure idle-fade state machine for the bottom info HUD.
-///
-/// The HUD is informational: it appears when something it describes changes, and fades once
-/// nothing has changed for a moment. It deliberately has no reveal zone and no pointer rule.
-/// The pointer crossing the image is not an event about the image, so it must not summon a
-/// readout of the image's position, zoom and dimensions.
-public struct InfoHUDVisibilityModel: Sendable {
-    public struct Timing: Sendable {
-        /// Idle time before the fade. The spec asks for 1.5–2.0 s; this sits in the middle,
-        /// long enough to read three fields, short enough to get out of the way.
-        public var idleFadeDelay: TimeInterval = 1.75
-
-        public init() {}
-    }
-
-    public var timing = Timing()
-    public private(set) var visible = false
-    /// Whether there is an image for the HUD to describe. Without one it stays away and its
-    /// fade timer does not start.
-    public private(set) var hasImage = false
-    /// Immersive mode takes the HUD away immediately, and restores nothing on exit until the
-    /// next meaningful change — immersive is the user asking for fewer readouts.
-    public var immersive = false
-
-    private var lastChangeAt: TimeInterval?
-    private var hasPendingFade = false
-
-    public init() {}
-
-    /// Something the HUD describes changed: a new image, a new page, a new zoom, or a
-    /// viewport that moved. This is the only way the HUD becomes visible.
-    public mutating func noteMeaningfulChange(at time: TimeInterval) {
-        lastChangeAt = time
-        hasPendingFade = true
-        if hasImage, !immersive { visible = true }
-    }
-
-    public mutating func setHasImage(_ value: Bool, at time: TimeInterval) {
-        guard value != hasImage else { return }
-        hasImage = value
-        if value {
-            noteMeaningfulChange(at: time)
-        } else {
-            visible = false
-            hasPendingFade = false
-            lastChangeAt = nil
-        }
-    }
-
-    public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
-        immersive = value
-        if value {
-            visible = false
-            // The pending fade is cancelled, not merely postponed: leaving immersive mode must
-            // not produce a HUD that was never asked for.
-            hasPendingFade = false
-            lastChangeAt = nil
-        }
-    }
-
-    /// Recomputes visibility. Returns `true` when it changed.
-    @discardableResult
-    public mutating func update(at time: TimeInterval) -> Bool {
-        let before = visible
-        if !hasImage || immersive {
-            visible = false
-        } else if hasPendingFade, let lastChangeAt, time - lastChangeAt >= timing.idleFadeDelay {
-            visible = false
-            hasPendingFade = false
-        }
-        return visible != before
-    }
-
-    public var snapshot: Bool { visible }
-}
 
 /// Pure hover/idle state machine for the floating previous/next controls.
 ///
@@ -354,7 +279,6 @@ public struct ViewerChromeModel: Sendable {
     /// They share this tick and nothing else: there is no single "chrome is visible" flag, and no
     /// pointer event can move a surface whose rule does not mention the pointer.
     public var toolDock = ToolDockVisibilityModel()
-    public var infoHUD = InfoHUDVisibilityModel()
     public var navigation = FloatingNavigationVisibilityModel()
     /// The auto-hiding titlebar. Its own machine: the pointer's position over the image cannot move
     /// it, and its two zones are its own.
@@ -415,7 +339,6 @@ public struct ViewerChromeModel: Sendable {
     public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
         immersive = value
         toolDock.setImmersive(value, at: time)
-        infoHUD.setImmersive(value, at: time)
         navigation.setImmersive(value, at: time)
         // Immersive mode blocks the titlebar's own hiding through the same mechanism a window drag
         // and a sheet use, so there is one rule about when the bar may go away.
@@ -445,7 +368,6 @@ public struct ViewerChromeModel: Sendable {
         }
 
         toolDock.update(at: time)
-        infoHUD.update(at: time)
         navigation.update(at: time)
         titlebar.update(at: time)
 
@@ -457,7 +379,6 @@ public struct ViewerChromeModel: Sendable {
 
     public var snapshot: Snapshot {
         Snapshot(drawer: drawerVisible, minimap: minimapVisible, toolDock: toolDock.visible,
-                 infoHUD: infoHUD.visible,
                  previousNavigation: navigation.previous.visible,
                  nextNavigation: navigation.next.visible,
                  titlebar: titlebar.state)
@@ -467,7 +388,6 @@ public struct ViewerChromeModel: Sendable {
         public let drawer: Bool
         public let minimap: Bool
         public let toolDock: Bool
-        public let infoHUD: Bool
         public let previousNavigation: Bool
         public let nextNavigation: Bool
         /// The auto-hiding titlebar's state. Not a Bool: there are three states, and two of them
@@ -477,7 +397,7 @@ public struct ViewerChromeModel: Sendable {
 
     /// Keyboard navigation must always work, even with all overlay chrome hidden.
     public var chromeHidden: Bool {
-        !drawerVisible && !minimapVisible && !toolDock.visible && !infoHUD.visible
+        !drawerVisible && !minimapVisible && !toolDock.visible
             && !navigation.previous.visible && !navigation.next.visible
     }
 }

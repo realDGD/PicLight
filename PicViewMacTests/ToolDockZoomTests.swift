@@ -115,19 +115,20 @@ final class ToolDockZoomTests: XCTestCase {
                        "the dock reports the viewport's own number, whatever it is")
     }
 
-    /// A zoom change is a meaningful change for the info HUD too, so the two surfaces agree.
-    func testZoomingAlsoShowsTheInfoHUD() throws {
+    /// A zoom change updates the dock's readout, which is the only zoom readout left.
+    ///
+    /// There used to be a second one in a bottom-left HUD; it is gone (see `TitleStripView` for what
+    /// replaced it), so this asserts the dock is the single source and that it follows a zoom.
+    func testZoomingUpdatesTheDockReadout() throws {
         let (controller, viewer, dock) = try makeViewer()
         defer { controller.close() }
-        let bar = try XCTUnwrap(viewer.chromeViewsForTesting["bottomBar"])
-        RunLoop.current.run(until: Date().addingTimeInterval(
-            InfoHUDVisibilityModel.Timing().idleFadeDelay + 0.6))
-        XCTAssertTrue(bar.isHidden)
+        let before = dock.zoomReadoutText
 
         viewer.perform(.zoomIn)
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        XCTAssertFalse(bar.isHidden, "the zoom readout is worth showing again")
-        XCTAssertNotEqual(dock.zoomReadoutText, "", "and the dock agrees about the percentage")
+
+        XCTAssertNotEqual(dock.zoomReadoutText, "", "the dock reports the percentage")
+        XCTAssertNotEqual(dock.zoomReadoutText, before, "and it followed the zoom")
     }
 
     /// Zooming never changes the canvas *frame*: the geometry the zoom is measured against is

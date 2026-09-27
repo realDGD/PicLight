@@ -40,7 +40,6 @@ final class ChromeStateIndependenceTests: XCTestCase {
         let pairs: [(String, Bool)] = [
             ("drawer", after.drawer == before.drawer),
             ("dock", after.toolDock == before.toolDock),
-            ("infoHUD", after.infoHUD == before.infoHUD),
             ("previousNavigation", after.previousNavigation == before.previousNavigation),
             ("nextNavigation", after.nextNavigation == before.nextNavigation),
             ("titlebar", after.titlebar == before.titlebar),
@@ -58,7 +57,6 @@ final class ChromeStateIndependenceTests: XCTestCase {
     func testEachSurfaceHasItsOwnRuleAndMovesAlone() {
         var chrome = ViewerChromeModel()
         chrome.toolDock.setHasImage(true, at: 0)
-        chrome.infoHUD.setHasImage(true, at: 0)
         chrome.navigation.setHasImage(true, at: 0)
         chrome.navigation.setAvailable(previous: true, next: true)
         // Let every surface settle to its resting state.
@@ -89,11 +87,6 @@ final class ChromeStateIndependenceTests: XCTestCase {
         assertOthersUnchanged(chrome.snapshot, baseline, except: "previousNavigation")
         baseline = chrome.snapshot
 
-        // 4. The HUD: a meaningful change, and nothing else.
-        chrome.infoHUD.noteMeaningfulChange(at: 14)
-        _ = chrome.update(at: 14)
-        XCTAssertTrue(chrome.snapshot.infoHUD)
-        assertOthersUnchanged(chrome.snapshot, baseline, except: "infoHUD")
     }
 
     /// A pointer sweep over the image moves nothing that does not mention the pointer.
@@ -123,7 +116,7 @@ final class ChromeStateIndependenceTests: XCTestCase {
     func testTheSurfacesAreDistinctViewsDrivenByTheTick() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
-        let names = ["drawer", "toolDock", "bottomBar", "floatingNavigation", "minimap"]
+        let names = ["drawer", "toolDock", "titleStrip", "floatingNavigation", "minimap"]
         let views = try names.map { try XCTUnwrap(viewer.chromeViewsForTesting[$0]) }
         XCTAssertEqual(Set(views.map(ObjectIdentifier.init)).count, names.count,
                        "five surfaces, five views")

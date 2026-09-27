@@ -174,14 +174,11 @@ final class ViewerRealFileAcceptanceTests: XCTestCase {
         XCTAssertFalse(cell.nameLabelView.isHidden, "with its filename always visible")
         XCTAssertEqual((cell.nameLabelView as? NSTextField)?.stringValue, "万萝图.png")
 
-        // The info HUD reports the position, the zoom and the pixel dimensions.
-        let bar = try XCTUnwrap(viewer.chromeViewsForTesting["bottomBar"] as? BottomInfoBarView)
-        XCTAssertFalse(bar.isHidden, "the readout appears for the image that just arrived")
-        XCTAssertTrue(bar.renderedText.contains("48000 × 32000"),
-                      "the real dimensions: \(bar.renderedText)")
-        XCTAssertTrue(bar.renderedText.contains("1 / 1"), bar.renderedText)
-        settle(InfoHUDVisibilityModel.Timing().idleFadeDelay + 0.6)
-        XCTAssertTrue(bar.isHidden, "and then it fades")
+        // The top strip names the picture and gives its real pixel size, in the window's own label
+        // colours (the bottom-left HUD that used to carry this is gone).
+        let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
+        XCTAssertEqual(strip.renderedSize, "48000 × 32000",
+                       "the real dimensions, from the descriptor")
 
         // The drawer never opens from a pointer position.
         let before = viewer.chromeSnapshot.drawer
@@ -246,7 +243,12 @@ final class ViewerRealFileAcceptanceTests: XCTestCase {
             CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
         settle(0.4)
         XCTAssertEqual(window.titlebarState, .full)
-        XCTAssertEqual(window.titleVisibility, .visible)
+        // The revealed bar is the viewer's own glass strip; the system title stays hidden so white text
+        // is never drawn straight onto the picture.
+        XCTAssertEqual(window.titleVisibility, .hidden)
+        let strip = try XCTUnwrap(viewer.chromeViewsForTesting["titleStrip"] as? TitleStripView)
+        XCTAssertFalse(strip.isHidden)
+        XCTAssertFalse(strip.renderedSize.isEmpty, "the strip reports the real dimensions")
     }
 
     // MARK: - 18.2 Folder browser on the real folders
