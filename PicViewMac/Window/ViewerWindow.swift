@@ -207,7 +207,26 @@ public final class ViewerWindow: NSWindow {
             accessory.isHidden = !visible
             accessory.view.isHidden = !visible
             accessory.view.alphaValue = visible ? 1 : 0
+            if visible, !present { accessoryPresenceChanged = true }
         }
+        if accessoryPresenceChanged { relayoutTitleWithAccessoriesInPlace() }
+    }
+
+    /// Set when an accessory was just put back into the titlebar, so the title is laid out again.
+    private var accessoryPresenceChanged = false
+
+    /// AppKit computes the title's frame *before* a titlebar accessory lands, and while the bar is
+    /// away the title is hidden, so the frame it computes when the bar comes back is the leading-edge
+    /// one: measured with the drawer button re-inserted at x 78…108 the title sat at x=82 — on top of
+    /// the button — and stayed there until something else changed the title. Toggling the visibility
+    /// makes AppKit lay the title out again with the accessory in place (measured: back to x=351, the
+    /// centre of a 900 pt window). A same-value `title` assignment and `needsLayout` on the theme
+    /// frame both leave it where it was.
+    private func relayoutTitleWithAccessoriesInPlace() {
+        accessoryPresenceChanged = false
+        guard titleVisibility == .visible else { return }
+        titleVisibility = .hidden
+        titleVisibility = .visible
     }
 
     /// The traffic-light controls' union frame in this window's base coordinates, or nil when they
