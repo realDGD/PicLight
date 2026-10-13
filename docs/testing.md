@@ -28,6 +28,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test
 | 画布手势、覆盖层与焦点 | `ViewerInputRoutingTests`、`InvisibleOverlayGestureTests`、`GestureRouterTests`、`ViewportStateTests` |
 | 空窗口与第一次打开 | `EmptyWindowOpenTests`、`ViewerRootTrackingTests` |
 | 图片/网格切换与目录树布局 | `FolderBrowserModeTests`、`FolderBrowserLayoutTests`、`FolderBrowserSidebarLayoutTests` |
+| 文件夹访问记录、书签与读取失败恢复 | `FolderAccessStoreTests`、`FolderAccessViewerTests`、`FolderSwitchRaceTests`、`SettingsWindowTests` |
 | 扫描、监听、快速切换和同路径替换 | `FolderSwitchRaceTests`、`FolderSessionTests`、`FolderDynamicsTests`、`SamePathReplacementTests` |
 | 解码、取消、文件身份和缓存 | `DecodeCoordinatorTests`、`RapidSwitchCancellationTests`、`SourceFileIdentityTests`、`CacheIdentityTests`、`LifecycleEpochTests` |
 | 原生细节、瓦片与显示变换 | `NativeDetailPositionTests`、`NativeDetailLifecycleTests`、`NativeInFlightReplacementTests`、`TilePlanAndRedrawTests`、`SourceOrientationTests`、`MetalFallbackTests` |

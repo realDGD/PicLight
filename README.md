@@ -91,6 +91,9 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
 - Independent Show / Hide / Auto policies for the native titlebar, bottom tools
   and navigation arrows; auto-hide never moves the canvas. The zoom navigator
   minimap can be disabled in Settings → Appearance.
+- [Folder access management](docs/folder-access.md): add/remove/reselect saved
+  directories, restore bookmarks on launch, check actual readability, and retry
+  failed browsing while preserving an explicitly opened image.
 - Pointer-centered wheel zoom, pinch always zooms, drag pan, and a smart
   trackpad swipe that pans first and switches images at the edge.
 - Formats: BMP, GIF, ICO, PNG, JPG/JPEG, TIF/TIFF, WebP — including animated GIF,

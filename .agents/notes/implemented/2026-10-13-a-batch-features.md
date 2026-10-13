@@ -38,7 +38,7 @@ Status: implemented
 
 普通删除遵循确认设置，Command+Delete 使用独立静默命令。确认同时捕获目标和 `SourceFileIdentity.versionToken`，执行前再次读取文件版本；路径相同不代表确认过的文件仍然存在。取消确认不改变文件与选择。查看器菜单在文本编辑期间禁用图片命令，保留编辑焦点。
 
-[AppDelegate](../../../PicViewMac/App/AppDelegate.swift)在打开文件夹选择面板前捕获发起操作的查看器，避免多窗口下替换最后创建的窗口。目录读取失败与空目录分别处理；网格模式下的错误使用原生 sheet 呈现。选择目录和权限说明不等于授予完全磁盘访问，也没有实现授权列表或跨启动恢复，这些仍属 B 批。
+[AppDelegate](../../../PicViewMac/App/AppDelegate.swift)在打开文件夹选择面板前捕获发起操作的查看器，避免多窗口下替换最后创建的窗口。目录读取失败与空目录分别处理；网格模式下的错误使用原生 sheet 呈现。选择目录和权限说明不等于授予完全磁盘访问。A 批交付时未实现授权列表和跨启动恢复；后续实现见[B 批文件夹访问记录](2026-10-13-folder-access.md)。
 
 [SettingsView](../../../PicViewMac/Settings/SettingsView.swift)保持固定 560×560，增加第六个“文件与缓存”页。重新显示设置窗口时刷新缓存统计与快捷键标签，不能只依赖页签切换事件。
 

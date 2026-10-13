@@ -8,6 +8,7 @@ public final class AppEnvironment {
     public let settings = AppSettings.shared
     public let shortcuts = ShortcutStore.shared
     public let fileOpener = FileOpenCoordinator()
+    let folderAccess = FolderAccessStore.shared
 
     private var windowControllers: [ViewerWindowController] = []
 

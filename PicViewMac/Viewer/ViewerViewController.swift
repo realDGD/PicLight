@@ -57,6 +57,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let probe: DimensionProbing
     private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
+    var folderAccessStore: FolderAccessStore = .shared
+    var folderScanner: any FolderDirectoryScanning = FolderScanner()
+    private let folderAccessBanner = FolderAccessBannerView()
+    private(set) var folderReadFailure: FolderReadFailure?
+    private enum FolderSelection { case file(URL), first, preserve }
+    private var failedFolderRequest: (directory: URL, selection: FolderSelection, generation: Int)?
+    private var permissionPromptShown = false
+    private var folderRequestsEnabled = true
     private var directlyOpenedFile: URL?
     private var pendingDirectOpenURL: URL?
     private var appliedExcludedExtensions: Set<String> = []
@@ -239,6 +247,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         floatingNavigation.translatesAutoresizingMaskIntoConstraints = false
         folderBrowserContainer.translatesAutoresizingMaskIntoConstraints = false
         folderBrowserContainer.isHidden = true
+        folderAccessBanner.translatesAutoresizingMaskIntoConstraints = false
 
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
@@ -262,6 +271,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // The folder browser's container is a sibling of the image mode's views, not a child of
         // them: switching modes shows one hierarchy and hides the other.
         root.addSubview(folderBrowserContainer)
+        // Shared recovery UI stays visible in both browsing modes without changing canvas layout.
+        root.addSubview(folderAccessBanner)
+        folderAccessBanner.onChoose = { [weak self] in self?.chooseFolderAccess() }
+        folderAccessBanner.onRetry = { [weak self] in self?.retryFolderAccess() }
 
         let minimapWidth = minimap.widthAnchor.constraint(
             equalToConstant: NavigatorView.defaultSize.width)
@@ -328,6 +341,10 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             floatingNavigation.heightAnchor.constraint(
                 equalToConstant: FloatingNavigationView.buttonSize),
 
+            folderAccessBanner.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
+            folderAccessBanner.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
+            folderAccessBanner.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -80),
+
             folderBrowserContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             folderBrowserContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             folderBrowserContainer.topAnchor.constraint(equalTo: root.topAnchor),
@@ -369,6 +386,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.folderBrowser?.syncSelectionFromSession(reveal: reason.revealsSelection)
         }
         applySettings()
+        NotificationCenter.default.addObserver(self, selector: #selector(folderAccessChanged(_:)),
+                                               name: FolderAccessStore.didChangeNotification, object: folderAccessStore)
         NotificationCenter.default.addObserver(self, selector: #selector(clearLocalThumbnailCache),
                                                name: ThumbnailCacheService.didClearNotification, object: ThumbnailCacheService.shared)
         NotificationCenter.default.addObserver(
@@ -789,6 +808,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Folder session
 
     public func open(url: URL) {
+        folderRequestsEnabled = true
         // Scanning resolves symlinks, so the directory is canonicalized once here
         // to keep the opened file and the scanned items speaking the same path
         // spelling (`/tmp` versus `/private/tmp`, symlinked folders).
@@ -797,18 +817,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         directlyOpenedFile = canonicalURL
         pendingDirectOpenURL = canonicalURL
         let generation = beginFolderRequest(directory)
+        clearFolderReadFailure()
         Task { [weak self] in
-            guard let self else { return }
-            let scanner = FolderScanner()
-            let items = (try? await scanner.scan(directory: directory, excludingExtensions: self.settings.excludedExtensions, includingURL: self.directlyOpenedFile)) ?? []
-            let sorted = await self.sortedItems(items)
-            // A folder opened after this scan started owns the session now. Publishing anyway put
-            // the *previous* folder's files in the list while the session said the new one was
-            // current — measured as "directory=B, 3000 items from A".
-            guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
-            self.session.setItems(sorted, preferredIdentity: FileIdentity(url: canonicalURL))
-            self.session.select(url: canonicalURL)
-            self.pendingDirectOpenURL = nil
+            await self?.readFolder(directory, generation: generation, selection: .file(canonicalURL))
         }
     }
 
@@ -846,29 +857,140 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func rescanPreservingCurrent() async {
-        guard let directory = session.directory else { return }
-        let generation = folderRequestGeneration
-        let scanner = FolderScanner()
-        guard let items = try? await scanner.scan(directory: directory, excludingExtensions: self.settings.excludedExtensions, includingURL: self.directlyOpenedFile) else { return }
-        let sorted = await sortedItems(items)
-        // The watcher fired for the folder that was current when it fired; by the time the scan
-        // returns, the user may have opened another one. The same guard as `open(url:)`.
+        guard folderRequestsEnabled, let directory = session.directory else { return }
+        let generation = beginFolderRequest(directory)
+        await readFolder(directory, generation: generation, selection: .preserve)
+    }
+
+    private func readFolder(_ directory: URL, generation: Int, selection: FolderSelection) async {
+        let scope = await folderAccessStore.prepareAccess(to: directory)
+        // Keep access alive even if the user removes its saved record during this scan.
+        defer { withExtendedLifetime(scope) {} }
         guard isCurrentFolderRequest(generation, directory: directory) else { return }
-        // The delete-follow-up preference decides what survives a folder change:
-        // "smart" follows the file the user was moved to, "stay in place" holds
-        // the slot. Both are observable when a rescan re-sorts the list.
-        if let pendingFile = pendingDirectOpenURL {
-            session.setItems(sorted, preferredIdentity: FileIdentity(url: pendingFile))
-            session.select(url: pendingFile)
-            pendingDirectOpenURL = nil
-            return
+        do {
+            let items = try await folderScanner.scan(directory: directory,
+                                                     excludingExtensions: settings.excludedExtensions,
+                                                     includingURL: directlyOpenedFile)
+            let sorted = await sortedItems(items)
+            guard isCurrentFolderRequest(generation, directory: directory) else { return }
+            folderAccessStore.noteReadableDirectory(directory)
+            clearFolderReadFailure()
+            watcher.start(watching: directory)
+            switch selection {
+            case .file(let url):
+                session.setItems(sorted, preferredIdentity: FileIdentity(url: url))
+                session.select(url: url)
+                pendingDirectOpenURL = nil
+            case .first:
+                session.setItems(sorted, reason: .navigation)
+                folderBrowser?.reload(.navigation)
+            case .preserve:
+                if let pendingFile = pendingDirectOpenURL {
+                    session.setItems(sorted, preferredIdentity: FileIdentity(url: pendingFile))
+                    session.select(url: pendingFile)
+                    pendingDirectOpenURL = nil
+                } else {
+                    switch settings.deleteFollowUp {
+                    case .smart:
+                        session.setItems(sorted, preferredIdentity: session.currentItem?.id
+                            ?? directlyOpenedFile.map { FileIdentity(url: $0) })
+                    case .stayInPlace:
+                        session.setItems(sorted, preferredIndex: session.currentIndex)
+                    }
+                }
+            }
+        } catch {
+            guard isCurrentFolderRequest(generation, directory: directory) else { return }
+            if case .file(let url) = selection {
+                // Reading a selected file and listing its parent have independent permissions.
+                session.setItems([FolderItem(url: url)], preferredIdentity: FileIdentity(url: url))
+            } else if case .first = selection {
+                session.setItems([], reason: .navigation)
+                folderBrowser?.reload(.navigation)
+            }
+            let failure = FolderReadFailure(directory: directory, error: error)
+            folderReadFailure = failure
+            failedFolderRequest = (directory, pendingDirectOpenURL.map { .file($0) } ?? selection, generation)
+            folderAccessBanner.show(failure)
+            watcher.stop()
+            folderAccessStore.noteReadFailure(failure)
+            showFolderPermissionPromptIfNeeded(failure, generation: generation)
         }
-        switch settings.deleteFollowUp {
-        case .smart:
-            session.setItems(sorted, preferredIdentity: session.currentItem?.id ?? directlyOpenedFile.map { FileIdentity(url: $0) })
-        case .stayInPlace:
-            session.setItems(sorted, preferredIndex: session.currentIndex)
+    }
+
+    private func clearFolderReadFailure() {
+        folderReadFailure = nil
+        failedFolderRequest = nil
+        permissionPromptShown = false
+        folderAccessBanner.show(nil)
+    }
+
+    func retryFolderAccess() {
+        guard let request = failedFolderRequest,
+              isCurrentFolderRequest(request.generation, directory: request.directory) else { return }
+        let generation = beginFolderRequest(request.directory)
+        failedFolderRequest = (request.directory, request.selection, generation)
+        Task { [weak self] in
+            await self?.readFolder(request.directory, generation: generation, selection: request.selection)
         }
+    }
+
+    private func chooseFolderAccess() {
+        guard let failure = folderReadFailure, let request = failedFolderRequest else { return }
+        FolderAccessPanel.choose(store: folderAccessStore, for: view.window,
+                                 initialDirectory: failure.directory,
+                                 covering: failure.isPermission ? failure.directory : nil) { [weak self] selected in
+            guard let self, self.isCurrentFolderRequest(request.generation, directory: request.directory) else { return }
+            // The store notification retries a matching grant. For a missing location, the user
+            // can explicitly choose a different directory instead.
+            if !FolderAccessStore.covers(selected, request.directory) { self.openFolder(selected) }
+        }
+    }
+
+    private func showFolderPermissionPromptIfNeeded(_ failure: FolderReadFailure, generation: Int) {
+        guard failure.isPermission, settings.promptForFolderAccess, !permissionPromptShown,
+              let window = view.window, window.isKeyWindow, window.attachedSheet == nil else { return }
+        permissionPromptShown = true
+        let alert = NSAlert()
+        alert.messageText = "需要文件夹访问"
+        alert.informativeText = failure.message + "\n选择原文件夹或其上级文件夹后重试。完全磁盘访问由系统单独管理。"
+        alert.addButton(withTitle: "选择文件夹…")
+        alert.addButton(withTitle: "稍后")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn,
+                  self.isCurrentFolderRequest(generation, directory: failure.directory) else { return }
+            self.chooseFolderAccess()
+        }
+    }
+
+    @objc private func folderAccessChanged(_ notification: Notification) {
+        guard folderRequestsEnabled, let directory = session.directory else { return }
+        if let granted = notification.userInfo?["grantedURL"] as? URL {
+            if let previous = notification.userInfo?["previousURL"] as? URL,
+               FolderAccessStore.covers(previous, directory),
+               FolderAccessStore.canonicalPath(previous) != FolderAccessStore.canonicalPath(granted) {
+                let suffix = String(FolderAccessStore.canonicalPath(directory)
+                    .dropFirst(FolderAccessStore.canonicalPath(previous).count))
+                let moved = URL(fileURLWithPath: FolderAccessStore.canonicalPath(granted) + suffix,
+                                isDirectory: true)
+                if let file = pendingDirectOpenURL ?? session.currentItem?.url {
+                    open(url: moved.appendingPathComponent(file.lastPathComponent))
+                } else { openFolder(moved) }
+            } else if folderReadFailure != nil, FolderAccessStore.covers(granted, directory) {
+                retryFolderAccess()
+            }
+        } else if let removed = notification.userInfo?["removedURL"] as? URL,
+                  FolderAccessStore.covers(removed, directory) {
+            // Removing a saved record is not proof that ordinary macOS access was revoked.
+            Task { [weak self] in await self?.rescanPreservingCurrent() }
+        }
+    }
+
+    func cancelFolderRequest() {
+        folderRequestsEnabled = false
+        folderRequestGeneration += 1
+        watcher.stop()
+        failedFolderRequest = nil
     }
 
     public func reloadWithCurrentSort() {
@@ -2991,39 +3113,14 @@ extension ViewerViewController: FolderBrowserHost {
     /// scans its parent. It scans the chosen folder, hands the session the new list, and — because
     /// the caller is the browser — leaves the mode alone.
     func openFolder(_ url: URL) {
+        folderRequestsEnabled = true
         directlyOpenedFile = nil
         pendingDirectOpenURL = nil
         let directory = url.resolvingSymlinksInPath()
         let generation = beginFolderRequest(directory)
+        clearFolderReadFailure()
         Task { [weak self] in
-            guard let self else { return }
-            let scanner = FolderScanner()
-            let items: [FolderItem]
-            do {
-                items = try await scanner.scan(directory: directory, excludingExtensions: self.settings.excludedExtensions)
-            } catch {
-                guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
-                self.session.setItems([], reason: .navigation)
-                self.folderBrowser?.reload(.navigation)
-                let message = "无法读取文件夹“\(directory.lastPathComponent)”"
-                self.presentTransientError("\(message)：\(error.localizedDescription)。请检查文件夹访问权限。")
-                if let window = self.view.window, window.attachedSheet == nil {
-                    let alert = NSAlert()
-                    alert.messageText = message
-                    alert.informativeText = "\(error.localizedDescription)\n请检查文件夹访问权限，或重新选择可访问的文件夹。完全磁盘访问需在系统设置中单独开启。"
-                    alert.addButton(withTitle: "好")
-                    alert.beginSheetModal(for: window) { _ in }
-                }
-                return
-            }
-            let sorted = await self.sortedItems(items)
-            // See `open(url:)`: a folder chosen later owns the session, and this scan must not
-            // overwrite the list it published.
-            guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
-            // A folder change selects its first item, which is what makes the gallery show
-            // something and what the image mode will come back to.
-            self.session.setItems(sorted, reason: .navigation)
-            self.folderBrowser?.reload(.navigation)
+            await self?.readFolder(directory, generation: generation, selection: .first)
         }
     }
 

@@ -4,6 +4,7 @@ import AppKit
 public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let environment = AppEnvironment.shared
     private var settingsWindowController: NSWindowController?
+    private var folderAccessWindowController: FolderAccessWindowController?
     private var isDefaultWindowPending = false
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -11,6 +12,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         GestureTrace.start()
         // Native window tabbing is disabled app-wide; the viewer never uses tabs.
         NSWindow.allowsAutomaticWindowTabbing = false
+        Task { await environment.folderAccess.refresh() }
         rebuildMainMenu()
         NotificationCenter.default.addObserver(self, selector: #selector(rebuildMainMenu),
                                                name: ShortcutStore.didChangeNotification, object: nil)
@@ -73,21 +75,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         let targetController = (NSApp.keyWindow?.windowController as? ViewerWindowController)
             ?? (NSApp.mainWindow?.windowController as? ViewerWindowController)
             ?? environment.mostRecentViewer
-        let panel = NSOpenPanel()
-        panel.title = "选择要浏览的文件夹"
-        panel.prompt = "选择文件夹"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "选择文件夹后可浏览其中的图片。完全磁盘访问权限需在系统设置中单独开启。"
-        panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
+        FolderAccessPanel.choose(store: environment.folderAccess, for: targetController?.window) { [weak self] url in
+            guard let self else { return }
             let controller = targetController ?? self.environment.newViewerWindow()
             controller.viewerViewController.openFolder(url)
             controller.viewerViewController.enterFolderBrowser()
             controller.present()
         }
     }
+
+    @objc func showFolderAccess(_ sender: Any?) {
+        if folderAccessWindowController == nil { folderAccessWindowController = FolderAccessWindowController(store: environment.folderAccess) }
+        folderAccessWindowController?.showWindow(nil)
+        folderAccessWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func openAuthorizedFolder(_ sender: NSURL) {
+        let controller = (NSApp.mainWindow?.windowController as? ViewerWindowController)
+            ?? environment.mostRecentViewer ?? environment.newViewerWindow()
+        controller.viewerViewController.openFolder(sender as URL)
+        controller.viewerViewController.enterFolderBrowser()
+        controller.present()
+    }
+
+    public func applicationWillTerminate(_ notification: Notification) { environment.folderAccess.shutdown() }
 
     /// Dock click: restore whatever is on screen, otherwise present a new viewer.
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

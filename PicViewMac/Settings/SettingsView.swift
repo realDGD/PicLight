@@ -320,9 +320,11 @@ final class SettingsViewController: NSViewController, NSTabViewDelegate {
         stack.addArrangedSubview(note("清空内存与磁盘缩略图；继续浏览时按需重新生成。不会删除原图。"))
         stack.addArrangedSubview(separator())
         stack.addArrangedSubview(sectionTitle("文件夹访问"))
-        stack.addArrangedSubview(actionButton("选择浏览文件夹…") {
+        stack.addArrangedSubview(NSStackView(views: [actionButton("选择浏览文件夹…") {
             NSApp.sendAction(#selector(AppDelegate.openFolder(_:)), to: NSApp.delegate, from: nil)
-        })
+        }, actionButton("管理文件夹授权…") {
+            NSApp.sendAction(#selector(AppDelegate.showFolderAccess(_:)), to: NSApp.delegate, from: nil)
+        }]))
         stack.addArrangedSubview(note("选择文件夹后浏览其中图片。完全磁盘访问权限需前往系统设置 → 隐私与安全性单独开启；此入口不会授予整块磁盘权限。"))
         return wrap(stack)
     }

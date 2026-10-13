@@ -167,6 +167,7 @@ public final class AppSettings {
             Key.dockDisplayPolicy: ChromeDisplayPolicy.automatic.rawValue,
             Key.navigationDisplayPolicy: ChromeDisplayPolicy.automatic.rawValue,
             Key.excludedExtensions: [String](),
+            Key.promptForFolderAccess: true,
         ])
     }
 
@@ -197,6 +198,7 @@ public final class AppSettings {
         static let dockDisplayPolicy = "dockDisplayPolicy"
         static let navigationDisplayPolicy = "navigationDisplayPolicy"
         static let excludedExtensions = "excludedExtensions"
+        static let promptForFolderAccess = "promptForFolderAccess"
     }
 
     private func notify() {
@@ -364,6 +366,11 @@ public final class AppSettings {
     public var navigationDisplayPolicy: ChromeDisplayPolicy {
         get { ChromeDisplayPolicy(rawValue: defaults.string(forKey: Key.navigationDisplayPolicy) ?? "") ?? .automatic }
         set { defaults.set(newValue.rawValue, forKey: Key.navigationDisplayPolicy); notify() }
+    }
+
+    public var promptForFolderAccess: Bool {
+        get { defaults.bool(forKey: Key.promptForFolderAccess) }
+        set { defaults.set(newValue, forKey: Key.promptForFolderAccess); notify() }
     }
 
     public var excludedExtensions: Set<String> {

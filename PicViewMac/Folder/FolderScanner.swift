@@ -3,7 +3,11 @@ import ImageIO
 
 /// Enumerates the current folder only (never subdirectories) and can fill in
 /// image dimensions lazily when dimension sorting is requested.
-public struct FolderScanner: Sendable {
+protocol FolderDirectoryScanning: Sendable {
+    func scan(directory: URL, excludingExtensions: Set<String>, includingURL: URL?) async throws -> [FolderItem]
+}
+
+public struct FolderScanner: Sendable, FolderDirectoryScanning {
     public init() {}
 
     public static let resourceKeys: [URLResourceKey] = [

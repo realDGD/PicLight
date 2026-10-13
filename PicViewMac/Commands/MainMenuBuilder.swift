@@ -33,6 +33,7 @@ public enum MainMenuBuilder {
         menu.addItem(withTitle: "打开…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
         menu.addItem(withTitle: "在新窗口中打开…", action: #selector(AppDelegate.openInNewWindow(_:)), keyEquivalent: "O")
         menu.addItem(withTitle: "选择文件夹…", action: #selector(AppDelegate.openFolder(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "文件夹授权…", action: #selector(AppDelegate.showFolderAccess(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         add(menu, .copyFilePath, in: shortcutStore)
         add(menu, .revealInFinder, in: shortcutStore)
