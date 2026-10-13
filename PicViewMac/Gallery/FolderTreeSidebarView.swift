@@ -38,6 +38,7 @@ final class FolderTreeSidebarView: NSView {
     private let material = MaterialHostView(style: .sidebar)
     private let outline = NSOutlineView()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("folder"))
+    private var scrollTopConstraint: NSLayoutConstraint?
     /// The tree's root node, which is what the outline expands from. Deliberately not a flattened
     /// row list: feeding AppKit the flattened rows *and* asking it to expand the same nodes drew
     /// every expanded folder's children twice — measured as six rendered rows for four model rows
@@ -73,6 +74,7 @@ final class FolderTreeSidebarView: NSView {
         // outline with 12 pt labels and a 14 pt icon read as a small, foreign list next to the
         // rest of the window.
         material.translatesAutoresizingMaskIntoConstraints = false
+        material.setCornerRadius(0)
         addSubview(material)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -90,49 +92,34 @@ final class FolderTreeSidebarView: NSView {
         outline.backgroundColor = .clear
         outline.style = .sourceList
         outline.selectionHighlightStyle = .sourceList
-        outline.rowHeight = 22
-        outline.indentationPerLevel = 12
+        outline.rowHeight = 28
+        outline.indentationPerLevel = 16
         outline.dataSource = self
         outline.delegate = self
         outline.autoresizesOutlineColumn = false
         scrollView.documentView = outline
         material.addSubview(scrollView)
+        let scrollTop = scrollView.topAnchor.constraint(equalTo: material.topAnchor,
+                                                        constant: FolderBrowserView.defaultToolbarHeight)
+        scrollTopConstraint = scrollTop
         NSLayoutConstraint.activate([
             material.leadingAnchor.constraint(equalTo: leadingAnchor),
             material.trailingAnchor.constraint(equalTo: trailingAnchor),
             material.topAnchor.constraint(equalTo: topAnchor),
             material.bottomAnchor.constraint(equalTo: bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: material.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: material.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: material.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: material.leadingAnchor, constant: 4),
+            scrollView.trailingAnchor.constraint(equalTo: material.trailingAnchor, constant: -4),
+            scrollTop,
             scrollView.bottomAnchor.constraint(equalTo: material.bottomAnchor),
         ])
 
-        // Same as the drawer: the rows must not be drawn under the traffic lights.
-        let cap = material.makeSurfaceCap()
-        cap.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(cap)
-        titlebarCap = cap
-        titlebarCapHeight = cap.heightAnchor.constraint(equalToConstant: MaterialHostView.titlebarFallbackHeight)
-        NSLayoutConstraint.activate([
-            cap.leadingAnchor.constraint(equalTo: leadingAnchor),
-            cap.trailingAnchor.constraint(equalTo: trailingAnchor),
-            cap.topAnchor.constraint(equalTo: topAnchor),
-            titlebarCapHeight!,
-        ])
     }
 
-    private var titlebarCap: NSView?
-    private var titlebarCapHeight: NSLayoutConstraint?
-
-    /// Matches the cap to the window's titlebar; see `ThumbnailDrawerView.alignTitlebarCap`.
-    public func alignTitlebarCap(height: CGFloat) {
-        titlebarCapHeight?.constant = max(0, height)
+    /// The material fills the native header, while scrolling rows start below it.
+    func reserveHeader(height: CGFloat) {
+        scrollTopConstraint?.constant = max(0, height)
         needsLayout = true
     }
-
-    /// The cap, for tests: it is the view that keeps scrolled rows out of the titlebar strip.
-    var titlebarCapForTesting: NSView? { titlebarCap }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -287,7 +274,6 @@ extension FolderTreeSidebarView: NSOutlineViewDelegate {
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? FolderTreeCellView
             ?? FolderTreeCellView(identifier: identifier)
         cell.configure(name: displayName(for: row),
-                       isCurrent: row.node != nil && row.url.path == currentPath,
                        isSelected: outlineView.selectedRowIndexes.contains(
                         outlineView.row(forItem: item)),
                        symbol: row.node == nil ? "arrow.up" : "folder")
@@ -340,8 +326,7 @@ extension FolderTreeSidebarView: NSOutlineViewDelegate {
 final class FolderTreeCellView: NSTableCellView {
     private let label = NSTextField(labelWithString: "")
     private let icon = NSImageView()
-    /// Whether this row is the folder being browsed, which is drawn with the accent colour.
-    private var isCurrentRow = false
+    private var folderIcon = true
     /// Whether this row carries the selection, which overrides that accent.
     private var isSelectedRow = false
 
@@ -359,6 +344,8 @@ final class FolderTreeCellView: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
         addSubview(label)
+        textField = label
+        imageView = icon
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -371,10 +358,10 @@ final class FolderTreeCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func configure(name: String, isCurrent: Bool, isSelected: Bool = false,
+    func configure(name: String, isSelected: Bool = false,
                    symbol: String = "folder") {
         label.stringValue = name
-        isCurrentRow = isCurrent
+        folderIcon = symbol == "folder"
         isSelectedRow = isSelected
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
@@ -387,15 +374,11 @@ final class FolderTreeCellView: NSTableCellView {
         didSet { applyColors() }
     }
 
-    /// A selected row's background *is* the accent colour, so the folder being browsed — drawn with
-    /// an accent label — vanished into its own highlight, leaving the highlighted row with nothing
-    /// but an icon (reported from the folder sidebar). A selected row uses the selected-content
-    /// colours; an unselected row keeps the accent for the folder being browsed.
     private func applyColors() {
-        label.font = .systemFont(ofSize: 13, weight: isCurrentRow ? .semibold : .regular)
+        label.font = .systemFont(ofSize: 13)
         guard isSelectedRow || backgroundStyle == .emphasized else {
-            label.textColor = isCurrentRow ? .controlAccentColor : .labelColor
-            icon.contentTintColor = isCurrentRow ? .controlAccentColor : .secondaryLabelColor
+            label.textColor = .labelColor
+            icon.contentTintColor = folderIcon ? .systemBlue : .secondaryLabelColor
             return
         }
         label.textColor = .selectedMenuItemTextColor

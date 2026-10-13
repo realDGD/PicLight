@@ -81,8 +81,6 @@ final class ThumbnailCellView: NSTableCellView {
     static let cardHorizontalInset: CGFloat = 12
     /// The filename's own inset inside the card.
     static let filenameHorizontalInset: CGFloat = 6
-    /// How much the current-item frame extends past the square on each side.
-    static let selectionBorderHalo: CGFloat = 8
 
     private let nameLabel = NSTextField(labelWithString: "")
     private let selectionBackground = NSView()
@@ -117,7 +115,7 @@ final class ThumbnailCellView: NSTableCellView {
         selectionBorder.wantsLayer = true
         selectionBorder.layer?.borderWidth = 2
         selectionBorder.layer?.borderColor = NSColor.controlAccentColor.cgColor
-        selectionBorder.layer?.cornerRadius = 6
+        selectionBorder.layer?.cornerRadius = 8
         selectionBorder.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(selectionBackground)
@@ -147,14 +145,12 @@ final class ThumbnailCellView: NSTableCellView {
             thumbnailContainer.widthAnchor.constraint(equalToConstant: Self.thumbnailSlotSize),
             thumbnailContainer.heightAnchor.constraint(equalToConstant: Self.thumbnailSlotSize),
 
-            // The frame hugs the square, not the image: the square is what the cell offers, and a
-            // frame that tracked the image would jump between rows of different shapes.
-            selectionBorder.centerXAnchor.constraint(equalTo: thumbnailContainer.centerXAnchor),
-            selectionBorder.centerYAnchor.constraint(equalTo: thumbnailContainer.centerYAnchor),
-            selectionBorder.widthAnchor.constraint(equalTo: thumbnailContainer.widthAnchor,
-                                                  constant: Self.selectionBorderHalo),
-            selectionBorder.heightAnchor.constraint(equalTo: thumbnailContainer.heightAnchor,
-                                                   constant: Self.selectionBorderHalo),
+            // The selection belongs to the complete card, including its caption
+            // and tint. It stays fixed while asynchronous thumbnails change shape.
+            selectionBorder.leadingAnchor.constraint(equalTo: selectionBackground.leadingAnchor),
+            selectionBorder.trailingAnchor.constraint(equalTo: selectionBackground.trailingAnchor),
+            selectionBorder.topAnchor.constraint(equalTo: selectionBackground.topAnchor),
+            selectionBorder.bottomAnchor.constraint(equalTo: selectionBackground.bottomAnchor),
 
             nameLabel.centerXAnchor.constraint(equalTo: selectionBackground.centerXAnchor),
             nameLabel.topAnchor.constraint(equalTo: thumbnailContainer.bottomAnchor),
@@ -206,13 +202,11 @@ final class ThumbnailCellView: NSTableCellView {
             ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
             : NSColor.clear.cgColor
         selectionBackground.layer?.borderWidth = 0
-        // The frame around the square is the visible selection cue, and it is the topmost layer
-        // of the cell.
+        // The whole selected card is framed above both the thumbnail and caption.
         selectionBorder.isHidden = !isCurrent
     }
 
-    /// Exposed for tests: the current-item frame must outrank the thumbnail, and the square is
-    /// what both the image and the frame are measured against.
+    /// The frame is above the content and follows the complete selected card.
     var selectionBorderView: NSView { selectionBorder }
     var thumbnailImageView: NSView { imageView2 }
     var selectionBackgroundView: NSView { selectionBackground }

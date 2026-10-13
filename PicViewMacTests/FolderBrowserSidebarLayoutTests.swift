@@ -145,4 +145,59 @@ final class FolderBrowserSidebarLayoutTests: XCTestCase {
         XCTAssertGreaterThan(grid.rows.count, wideRows,
                              "a narrower pane needs more rows for the same items")
     }
+
+    func testFolderToolbarStaysOverTheGalleryWithSidebarOpenAndClosed() throws {
+        let (browser, window) = makeBrowser(items: 4)
+        defer { window.close() }
+        browser.view.setToolbarLeadingInset(120)
+        browser.view.alignToolbarContent(withTitlebarHeight: 28)
+        settle(browser, window)
+        let back = browser.view.backControl
+        let backFrame = browser.view.convert(back.bounds, from: back)
+        let galleryFrame = browser.view.galleryScrollView.frame
+        XCTAssertGreaterThanOrEqual(backFrame.minX, galleryFrame.minX + 8,
+                                    "image controls belong above the gallery, beyond the sidebar")
+        XCTAssertEqual(browser.view.treeSidebar.frame.maxY, browser.view.bounds.maxY,
+                       accuracy: 1, "the sidebar background continues behind native controls")
+
+        browser.view.setSidebarVisible(false)
+        settle(browser, window)
+        let collapsedBack = browser.view.convert(back.bounds, from: back)
+        XCTAssertGreaterThanOrEqual(collapsedBack.minX, 120,
+                                    "with no sidebar the toolbar still clears native controls")
+        XCTAssertLessThan(collapsedBack.minX, 150,
+                          "the hidden sidebar releases its toolbar space")
+    }
+
+    func testNarrowBrowserKeepsNavigationAndSortingReachable() throws {
+        let (browser, window) = makeBrowser(items: 4)
+        defer { window.close() }
+        browser.view.setToolbarLeadingInset(120)
+        window.setFrame(NSRect(x: -30000, y: -30000, width: 480, height: 600), display: false)
+        settle(browser, window)
+        XCTAssertEqual(browser.view.bounds.width, 480, accuracy: 1)
+        let visible = browser.view.toolbarViews.filter { !$0.isHidden }
+        for control in visible {
+            XCTAssertTrue(control.window === window, "visible controls remain attached")
+            let frame = browser.view.convert(control.bounds, from: control)
+            XCTAssertTrue(browser.view.bounds.contains(frame), "visible controls must fit: \(control)")
+            XCTAssertGreaterThanOrEqual(frame.minX, 200, "controls must clear the sidebar")
+        }
+        let frames = visible.map { browser.view.convert($0.bounds, from: $0) }
+            .filter { $0.width > 1 }.sorted { $0.minX < $1.minX }
+        for (left, right) in zip(frames, frames.dropFirst()) {
+            XCTAssertLessThanOrEqual(left.maxX, right.minX, "toolbar controls cannot overlap")
+        }
+        XCTAssertGreaterThanOrEqual(browser.view.sortKeyControl.frame.width, 60,
+                                    "the current sorting choice must remain readable")
+        for control in [browser.view.backControl, browser.view.uniformLayoutControl,
+                        browser.view.adaptiveLayoutControl, browser.view.sortDirectionControl] {
+            XCTAssertFalse(control.isHiddenOrHasHiddenAncestor)
+        }
+        XCTAssertFalse(browser.view.sortKeyControl.isHiddenOrHasHiddenAncestor)
+        window.setFrame(NSRect(x: -30000, y: -30000, width: 1200, height: 600), display: false)
+        settle(browser, window)
+        XCTAssertFalse(browser.view.thumbnailSizeSlider.isHiddenOrHasHiddenAncestor,
+                       "all toolbar options return when there is room")
+    }
 }

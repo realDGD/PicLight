@@ -11,9 +11,18 @@ import AppKit
 @MainActor
 final class ToolDockIdempotentAnimationTests: XCTestCase {
 
+    private var previousDockPolicy: ChromeDisplayPolicy = .automatic
+
     override func setUp() async throws {
         try await super.setUp()
         TestAppKit.ensureApplication()
+        previousDockPolicy = AppSettings.shared.dockDisplayPolicy
+        AppSettings.shared.dockDisplayPolicy = .automatic
+    }
+
+    override func tearDown() async throws {
+        AppSettings.shared.dockDisplayPolicy = previousDockPolicy
+        try await super.tearDown()
     }
 
     /// Polls the main run loop until `condition` holds. The condition is the evidence; a fixed

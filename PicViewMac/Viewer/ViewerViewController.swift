@@ -57,12 +57,19 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let probe: DimensionProbing
     private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
+    private var directlyOpenedFile: URL?
+    private var pendingDirectOpenURL: URL?
+    private var appliedExcludedExtensions: Set<String> = []
+    private var appliedDockDisplayPolicy: ChromeDisplayPolicy?
+    private var thumbnailCacheGeneration: UInt64 = 0
 
     private var chrome = ViewerChromeModel()
     private var chromeTimer: Timer?
     private var animationTimer: Timer?
     private let clock = AnimationClock()
     private var drawerWidthConstraint: NSLayoutConstraint?
+    private var drawerTopConstraint: NSLayoutConstraint?
+    private weak var drawerLayoutWindow: NSWindow?
     // Canvas leading is switched when the drawer is pinned, so every consumer of
     // canvas bounds (fit, zoom, navigator, dock, info card) sees the real area.
     private var canvasLeadingToRoot: NSLayoutConstraint?
@@ -94,8 +101,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The decoder and thumbnail pipeline are injectable so tests can drive the
     /// real viewer with a counting or deliberately slow implementation.
     public init(decoder: ImageDecoding = ImageIODecoder(),
-                thumbnails: ThumbnailPipeline = ThumbnailPipeline(
-                    diskCache: .default, quickLook: SystemQuickLookThumbnails()),
+                thumbnails: ThumbnailPipeline = ThumbnailCacheService.shared.makePipeline(),
                 probe: DimensionProbing = DimensionProbe(),
                 nativeDetail: NativeDetailScheduler = NativeDetailScheduler()) {
         // One probe instance is shared with the coordinator so the drawer's
@@ -194,10 +200,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// Pins the tool dock open, or hands it back to the auto-hide rules.
     ///
-    /// Pinning is per window and deliberately not persisted: it is a momentary
-    /// statement about the pointer, not an app setting.
+    /// Pinning in automatic mode is local to this window.
     public func setToolDockPinned(_ pinned: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
+        if !pinned, settings.dockDisplayPolicy == .alwaysVisible {
+            settings.dockDisplayPolicy = .automatic
+        }
         chrome.toolDock.setPinned(pinned, at: now)
         toolDock.setPinned(pinned)
         chrome.update(at: now)
@@ -220,6 +228,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         rootView.wantsLayer = true
         let root = rootView
         view = root
+        root.canvas = canvas
 
         canvas.translatesAutoresizingMaskIntoConstraints = false
         toolDock.translatesAutoresizingMaskIntoConstraints = false
@@ -234,6 +243,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
         errorLabel.isHidden = true
+        // The empty window's first frame must not fade away fully visible image chrome.
+        for surface in [drawer, minimap, toolDock, infoCard] as [NSView] {
+            surface.isHidden = true
+            surface.alphaValue = 0
+        }
 
         root.addSubview(canvas)
         root.addSubview(emptyState)
@@ -257,6 +271,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
         let drawerWidth = drawer.widthAnchor.constraint(equalToConstant: ThumbnailDrawerView.minimumWidth)
         drawerWidthConstraint = drawerWidth
+        let drawerTop = drawer.topAnchor.constraint(equalTo: root.topAnchor)
+        drawerTopConstraint = drawerTop
         let canvasLeadingToRoot = canvas.leadingAnchor.constraint(equalTo: root.leadingAnchor)
         let canvasLeadingToDrawer = canvas.leadingAnchor.constraint(equalTo: drawer.trailingAnchor)
         self.canvasLeadingToRoot = canvasLeadingToRoot
@@ -282,7 +298,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // moves it with the image instead of leaving it off-centre.
 
             drawer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            drawer.topAnchor.constraint(equalTo: root.topAnchor),
+            drawerTop,
             drawer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             drawerWidth,
 
@@ -353,6 +369,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.folderBrowser?.syncSelectionFromSession(reveal: reason.revealsSelection)
         }
         applySettings()
+        NotificationCenter.default.addObserver(self, selector: #selector(clearLocalThumbnailCache),
+                                               name: ThumbnailCacheService.didClearNotification, object: ThumbnailCacheService.shared)
         NotificationCenter.default.addObserver(
             forName: AppSettings.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -407,14 +425,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Room the browser's toolbar leaves for the native controls in the merged top row: the traffic
     /// lights (9…69 in window coordinates) plus the drawer button beside them (78…108) plus a gap.
     static let mergedToolbarLeadingInset: CGFloat = 120
-
-    /// Keeps the thumbnail column's cap on the window's real titlebar height, so scrolled rows are
-    /// never drawn under the traffic lights or the left-column button.
-    private func alignColumnsWithTitlebar() {
-        guard let window = view.window else { return }
-        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-        drawer.alignTitlebarCap(height: titlebarHeight)
-    }
 
     /// Centres the browser's toolbar controls on the titlebar's own centre line — the line the
     /// traffic lights and the left-column button sit on in the merged row.
@@ -512,6 +522,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var galleryThumbnailSizeStorage: CGFloat = GalleryLayout.defaultThumbnailSize
     /// In-flight gallery thumbnails, so leaving the browser cancels work nobody is waiting for.
     private var galleryThumbnailTasks: [String: Task<Void, Never>] = [:]
+    private var galleryThumbnailRequestIDs: [String: UUID] = [:]
     /// The item whose bitmap is on screen. Used to decide whether returning from the folder browser
     /// needs a decode at all — comparing against the *descriptor* asked the wrong question, because
     /// a descriptor's source URL is not always set.
@@ -577,8 +588,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     func canvasContextMenu() -> NSMenu {
         let availability = CanvasContextMenu.Availability(
             hasImage: viewerState.currentImage != nil,
-            canGoPrevious: (session.currentIndex ?? 0) > 0,
-            canGoNext: session.currentIndex.map { $0 < session.items.count - 1 } ?? false,
+            canGoPrevious: session.canGoPrevious,
+            canGoNext: session.canGoNext,
             hasMultiplePages: viewerState.isMultiPage)
         let menu = CanvasContextMenu.build(availability, target: self,
                                            commandAction: #selector(performContextMenuCommand(_:)),
@@ -631,6 +642,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.chrome.navigation.setPointer(previousSide: false, nextSide: false, at: now)
             self.chrome.navigation.pointerOnPrevious = false
             self.chrome.navigation.pointerOnNext = false
+            self.chrome.titlebar.setPointer(inTrafficLightsZone: false,
+                                             inTitlebarZone: false, at: now)
             self.chrome.update(at: now)
             self.applyChromeVisibility()
         }
@@ -677,8 +690,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
         canvas.onDoubleClickAction = { [weak self] in
             guard let self else { return }
-            self.chrome.setImmersive(!self.chrome.immersive, at: Date().timeIntervalSinceReferenceDate)
-            self.applyChromeVisibility()
+            switch self.settings.doubleClickMode {
+            case .toggleImmersive: self.perform(.toggleImmersive)
+            case .closeWindow: self.perform(.close)
+            case .toggleFullScreen: self.perform(.toggleFullScreen)
+            case .folderBrowser: self.enterFolderBrowser()
+            case .none, .fitDoubleFit, .actualPixels: break
+            }
         }
         canvas.onGeometryChange = { [weak self] in
             self?.scheduleLevelUpgrade()
@@ -733,6 +751,27 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.wheelPanDirection = settings.wheelPanDirection
         canvas.swipeMode = settings.swipeMode
         canvas.doubleClickMode = settings.doubleClickMode
+        canvas.wheelZoomSensitivity = CGFloat(settings.wheelZoomSensitivity)
+        session.loopBrowsing = settings.loopBrowsing
+        let now = Date().timeIntervalSinceReferenceDate
+        if appliedDockDisplayPolicy != settings.dockDisplayPolicy {
+            appliedDockDisplayPolicy = settings.dockDisplayPolicy
+            chrome.toolDock.displayPolicy = settings.dockDisplayPolicy
+            chrome.toolDock.setPinned(settings.dockDisplayPolicy == .alwaysVisible, at: now)
+            toolDock.setPinned(settings.dockDisplayPolicy == .alwaysVisible)
+        }
+        chrome.navigation.setDisplayPolicy(settings.navigationDisplayPolicy, at: now)
+        chrome.hideMinimap = settings.hideMinimap
+        syncChromePresence()
+        chrome.update(at: now)
+        applyChromeVisibility()
+        if appliedExcludedExtensions != settings.excludedExtensions {
+            appliedExcludedExtensions = settings.excludedExtensions
+            if let directory = session.directory {
+                _ = beginFolderRequest(directory)
+                Task { [weak self] in await self?.rescanPreservingCurrent() }
+            }
+        }
         canvas.backgroundColor = settings.appearance.canvasBackground
         // Drawer filenames are always shown, and there is no preference left to read: the
         // setting was removed from `AppSettings` outright, so a value left in the defaults by an
@@ -755,11 +794,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // spelling (`/tmp` versus `/private/tmp`, symlinked folders).
         let directory = url.deletingLastPathComponent().resolvingSymlinksInPath()
         let canonicalURL = directory.appendingPathComponent(url.lastPathComponent)
+        directlyOpenedFile = canonicalURL
+        pendingDirectOpenURL = canonicalURL
         let generation = beginFolderRequest(directory)
         Task { [weak self] in
             guard let self else { return }
             let scanner = FolderScanner()
-            let items = (try? await scanner.scan(directory: directory)) ?? []
+            let items = (try? await scanner.scan(directory: directory, excludingExtensions: self.settings.excludedExtensions, includingURL: self.directlyOpenedFile)) ?? []
             let sorted = await self.sortedItems(items)
             // A folder opened after this scan started owns the session now. Publishing anyway put
             // the *previous* folder's files in the list while the session said the new one was
@@ -767,6 +808,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
             self.session.setItems(sorted, preferredIdentity: FileIdentity(url: canonicalURL))
             self.session.select(url: canonicalURL)
+            self.pendingDirectOpenURL = nil
         }
     }
 
@@ -807,7 +849,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         guard let directory = session.directory else { return }
         let generation = folderRequestGeneration
         let scanner = FolderScanner()
-        guard let items = try? await scanner.scan(directory: directory) else { return }
+        guard let items = try? await scanner.scan(directory: directory, excludingExtensions: self.settings.excludedExtensions, includingURL: self.directlyOpenedFile) else { return }
         let sorted = await sortedItems(items)
         // The watcher fired for the folder that was current when it fired; by the time the scan
         // returns, the user may have opened another one. The same guard as `open(url:)`.
@@ -815,9 +857,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // The delete-follow-up preference decides what survives a folder change:
         // "smart" follows the file the user was moved to, "stay in place" holds
         // the slot. Both are observable when a rescan re-sorts the list.
+        if let pendingFile = pendingDirectOpenURL {
+            session.setItems(sorted, preferredIdentity: FileIdentity(url: pendingFile))
+            session.select(url: pendingFile)
+            pendingDirectOpenURL = nil
+            return
+        }
         switch settings.deleteFollowUp {
         case .smart:
-            session.setItems(sorted, preferredIdentity: session.currentItem?.id)
+            session.setItems(sorted, preferredIdentity: session.currentItem?.id ?? directlyOpenedFile.map { FileIdentity(url: $0) })
         case .stayInPlace:
             session.setItems(sorted, preferredIndex: session.currentIndex)
         }
@@ -1751,6 +1799,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         thumbnailCache[url]?.version
     }
 
+    @objc private func clearLocalThumbnailCache() {
+        thumbnailCacheGeneration &+= 1
+        thumbnailCache.removeAll()
+        thumbnailRetryQueued.removeAll()
+        folderBrowser?.clearCachedThumbnails(reloadVisible: viewerMode == .folderBrowser)
+        if folderBrowser == nil { cancelGalleryThumbnails() }
+    }
+
     private func requestThumbnail(at index: Int, for item: FolderItem) {
         guard thumbnailCache[item.url] == nil else { return }
         guard inFlightThumbnails[item.url] == nil else {
@@ -1760,6 +1816,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             return
         }
         inFlightThumbnails[item.url] = true
+        let generation = thumbnailCacheGeneration
         thumbnailRequestCount += 1
         thumbnailRequestsPerURL[item.url, default: 0] += 1
         activeThumbnailRequests += 1
@@ -1771,7 +1828,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // `nil` leaves the cell as a placeholder: an oversized neighbour is not
             // worth a full-stream decode for a 300 px cell.
             let image = await self.thumbnailImage(for: item)
-            self.finishThumbnailRequest(item, image: image)
+            self.finishThumbnailRequest(item, image: generation == self.thumbnailCacheGeneration ? image : nil)
         }
     }
 
@@ -2030,10 +2087,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         chrome.navigation.setHasImage(hasImage, at: now)
         // A first image has no previous and a last one has no next, so the control is not merely
         // disabled: it is not there.
-        let index = session.currentIndex
-        let count = session.items.count
-        chrome.navigation.setAvailable(previous: index.map { $0 > 0 } ?? false,
-                                       next: index.map { $0 < count - 1 } ?? false)
+        chrome.navigation.setAvailable(previous: session.canGoPrevious, next: session.canGoNext)
+        toolDock.setNavigationAvailable(previous: session.canGoPrevious, next: session.canGoNext)
         floatingNavigation.setAvailable(previous: chrome.navigation.previous.available,
                                         next: chrome.navigation.next.available)
     }
@@ -2043,8 +2098,16 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     var titlebarRevealZones: (a: CGRect, b: CGRect) {
         let lights = (view.window as? ViewerWindow)?.trafficLightsFrame
             .map { rootView.convert($0, from: nil) }
-        return TitlebarZoneGeometry.zones(in: rootView.bounds, trafficLights: lights)
+        var bounds = rootView.bounds
+        if let window = view.window {
+            let top = rootView.convert(CGPoint(x: 0, y: window.frame.height), from: nil).y
+            bounds.size.height = max(bounds.height, top - bounds.minY)
+        }
+        return TitlebarZoneGeometry.zones(in: bounds, trafficLights: lights)
     }
+
+    /// A focus-follows-mouse utility may activate the window without sending a click.
+    func restoreImageInputFocus() { rootView.restoreCanvasFirstResponder() }
 
     /// Fired when the window needs the titlebar mode applied to it (the window does not exist yet
     /// when the view loads).
@@ -2062,9 +2125,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         appliedTitlebarState = nil
         refreshTitlebarBlocks()
         applyTitlebarVisibility()
-        // A resize or a full-screen transition can give the strip a different height: both the
-        // browser's toolbar and the image mode's own strip are aligned to it.
-        alignColumnsWithTitlebar()
+        rootView.refreshWindowBoundaryTracking()
+        // A resize or full-screen transition can give the merged browser header a new height.
         if viewerMode == .folderBrowser { alignBrowserToolbarWithTitlebar() }
         _ = window.titlebarState
     }
@@ -2125,6 +2187,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let previousCenter = canvas.viewport.normalizedCenter
         let wasAtFit = canvas.viewport.isAtFit
         window.applyTitlebarMode(mode)
+        chrome.titlebar.setAlwaysHidden(mode == .alwaysHidden, at: Date().timeIntervalSinceReferenceDate)
         chrome.titlebar.setAutoHiding(mode == .autoHide,
                                     at: Date().timeIntervalSinceReferenceDate)
         chrome.titlebar.update(at: Date().timeIntervalSinceReferenceDate)
@@ -2156,10 +2219,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// Target-state idempotent, like the dock's: this runs on every pointer move.
     private func applyTitlebarVisibility() {
         guard let window = view.window as? ViewerWindow else { return }
+        if drawerLayoutWindow !== window {
+            drawerTopConstraint?.isActive = false
+            // The image reaches behind an auto-hidden bar, but sidebar rows always stay below
+            // the native controls. This changes only the drawer, never the canvas geometry.
+            let top = NSLayoutConstraint(item: drawer, attribute: .top, relatedBy: .equal,
+                                         toItem: window.contentLayoutGuide, attribute: .top,
+                                         multiplier: 1, constant: 0)
+            top.isActive = true
+            drawerTopConstraint = top
+            drawerLayoutWindow = window
+        }
         let state = chrome.titlebar.state
         guard appliedTitlebarState != state else { return }
         appliedTitlebarState = state
         window.applyTitlebarState(state)
+        // Auto-hide changes only the native bar and its backing, never the canvas area.
+        view.layoutSubtreeIfNeeded()
     }
 
     /// The two canvas-edge strips that reveal the navigation controls, in root coordinates.
@@ -2224,8 +2300,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let previousCenter = canvas.viewport.normalizedCenter
         let wasAtFit = canvas.viewport.isAtFit
 
-        canvasLeadingToRoot?.isActive = !pinned
-        canvasLeadingToDrawer?.isActive = pinned
+        // Remove the old leading edge before installing its replacement. Closing the
+        // drawer otherwise briefly pins the canvas to both edges and breaks a constraint.
+        canvasLeadingToRoot?.isActive = false
+        canvasLeadingToDrawer?.isActive = false
+        (pinned ? canvasLeadingToDrawer : canvasLeadingToRoot)?.isActive = true
         // The canvas minimum has to fit the tool dock: a pinned drawer in a narrow
         // window would otherwise leave a canvas narrower than the dock, which then
         // overflows it and draws across the sidebar.
@@ -2437,6 +2516,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Commands
 
+    public func isCommandAvailable(_ command: ViewerCommand) -> Bool {
+        switch command {
+        case .nextImage: return session.canGoNext
+        case .previousImage: return session.canGoPrevious
+        case .randomImage: return session.items.count > 1
+        case .firstImage: return (session.currentIndex ?? 0) > 0
+        case .lastImage: return session.currentIndex.map { $0 < session.items.count - 1 } ?? false
+        case .copyFilePath, .revealInFinder, .moveToTrash, .moveToTrashWithoutConfirmation:
+            return session.currentItem != nil
+        case .open, .openFolder, .settings, .close, .toggleFullScreen, .toggleAlwaysOnTop:
+            return true
+        case .browseFolder, .toggleThumbnailDrawer, .toggleSortDirection:
+            return session.directory != nil
+        default: return viewerState.currentImage != nil && viewerMode == .image
+        }
+    }
+
     public func perform(_ command: ViewerCommand) {
         switch command {
         case .nextImage:
@@ -2474,7 +2570,24 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.rotateCounterClockwise()
         case .toggleMirror:
             canvas.toggleMirror()
+        case .randomImage:
+            pendingDirection = .unknown
+            session.goRandom()
+        case .copyFilePath:
+            guard let url = session.currentItem?.url else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.path, forType: .string)
+        case .revealInFinder:
+            guard let url = session.currentItem?.url else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .toggleAlwaysOnTop:
+            guard let window = view.window else { return }
+            window.level = window.level == .floating ? .normal : .floating
+        case .openFolder:
+            NSApp.sendAction(#selector(AppDelegate.openFolder(_:)), to: NSApp.delegate, from: self)
         case .moveToTrash:
+            requestMoveCurrentToTrash()
+        case .moveToTrashWithoutConfirmation:
             moveCurrentToTrash()
         case .togglePlayback:
             if viewerState.isAnimated {
@@ -2508,9 +2621,14 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             copyImageToPasteboard()
         case .browseFolder:
             enterFolderBrowser()
-        case .open, .close, .settings, .toggleFullScreen:
-            // Handled by the app-level router.
-            NSApp.sendAction(#selector(NSDocumentController.newDocument(_:)), to: nil, from: nil)
+        case .close:
+            view.window?.performClose(nil)
+        case .toggleFullScreen:
+            view.window?.toggleFullScreen(nil)
+        case .open:
+            NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: NSApp.delegate, from: self)
+        case .settings:
+            NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: NSApp.delegate, from: self)
         }
     }
 
@@ -2539,6 +2657,35 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         viewerState.errorMessage = message
         errorLabel.stringValue = message
         errorLabel.isHidden = false
+    }
+
+    private var pendingTrashConfirmation = false
+
+    private func requestMoveCurrentToTrash() {
+        guard settings.confirmBeforeTrash, let item = session.currentItem else {
+            moveCurrentToTrash()
+            return
+        }
+        guard !pendingTrashConfirmation else { return }
+        let confirmedVersion = SourceFileIdentity.read(at: item.url).versionToken
+        let alert = NSAlert()
+        alert.messageText = "将“\(item.displayName)”移到废纸篓？"
+        alert.informativeText = "可以从废纸篓恢复。⌘Delete 会直接移到废纸篓。"
+        alert.addButton(withTitle: "移到废纸篓")
+        alert.addButton(withTitle: "取消")
+        guard let window = view.window else { return }
+        pendingTrashConfirmation = true
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            self.pendingTrashConfirmation = false
+            guard response == .alertFirstButtonReturn,
+                  self.session.currentItem?.id == item.id else { return }
+            guard SourceFileIdentity.read(at: item.url).versionToken == confirmedVersion else {
+                self.presentTransientError("文件已发生变化，请重新确认移到废纸篓。")
+                return
+            }
+            self.moveCurrentToTrash()
+        }
     }
 
     private func moveCurrentToTrash() {
@@ -2763,6 +2910,8 @@ extension ViewerViewController: FolderBrowserHost {
     func requestGalleryThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int,
                                  completion: @escaping (Int, CGImage?, GalleryThumbnailSkip) -> Void) {
         galleryThumbnailTasks[item.url.path]?.cancel()
+        let requestID = UUID()
+        galleryThumbnailRequestIDs[item.url.path] = requestID
 
         // The drawer's rule, applied to the grid: the picture on screen is resampled from the bitmap
         // the canvas already decoded rather than re-reading the whole compressed stream. That is what
@@ -2779,13 +2928,13 @@ extension ViewerViewController: FolderBrowserHost {
            let bitmap = viewerState.currentImage {
             let preview = Task { [weak self] in
                 guard let self else { return }
-                let image = await self.thumbnails.preview(from: bitmap, maxPixelSize: maxPixelSize)
-                if let image {
-                    await self.thumbnails.remember(image, for: item.url, maxPixelSize: maxPixelSize)
-                }
+                let image = await self.thumbnails.previewAndRemember(from: bitmap, for: item.url,
+                                                                     maxPixelSize: maxPixelSize)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    guard !Task.isCancelled, self.galleryThumbnailRequestIDs[item.url.path] == requestID else { return }
                     self.galleryThumbnailTasks[item.url.path] = nil
+                    self.galleryThumbnailRequestIDs[item.url.path] = nil
                     completion(index, image, image == nil ? .failed : .none)
                 }
             }
@@ -2806,7 +2955,9 @@ extension ViewerViewController: FolderBrowserHost {
                 let system = await self.thumbnails.systemThumbnail(for: item.url,
                                                                    maxPixelSize: maxPixelSize)
                 await MainActor.run {
+                    guard !Task.isCancelled, self.galleryThumbnailRequestIDs[item.url.path] == requestID else { return }
                     self.galleryThumbnailTasks[item.url.path] = nil
+                    self.galleryThumbnailRequestIDs[item.url.path] = nil
                     if let system {
                         completion(index, system, .none)
                     } else {
@@ -2819,7 +2970,9 @@ extension ViewerViewController: FolderBrowserHost {
                                                              maxPixelSize: maxPixelSize)
             guard !Task.isCancelled else { return }
             await MainActor.run {
+                guard !Task.isCancelled, self.galleryThumbnailRequestIDs[item.url.path] == requestID else { return }
                 self.galleryThumbnailTasks[item.url.path] = nil
+                self.galleryThumbnailRequestIDs[item.url.path] = nil
                 completion(index, image, image == nil ? .failed : .none)
             }
         }
@@ -2829,6 +2982,7 @@ extension ViewerViewController: FolderBrowserHost {
     func cancelGalleryThumbnails() {
         for task in galleryThumbnailTasks.values { task.cancel() }
         galleryThumbnailTasks.removeAll()
+        galleryThumbnailRequestIDs.removeAll()
     }
 
     /// A folder was chosen in the tree: the gallery and the image viewer move to it together.
@@ -2837,12 +2991,31 @@ extension ViewerViewController: FolderBrowserHost {
     /// scans its parent. It scans the chosen folder, hands the session the new list, and — because
     /// the caller is the browser — leaves the mode alone.
     func openFolder(_ url: URL) {
+        directlyOpenedFile = nil
+        pendingDirectOpenURL = nil
         let directory = url.resolvingSymlinksInPath()
         let generation = beginFolderRequest(directory)
         Task { [weak self] in
             guard let self else { return }
             let scanner = FolderScanner()
-            let items = (try? await scanner.scan(directory: directory)) ?? []
+            let items: [FolderItem]
+            do {
+                items = try await scanner.scan(directory: directory, excludingExtensions: self.settings.excludedExtensions)
+            } catch {
+                guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
+                self.session.setItems([], reason: .navigation)
+                self.folderBrowser?.reload(.navigation)
+                let message = "无法读取文件夹“\(directory.lastPathComponent)”"
+                self.presentTransientError("\(message)：\(error.localizedDescription)。请检查文件夹访问权限。")
+                if let window = self.view.window, window.attachedSheet == nil {
+                    let alert = NSAlert()
+                    alert.messageText = message
+                    alert.informativeText = "\(error.localizedDescription)\n请检查文件夹访问权限，或重新选择可访问的文件夹。完全磁盘访问需在系统设置中单独开启。"
+                    alert.addButton(withTitle: "好")
+                    alert.beginSheetModal(for: window) { _ in }
+                }
+                return
+            }
             let sorted = await self.sortedItems(items)
             // See `open(url:)`: a folder chosen later owns the session, and this scan must not
             // overwrite the list it published.

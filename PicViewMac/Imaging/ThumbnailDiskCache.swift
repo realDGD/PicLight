@@ -38,6 +38,9 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
     private let lock = NSLock()
     /// Serialises writes and prunes, so two decodes cannot interleave a partial file with a prune.
     private let ioQueue = DispatchQueue(label: "picviewmac.thumbnail-disk-cache")
+    private var epoch: UInt64 = 0
+
+    public var generation: UInt64 { ioQueue.sync { epoch } }
 
     public init(directory: URL, byteLimit: Int = 256 * 1024 * 1024,
                 fileManager: FileManager = .default) {
@@ -102,7 +105,7 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
     /// the file being replaced under it — then decode the source again. The work here is a PNG encode
     /// of an already-small image (measured: 0 ms against a 187 ms decode for the 16 MP source in the
     /// speed test), so waiting for it costs nothing that matters.
-    public func store(_ image: CGImage, forKey key: String) {
+    public func store(_ image: CGImage, forKey key: String, generation: UInt64? = nil) {
         let url = fileURL(forKey: key)
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
@@ -111,11 +114,11 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
         guard CGImageDestinationFinalize(destination) else { return }
         let payload = data as Data
         ioQueue.sync {
+            guard generation == nil || generation == epoch else { return }
             // Written through a temporary file: a half-written PNG must never be readable as a hit.
             let temporary = url.appendingPathExtension("partial")
             do {
-                try payload.write(to: temporary, options: .atomic)
-                _ = try? fileManager.replaceItemAt(url, withItemAt: temporary)
+                try payload.write(to: url, options: .atomic)
                 try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
             } catch {
                 try? fileManager.removeItem(at: temporary)
@@ -127,8 +130,11 @@ public final class ThumbnailDiskCache: @unchecked Sendable {
 
     public func removeAll() {
         ioQueue.sync {
+            epoch &+= 1
             try? fileManager.removeItem(at: directory)
             try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? String(Self.formatVersion).write(to: directory.appendingPathComponent("format-version"),
+                                                  atomically: true, encoding: .utf8)
         }
     }
 

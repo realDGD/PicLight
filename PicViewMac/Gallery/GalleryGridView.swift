@@ -281,6 +281,16 @@ final class GalleryGridView: NSView {
         return delivered[items[index].url.path]?.image
     }
 
+    func clearCachedThumbnails() {
+        delivered.removeAll()
+        loadingPaths.removeAll()
+        skippedCaptions.removeAll()
+        for (index, cell) in visibleCells where items.indices.contains(index) {
+            cell.configure(item: items[index], thumbnail: nil, isCurrent: index == currentIndex)
+        }
+        onLoadingChanged?(0)
+    }
+
     /// Stores a delivered thumbnail. The tier and the source version travel with it, so a later
     /// request can tell "good enough" from "already have, but stale or too small".
     func noteDelivered(_ image: CGImage, pixelSize: Int, versionToken: String, for url: URL) {

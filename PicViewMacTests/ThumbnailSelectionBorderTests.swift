@@ -10,7 +10,7 @@ final class ThumbnailSelectionBorderTests: XCTestCase {
         try await super.setUp()
         TestAppKit.ensureApplication()
     }
-    func testSelectionBorderIsTheTopmostLayerAroundTheThumbnail() {
+    func testSelectionBorderIsTheTopmostLayerAroundTheWholeCard() {
         let item = FolderItem(url: URL(fileURLWithPath: "/tmp/a.png"))
         let cell = ThumbnailCellView(frame: NSRect(x: 0, y: 0, width: 200, height: 168))
         cell.configure(item: item, image: Fixtures.thumbnail(), isCurrent: false)
@@ -29,11 +29,10 @@ final class ThumbnailSelectionBorderTests: XCTestCase {
         XCTAssertEqual(border.layer?.borderWidth, 2)
         XCTAssertEqual(border.layer?.borderColor, NSColor.controlAccentColor.cgColor)
 
-        // The frame surrounds the fixed square rather than the whole row.
-        XCTAssertEqual(border.frame.width,
-                       ThumbnailCellView.thumbnailSlotSize + ThumbnailCellView.selectionBorderHalo,
-                       accuracy: 0.5,
-                       "the frame is the square plus its halo")
+        // The frame encloses the thumbnail, filename, and complete tinted card.
+        XCTAssertEqual(border.frame, cell.selectionBackgroundView.frame)
+        XCTAssertTrue(border.frame.contains(cell.nameLabelView.frame),
+                      "the selected filename must be inside the accent frame")
         XCTAssertLessThan(border.frame.width, cell.bounds.width,
                           "the frame does not span the entire row")
     }

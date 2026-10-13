@@ -7,9 +7,18 @@ import AppKit
 @MainActor
 final class ToolDockVisibilityTests: XCTestCase {
 
+    private var previousDockPolicy: ChromeDisplayPolicy = .automatic
+
     override func setUp() async throws {
         try await super.setUp()
         TestAppKit.ensureApplication()
+        previousDockPolicy = AppSettings.shared.dockDisplayPolicy
+        AppSettings.shared.dockDisplayPolicy = .automatic
+    }
+
+    override func tearDown() async throws {
+        AppSettings.shared.dockDisplayPolicy = previousDockPolicy
+        try await super.tearDown()
     }
 
     // MARK: - Model

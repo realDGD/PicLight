@@ -212,8 +212,8 @@ final class FolderBrowserModeTests: XCTestCase {
                        "browsing pins the titlebar so it never auto-hides")
 
         let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
-        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 120,
-                       "the toolbar starts clear of the native controls in the merged row")
+        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 200,
+                       "the toolbar starts after the visible sidebar in the merged row")
 
         // Pointer away and idle: the merged bar must not hide.
         viewer.simulatePointer(atWindowPoint: viewer.view.convert(
@@ -235,7 +235,7 @@ final class FolderBrowserModeTests: XCTestCase {
         settle(0.5)
         XCTAssertEqual(viewer.viewerMode, .image)
         XCTAssertFalse(window.isTopBarMergedWithContent)
-        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 0)
+        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 200)
         XCTAssertEqual(window.titlebarMode, .autoHide,
                        "leaving the browser hands the titlebar back to the user's setting")
     }

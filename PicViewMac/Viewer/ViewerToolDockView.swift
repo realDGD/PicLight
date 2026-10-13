@@ -11,6 +11,8 @@ import AppKit
 public final class ViewerToolDockView: MaterialHostView {
     public static let height: CGFloat = 38
     public static let bottomInset: CGFloat = 16
+    private static let buttonSide: CGFloat = 28
+    private static let symbolPointSize: CGFloat = 16
     /// Hover enlargement. Deliberately restrained: a hint of lift, not a fisheye.
     public static let hoveredScale: CGFloat = 1.12
     public static let neighbourScale: CGFloat = 1.04
@@ -102,7 +104,9 @@ public final class ViewerToolDockView: MaterialHostView {
     ]
 
     private let stack = NSStackView()
-    private let playbackButton = DockButton(symbol: "pause.fill", tooltip: "暂停 / 播放")
+    private let playbackButton = DockButton(symbol: "pause.fill", tooltip: "暂停 / 播放",
+                                            side: ViewerToolDockView.buttonSide,
+                                            symbolPointSize: ViewerToolDockView.symbolPointSize)
     /// Buttons that map to a `ViewerCommand`, in layout order. The pin and the playback button are
     /// not among them: neither is a viewer command.
     private(set) var commandButtons: [DockButton] = []
@@ -112,7 +116,9 @@ public final class ViewerToolDockView: MaterialHostView {
     /// a button that was never added to it.
     private var infoButton: DockButton?
     private let pinButton = DockButton(symbol: ViewerToolDockView.pinSymbol,
-                                       tooltip: ViewerToolDockView.pinTooltip)
+                                       tooltip: ViewerToolDockView.pinTooltip,
+                                       side: ViewerToolDockView.buttonSide,
+                                       symbolPointSize: ViewerToolDockView.symbolPointSize)
 
     /// The user's choice of surface: frosted material, native Liquid Glass, or the left column's
     /// material. Applies live — the dock's buttons and readouts are the host's own subviews.
@@ -134,7 +140,7 @@ public final class ViewerToolDockView: MaterialHostView {
         setCornerRadius(Self.height / 2)
 
         stack.orientation = .horizontal
-        stack.spacing = 6
+        stack.spacing = 4
         stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -142,7 +148,8 @@ public final class ViewerToolDockView: MaterialHostView {
         for item in Self.layout {
             switch item {
             case let .command(symbol, command, tooltip):
-                let button = DockButton(symbol: symbol, tooltip: tooltip)
+                let button = DockButton(symbol: symbol, tooltip: tooltip,
+                                        side: Self.buttonSide, symbolPointSize: Self.symbolPointSize)
                 button.onActivate = { [weak self] in self?.onCommand?(command) }
                 if command == .showImageInfo { infoButton = button }
                 commandButtons.append(button)
@@ -183,6 +190,13 @@ public final class ViewerToolDockView: MaterialHostView {
         Self.layout.compactMap {
             if case let .command(_, command, _) = $0 { return command }
             return nil
+        }
+    }
+
+    public func setNavigationAvailable(previous: Bool, next: Bool) {
+        for (command, button) in zip(commands, commandButtons) {
+            if command == .previousImage { button.isEnabled = previous }
+            if command == .nextImage { button.isEnabled = next }
         }
     }
 

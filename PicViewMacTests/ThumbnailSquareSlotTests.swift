@@ -225,37 +225,34 @@ final class ThumbnailSquareSlotTests: XCTestCase {
 
     // MARK: - The current-item frame
 
-    /// The frame marks the square, so it is identical for every source shape.
-    func testTheSelectionFrameMarksTheSquareNotTheImage() {
+    /// A selection surrounds the whole card, including its filename and tinted background.
+    /// Async image delivery and differing source shapes must not move that boundary.
+    func testTheSelectionFrameEnclosesTheWholeCardForEveryImageShape() {
         var frames: [CGRect] = []
         for (width, height) in [(300, 200), (100, 500), (500, 100)] {
             let subject = configuredCell()
             subject.setCurrent(true)
             subject.setThumbnail(image(width: width, height: height))
             subject.layoutSubtreeIfNeeded()
-            frames.append(subject.selectionBorderView.frame)
-        }
-        for frame in frames {
-            XCTAssertEqual(frame.width,
-                           ThumbnailCellView.thumbnailSlotSize
-                               + ThumbnailCellView.selectionBorderHalo, accuracy: 0.5)
-            XCTAssertEqual(frame.height,
-                           ThumbnailCellView.thumbnailSlotSize
-                               + ThumbnailCellView.selectionBorderHalo, accuracy: 0.5)
+            let border = subject.selectionBorderView.frame
+            let card = subject.selectionBackgroundView.frame
+            let caption = subject.nameLabelView.frame
+            XCTAssertEqual(border, card, "the border encloses the card's complete background")
+            XCTAssertTrue(border.contains(caption), "the selected filename belongs inside the border")
+            frames.append(border)
         }
         XCTAssertEqual(frames[0], frames[1])
         XCTAssertEqual(frames[1], frames[2])
     }
 
-    /// The frame follows the square's centre exactly, rather than the thumbnail's.
-    func testTheSelectionFrameIsCentredOnTheSlot() {
-        let subject = configuredCell()
-        subject.setCurrent(true)
-        subject.setThumbnail(image(width: 500, height: 100))
-        subject.layoutSubtreeIfNeeded()
-        let slot = subject.thumbnailSlotView.frame
-        let frame = subject.selectionBorderView.frame
-        XCTAssertEqual(frame.midX, slot.midX, accuracy: 0.5)
-        XCTAssertEqual(frame.midY, slot.midY, accuracy: 0.5)
+    func testTheSelectionFrameKeepsTheWholeCardEnclosedAcrossDrawerWidths() {
+        for width in [180, 200, 220] as [CGFloat] {
+            let subject = cell(width: width)
+            subject.configure(item: item("a-long-selected-name.png"), image: nil, isCurrent: true)
+            subject.layoutSubtreeIfNeeded()
+            XCTAssertEqual(subject.selectionBorderView.frame, subject.selectionBackgroundView.frame)
+            XCTAssertTrue(subject.selectionBorderView.frame.contains(subject.nameLabelView.frame))
+            XCTAssertLessThan(subject.selectionBorderView.frame.width, width)
+        }
     }
 }

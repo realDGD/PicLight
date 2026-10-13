@@ -18,6 +18,10 @@ public enum DoubleClickMode: String, CaseIterable, Codable, Sendable {
     case fitDoubleFit
     case actualPixels
     case toggleImmersive
+    case none
+    case closeWindow
+    case toggleFullScreen
+    case folderBrowser
 }
 
 /// What the pointer/gesture wants. The router never navigates folders itself;
@@ -38,6 +42,7 @@ public struct GestureRouter: Sendable {
     /// Fraction of the view width a continuous overscroll must exceed before it
     /// switches images, so a small accidental overscroll does not navigate.
     public var switchThreshold: CGFloat
+    public var wheelZoomSensitivity: CGFloat = 0.0015
 
     private var accumulated: CGFloat = 0
     private var didSwitchInGesture = false
@@ -89,7 +94,7 @@ public struct GestureRouter: Sendable {
         switch wheelMode {
         case .zoom:
             guard deltaY != 0 else { return .none }
-            let factor = pow(1.0015, -deltaY * (modifierZoomOut ? 0.5 : 1))
+            let factor = pow(1 + wheelZoomSensitivity, -deltaY * (modifierZoomOut ? 0.5 : 1))
             return .zoom(factor: factor, anchor: anchor)
         case .pan:
             let sign: CGFloat = isMouseWheel ? -1 : 1

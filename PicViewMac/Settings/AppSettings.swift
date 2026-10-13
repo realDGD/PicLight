@@ -48,11 +48,27 @@ public enum WheelPanDirection: String, CaseIterable, Codable, Sendable {
 public enum TitlebarBehavior: String, CaseIterable, Codable, Sendable {
     case autoHide
     case alwaysVisible
+    case alwaysHidden
 
     public var localizedName: String {
         switch self {
-        case .autoHide: return "自动隐藏"
-        case .alwaysVisible: return "始终显示"
+        case .autoHide: return "自动"
+        case .alwaysVisible: return "显示"
+        case .alwaysHidden: return "隐藏"
+        }
+    }
+}
+
+public enum ChromeDisplayPolicy: String, CaseIterable, Codable, Sendable {
+    case automatic
+    case alwaysVisible
+    case alwaysHidden
+
+    public var localizedName: String {
+        switch self {
+        case .automatic: return "自动"
+        case .alwaysVisible: return "显示"
+        case .alwaysHidden: return "隐藏"
         }
     }
 }
@@ -142,6 +158,15 @@ public final class AppSettings {
             Key.deleteFollowUp: DeleteFollowUp.smart.rawValue,
             Key.appearance: ViewerAppearanceMode.system.rawValue,
             Key.immersive: false,
+            Key.quitAfterLastWindowClosed: true,
+            Key.loopBrowsing: false,
+            Key.defaultAlwaysOnTop: false,
+            Key.hideMinimap: false,
+            Key.confirmBeforeTrash: false,
+            Key.wheelZoomSensitivity: 0.0015,
+            Key.dockDisplayPolicy: ChromeDisplayPolicy.automatic.rawValue,
+            Key.navigationDisplayPolicy: ChromeDisplayPolicy.automatic.rawValue,
+            Key.excludedExtensions: [String](),
         ])
     }
 
@@ -163,6 +188,15 @@ public final class AppSettings {
         static let deleteFollowUp = "deleteFollowUp"
         static let appearance = "appearance"
         static let immersive = "immersive"
+        static let quitAfterLastWindowClosed = "quitAfterLastWindowClosed"
+        static let loopBrowsing = "loopBrowsing"
+        static let defaultAlwaysOnTop = "defaultAlwaysOnTop"
+        static let hideMinimap = "hideMinimap"
+        static let confirmBeforeTrash = "confirmBeforeTrash"
+        static let wheelZoomSensitivity = "wheelZoomSensitivity"
+        static let dockDisplayPolicy = "dockDisplayPolicy"
+        static let navigationDisplayPolicy = "navigationDisplayPolicy"
+        static let excludedExtensions = "excludedExtensions"
     }
 
     private func notify() {
@@ -283,5 +317,70 @@ public final class AppSettings {
     public var immersive: Bool {
         get { defaults.bool(forKey: Key.immersive) }
         set { defaults.set(newValue, forKey: Key.immersive); notify() }
+    }
+
+    public var quitAfterLastWindowClosed: Bool {
+        get { defaults.bool(forKey: Key.quitAfterLastWindowClosed) }
+        set { defaults.set(newValue, forKey: Key.quitAfterLastWindowClosed); notify() }
+    }
+
+    public var loopBrowsing: Bool {
+        get { defaults.bool(forKey: Key.loopBrowsing) }
+        set { defaults.set(newValue, forKey: Key.loopBrowsing); notify() }
+    }
+
+    public var defaultAlwaysOnTop: Bool {
+        get { defaults.bool(forKey: Key.defaultAlwaysOnTop) }
+        set { defaults.set(newValue, forKey: Key.defaultAlwaysOnTop); notify() }
+    }
+
+    public var hideMinimap: Bool {
+        get { defaults.bool(forKey: Key.hideMinimap) }
+        set { defaults.set(newValue, forKey: Key.hideMinimap); notify() }
+    }
+
+    public var confirmBeforeTrash: Bool {
+        get { defaults.bool(forKey: Key.confirmBeforeTrash) }
+        set { defaults.set(newValue, forKey: Key.confirmBeforeTrash); notify() }
+    }
+
+    public var wheelZoomSensitivity: Double {
+        get {
+            let value = defaults.double(forKey: Key.wheelZoomSensitivity)
+            return value.isFinite ? min(0.02, max(0.0001, value)) : 0.0015
+        }
+        set {
+            defaults.set(newValue.isFinite ? min(0.02, max(0.0001, newValue)) : 0.0015,
+                         forKey: Key.wheelZoomSensitivity)
+            notify()
+        }
+    }
+
+    public var dockDisplayPolicy: ChromeDisplayPolicy {
+        get { ChromeDisplayPolicy(rawValue: defaults.string(forKey: Key.dockDisplayPolicy) ?? "") ?? .automatic }
+        set { defaults.set(newValue.rawValue, forKey: Key.dockDisplayPolicy); notify() }
+    }
+
+    public var navigationDisplayPolicy: ChromeDisplayPolicy {
+        get { ChromeDisplayPolicy(rawValue: defaults.string(forKey: Key.navigationDisplayPolicy) ?? "") ?? .automatic }
+        set { defaults.set(newValue.rawValue, forKey: Key.navigationDisplayPolicy); notify() }
+    }
+
+    public var excludedExtensions: Set<String> {
+        get { Self.normalizeExcludedExtensions((defaults.stringArray(forKey: Key.excludedExtensions) ?? []).joined(separator: ",")) }
+        set {
+            let normalized = Self.normalizeExcludedExtensions(newValue.sorted().joined(separator: ","))
+            defaults.set(normalized.sorted(), forKey: Key.excludedExtensions)
+            notify()
+        }
+    }
+
+    public nonisolated static func normalizeExcludedExtensions(_ text: String) -> Set<String> {
+        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;，；"))
+        return Set(text.components(separatedBy: separators).compactMap { token in
+            let value = token.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".*"))
+            guard !value.isEmpty, value.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) else { return nil }
+            return value
+        })
     }
 }

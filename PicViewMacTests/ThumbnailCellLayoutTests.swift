@@ -60,9 +60,8 @@ final class ThumbnailCellLayoutTests: XCTestCase {
         XCTAssertEqual(slot.frame.height, ThumbnailCellView.thumbnailSlotSize, accuracy: 0.5)
         // The frame is already the full size before the image exists, so it never appears to
         // "unfold" when one arrives.
-        XCTAssertEqual(subject.selectionBorderView.frame.width,
-                       ThumbnailCellView.thumbnailSlotSize + ThumbnailCellView.selectionBorderHalo,
-                       accuracy: 0.5)
+        XCTAssertEqual(subject.selectionBorderView.frame, subject.selectionBackgroundView.frame,
+                       "the complete selected card is framed even before the image arrives")
 
         subject.setThumbnail(image(width: 300, height: 200))
         subject.layoutSubtreeIfNeeded()
@@ -130,9 +129,8 @@ final class ThumbnailCellLayoutTests: XCTestCase {
         subject.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(subject.thumbnailImageView.frame.width, 0)
         XCTAssertGreaterThan(subject.thumbnailSlotView.frame.width, 0)
-        XCTAssertEqual(subject.selectionBorderView.frame.width,
-                       subject.thumbnailSlotView.frame.width + ThumbnailCellView.selectionBorderHalo,
-                       accuracy: 0.5)
+        XCTAssertEqual(subject.selectionBorderView.frame, subject.selectionBackgroundView.frame,
+                       "the selection belongs to the whole card at narrow widths too")
         // The card may be narrower than its preferred minimum here; what it may not do is push
         // past the cell.
         XCTAssertLessThanOrEqual(subject.selectionBackgroundView.frame.width,

@@ -44,6 +44,9 @@ public final class FolderSession {
 
     public var onItemsChanged: (() -> Void)?
     public var onCurrentChanged: (() -> Void)?
+    public var loopBrowsing = false {
+        didSet { if oldValue != loopBrowsing { onItemsChanged?() } }
+    }
 
     public init(items: [FolderItem] = [], directory: URL? = nil) {
         self.items = items
@@ -57,6 +60,16 @@ public final class FolderSession {
     }
 
     public var isEmpty: Bool { items.isEmpty }
+
+    public var canGoPrevious: Bool {
+        guard let currentIndex, items.count > 1 else { return false }
+        return loopBrowsing || currentIndex > 0
+    }
+
+    public var canGoNext: Bool {
+        guard let currentIndex, items.count > 1 else { return false }
+        return loopBrowsing || currentIndex < items.count - 1
+    }
 
     /// Position of the current file inside the folder, for `index / total` chrome.
     public var positionDescription: String {
@@ -179,13 +192,23 @@ public final class FolderSession {
     @discardableResult
     public func goNext() -> FolderItem? {
         guard let currentIndex else { return nil }
-        return select(index: min(currentIndex + 1, items.count - 1)) ? currentItem : nil
+        let next = currentIndex + 1
+        return select(index: next < items.count ? next : (loopBrowsing ? 0 : currentIndex)) ? currentItem : nil
     }
 
     @discardableResult
     public func goPrevious() -> FolderItem? {
         guard let currentIndex else { return nil }
-        return select(index: max(currentIndex - 1, 0)) ? currentItem : nil
+        let previous = currentIndex - 1
+        return select(index: previous >= 0 ? previous : (loopBrowsing ? items.count - 1 : currentIndex)) ? currentItem : nil
+    }
+
+    @discardableResult
+    public func goRandom() -> FolderItem? {
+        guard items.count > 1, let currentIndex else { return currentItem }
+        let candidate = Int.random(in: 0..<(items.count - 1))
+        let index = candidate >= currentIndex ? candidate + 1 : candidate
+        return select(index: index) ? currentItem : nil
     }
 
     @discardableResult

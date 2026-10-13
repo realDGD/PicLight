@@ -17,6 +17,7 @@ public struct ToolDockVisibilityModel: Sendable {
     }
 
     public var timing = Timing()
+    public var displayPolicy: ChromeDisplayPolicy = .automatic
 
     public private(set) var visible = false
     public private(set) var pinned = false
@@ -43,7 +44,7 @@ public struct ToolDockVisibilityModel: Sendable {
         guard value != hasImage else { return }
         hasImage = value
         if value {
-            visible = true
+            visible = displayPolicy != .alwaysHidden
             enteredAt = nil
             exitedAt = time
         } else {
@@ -102,9 +103,9 @@ public struct ToolDockVisibilityModel: Sendable {
     @discardableResult
     public mutating func update(at time: TimeInterval) -> Bool {
         let before = visible
-        if !hasImage || immersive {
+        if !hasImage || immersive || displayPolicy == .alwaysHidden {
             visible = false
-        } else if pinned {
+        } else if pinned || displayPolicy == .alwaysVisible {
             visible = true
         } else if pointerInZone {
             if let enteredAt, time - enteredAt >= timing.showDelay { visible = true }
@@ -142,6 +143,7 @@ public struct FloatingNavigationVisibilityModel: Sendable {
     }
 
     public var timing = Timing()
+    public private(set) var displayPolicy: ChromeDisplayPolicy = .automatic
     public var hasImage = false
     public var immersive = false
     /// The pointer is over the control itself, which keeps it shown even when the pointer has left
@@ -152,6 +154,14 @@ public struct FloatingNavigationVisibilityModel: Sendable {
     public private(set) var next = Side()
 
     public init() {}
+
+    public mutating func setDisplayPolicy(_ policy: ChromeDisplayPolicy, at time: TimeInterval) {
+        guard policy != displayPolicy else { return }
+        displayPolicy = policy
+        previous.exitedAt = previous.pointerInside ? nil : time
+        next.exitedAt = next.pointerInside ? nil : time
+        _ = update(at: time)
+    }
 
     // MARK: - Inputs
 
@@ -224,21 +234,21 @@ public struct FloatingNavigationVisibilityModel: Sendable {
         var previousSide = previous
         var nextSide = next
         Self.settle(&previousSide, held: pointerOnPrevious, hasImage: hasImage,
-                    immersive: immersive, hideDelay: timing.hideDelay, at: time)
+                    immersive: immersive, policy: displayPolicy, hideDelay: timing.hideDelay, at: time)
         Self.settle(&nextSide, held: pointerOnNext, hasImage: hasImage,
-                    immersive: immersive, hideDelay: timing.hideDelay, at: time)
+                    immersive: immersive, policy: displayPolicy, hideDelay: timing.hideDelay, at: time)
         previous = previousSide
         next = nextSide
         return (previous.visible, next.visible) != before
     }
 
     private static func settle(_ side: inout Side, held: Bool, hasImage: Bool, immersive: Bool,
-                               hideDelay: TimeInterval, at time: TimeInterval) {
-        guard hasImage, !immersive, side.available else {
+                               policy: ChromeDisplayPolicy, hideDelay: TimeInterval, at time: TimeInterval) {
+        guard hasImage, !immersive, side.available, policy != .alwaysHidden else {
             side.visible = false
             return
         }
-        if side.pointerInside || held {
+        if policy == .alwaysVisible || side.pointerInside || held {
             side.visible = true
             return
         }
@@ -299,6 +309,7 @@ public struct ViewerChromeModel: Sendable {
     public var immersive = false
     /// Minimap is only permitted while the image is zoomed past Fit.
     public var isZoomedIn = false
+    public var hideMinimap = false
 
     /// Wall-clock time of the last pointer activity. Recorded so a pointer-driven rule has one
     /// place to read it from; no current rule keys on it, which is the point — the drawer is not
@@ -361,7 +372,7 @@ public struct ViewerChromeModel: Sendable {
     public mutating func update(at time: TimeInterval) -> Bool {
         let before = snapshot
 
-        if isZoomedIn {
+        if isZoomedIn && !hideMinimap {
             minimapVisible = time - lastMinimapActivity <= timing.minimapIdleFadeDelay
         } else {
             minimapVisible = false

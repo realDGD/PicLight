@@ -192,6 +192,7 @@ public final class FolderBrowserView: NSView {
     /// The same constraint, kept for `buildBody` (both builders run in `init`, and the toolbar's
     /// height belongs to the body's layout).
     private var toolbarHeightForBody: NSLayoutConstraint?
+    private var nativeControlsInset: CGFloat = 0
 
     /// How far the toolbar's own controls start from the window's leading edge.
     ///
@@ -199,8 +200,28 @@ public final class FolderBrowserView: NSView {
     /// and the drawer button beside them — so the toolbar has to begin after them. Zero in every
     /// other presentation.
     func setToolbarLeadingInset(_ inset: CGFloat) {
-        toolbarStackLeadingConstraint?.constant = 12 + max(0, inset)
+        nativeControlsInset = max(0, inset)
+        updateToolbarLeadingInset()
+    }
+
+    private func updateToolbarLeadingInset() {
+        let sidebarWidth = isSidebarVisible ? sidebarWidthConstraint?.constant ?? 200 : 0
+        toolbarStackLeadingConstraint?.constant = 12 + max(sidebarWidth, nativeControlsInset)
+        updateToolbarVisibility()
         needsLayout = true
+    }
+
+    private func updateToolbarVisibility() {
+        let leading = toolbarStackLeadingConstraint?.constant ?? 12
+        let width = min(bounds.width, window?.frame.width ?? bounds.width)
+        let available = width - leading - 12
+        // Keep navigation, layout and sorting available even at the smallest window size.
+        let essential = 3 * CGFloat(26) + 2 * CGFloat(8)
+            + sortKeyPopup.fittingSize.width + CGFloat(26) + 2 * CGFloat(12)
+        sizeSlider.isHidden = available < essential + 128
+        titleLabel.isHidden = available < essential + 220
+        thumbnailProgressLabel.isHidden = thumbnailProgressLabel.stringValue.isEmpty
+            || available < essential + 340
     }
 
     /// Where the toolbar's first control starts, for tests.
@@ -216,8 +237,8 @@ public final class FolderBrowserView: NSView {
     /// to offset — the controls centre on the same line as the traffic lights and the drawer
     /// button, which is what the measurements below were for.
     func alignToolbarContent(withTitlebarHeight height: CGFloat) {
-        // The tree column scrolls under the titlebar strip, and this is the height it must not draw in.
-        treeSidebar.alignTitlebarCap(height: max(0, height))
+        let headerHeight = height > 0 ? height : Self.defaultToolbarHeight
+        treeSidebar.reserveHeader(height: headerHeight)
         guard height > 0 else {
             toolbarHeightConstraint?.constant = Self.defaultToolbarHeight
             toolbarStackCenterConstraint?.constant = 0
@@ -279,7 +300,7 @@ public final class FolderBrowserView: NSView {
 
             sidebarVisible,
             sidebarWidth,
-            treeSidebar.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            treeSidebar.topAnchor.constraint(equalTo: topAnchor),
             treeSidebar.bottomAnchor.constraint(equalTo: bottomAnchor),
 
             galleryScroll.leadingAnchor.constraint(equalTo: treeSidebar.trailingAnchor),
@@ -287,6 +308,7 @@ public final class FolderBrowserView: NSView {
             galleryScroll.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             galleryScroll.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        updateToolbarLeadingInset()
     }
 
     // MARK: - State
@@ -320,8 +342,10 @@ public final class FolderBrowserView: NSView {
     /// Shows or hides the folder-tree sidebar. The browser is a full mode, so the sidebar is part of
     /// it rather than an overlay; the gallery takes the space when it is away.
     public func setSidebarVisible(_ visible: Bool, animated: Bool = false) {
-        sidebarVisibleConstraint?.isActive = visible
-        sidebarHiddenConstraint?.isActive = !visible
+        let positions = [sidebarVisibleConstraint, sidebarHiddenConstraint].compactMap { $0 }
+        NSLayoutConstraint.deactivate(positions)
+        (visible ? sidebarVisibleConstraint : sidebarHiddenConstraint)?.isActive = true
+        updateToolbarLeadingInset()
         guard animated else {
             layoutSubtreeIfNeeded()
             return
@@ -351,7 +375,7 @@ public final class FolderBrowserView: NSView {
         }
         thumbnailProgressLabel.stringValue = "缩略图 \(max(0, total - loading)) / \(total)"
         thumbnailProgressLabel.toolTip = "正在载入缩略图，已完成 \(max(0, total - loading)) 张"
-        thumbnailProgressLabel.isHidden = false
+        updateToolbarVisibility()
     }
 
     /// The progress readout's text, or nil when it is hidden, for tests.
@@ -411,6 +435,7 @@ public final class FolderBrowserView: NSView {
     }
 
     public override func layout() {
+        updateToolbarVisibility()
         super.layout()
         refreshSizeSteps()
     }

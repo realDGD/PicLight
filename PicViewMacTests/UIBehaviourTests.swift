@@ -229,6 +229,11 @@ final class DrawerPinTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        if (controller.window as? ViewerWindow)?.titlebarMode == .autoHide {
+            XCTAssertTrue(waitUntil { viewer.chromeSnapshot.titlebar == .hidden })
+        }
         let baseline = viewer.chromeSnapshot
 
         viewer.toggleDrawerForTesting()
@@ -242,7 +247,9 @@ final class DrawerPinTests: XCTestCase {
 
         viewer.toggleDrawerForTesting()
         XCTAssertTrue(waitUntil { !viewer.chromeSnapshot.drawer },
-                      "unpinning closes the drawer after its hover delay")
+                      "unpinning closes the drawer")
+        XCTAssertTrue(waitUntil { viewer.chromeSnapshot.titlebar == baseline.titlebar },
+                      "the native titlebar releases its strip after the hide delay")
         XCTAssertEqual(viewer.chromeSnapshot.canvasFrame, baseline.canvasFrame,
                        "unpinning gives the full width back to the canvas")
     }

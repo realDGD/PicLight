@@ -7,6 +7,7 @@ import ImageIO
 public actor ThumbnailPipeline {
     private let cache = NSCache<NSString, CGImageBox>()
     private var inFlight: [String: Task<CGImage?, Never>] = [:]
+    private var cacheGeneration: UInt64 = 0
     /// The cache's real occupancy — `NSCache` does not report it, so the delegate is counted.
     private let accounting = ThumbnailCacheAccounting()
     /// Decoded thumbnails, kept between launches. The memory cache dies with the process; a
@@ -54,13 +55,18 @@ public actor ThumbnailPipeline {
         guard let quickLook else { return nil }
         let identity = SourceFileIdentity.read(at: url)
         let cacheKey = "\(identity.versionToken)|\(maxPixelSize)"
+        let generation = cacheGeneration
+        let diskGeneration = diskCache?.generation
 
         let image = await Self.timeBoxedQuickLook(quickLook, url: url, maxPixelSize: maxPixelSize,
                                                   budget: budget) { [weak self] late in
             guard let self else { return }
             Task { await self.keepLateQuickLook(late, forKey: cacheKey, url: url,
-                                                maxPixelSize: maxPixelSize) }
+                                                maxPixelSize: maxPixelSize, generation: generation,
+                                                diskGeneration: diskGeneration) }
         }
+        guard generation == cacheGeneration, diskGeneration == diskCache?.generation,
+              cacheKey == "\(SourceFileIdentity.read(at: url).versionToken)|\(maxPixelSize)" else { return nil }
         guard let image, let fitted = Self.fitting(image, maxPixelSize: maxPixelSize),
               Self.isSharpEnough(fitted, forRequest: maxPixelSize) else {
             return nil
@@ -68,7 +74,7 @@ public actor ThumbnailPipeline {
         // Same guard as the disk cache: a thumbnail that is not this file's shape cannot be this
         // file's picture, whatever the system handed back.
         guard Self.matchesShape(fitted, of: url) else { return nil }
-        await remember(fitted, for: url, maxPixelSize: maxPixelSize)
+        remember(fitted, for: url, maxPixelSize: maxPixelSize, expectedDiskGeneration: diskGeneration)
         ThumbnailPipelineMetrics.noteQuickLookHit()
         return fitted
     }
@@ -76,12 +82,14 @@ public actor ThumbnailPipeline {
     /// Stores a late answer, so the work the system already did is not thrown away. Bounded to one
     /// in flight per file and size.
     private func keepLateQuickLook(_ image: CGImage, forKey key: String, url: URL,
-                                   maxPixelSize: Int) async {
+                                   maxPixelSize: Int, generation: UInt64, diskGeneration: UInt64?) async {
+        guard generation == cacheGeneration, diskGeneration == diskCache?.generation,
+              key == "\(SourceFileIdentity.read(at: url).versionToken)|\(maxPixelSize)" else { return }
         lateQuickLookRequests.remove(key)
         guard let fitted = Self.fitting(image, maxPixelSize: maxPixelSize),
               Self.isSharpEnough(fitted, forRequest: maxPixelSize),
               Self.matchesShape(fitted, of: url) else { return }
-        await remember(fitted, for: url, maxPixelSize: maxPixelSize)
+        remember(fitted, for: url, maxPixelSize: maxPixelSize, expectedDiskGeneration: diskGeneration)
         ThumbnailPipelineMetrics.noteQuickLookLateArrival()
     }
 
@@ -153,6 +161,8 @@ public actor ThumbnailPipeline {
     }
 
     public func thumbnail(for url: URL, maxPixelSize: Int) async throws -> CGImage {
+        let generation = cacheGeneration
+        let diskGeneration = diskCache?.generation
         // The cache key is the file's identity, not its path: a file replaced at the same path is
         // a different file, and the old pixels must never be served for it. The identity is one
         // `stat`; the decode it guards is orders of magnitude more expensive.
@@ -161,7 +171,11 @@ public actor ThumbnailPipeline {
         if let cached = cache.object(forKey: key) { return cached.image }
 
         if let existing = inFlight[key as String] {
-            if let image = await existing.value { return image }
+            let image = await existing.value
+            guard generation == cacheGeneration, diskGeneration == diskCache?.generation else {
+                throw CancellationError()
+            }
+            if let image { return image }
         }
 
         let cacheKey = key as String
@@ -178,22 +192,25 @@ public actor ThumbnailPipeline {
             }
             // A bounded number of decodes at a time: the gate is held only around the decode itself.
             await Self.decodeGate.acquire()
+            guard !Task.isCancelled else { await Self.decodeGate.release(); return nil }
             ThumbnailPipelineMetrics.noteDecodeStarted()
             let decoded = Self.makeThumbnail(url: url, maxPixelSize: maxPixelSize)
             ThumbnailPipelineMetrics.noteDecodeFinished()
             await Self.decodeGate.release()
             if let decoded {
-                diskCache?.store(decoded, forKey: cacheKey)
+                diskCache?.store(decoded, forKey: cacheKey, generation: diskGeneration)
             }
             return decoded
         }
         inFlight[cacheKey] = task
         let image = await task.value
+        guard generation == cacheGeneration, diskGeneration == diskCache?.generation else {
+            throw CancellationError()
+        }
         inFlight[cacheKey] = nil
         guard let image else { throw ImageDecodeError.noDisplayableImage }
         let cost = image.bytesPerRow * image.height
-        cache.setObject(CGImageBox(image), forKey: key, cost: cost)
-        accounting.noteInsert(cost: cost)
+        insert(image, forKey: key, cost: cost)
         return image
     }
 
@@ -201,13 +218,17 @@ public actor ThumbnailPipeline {
     /// would use — so the next request for this file and size is a cache hit, and the disk copy
     /// survives the launch.
     public func remember(_ image: CGImage?, for url: URL, maxPixelSize: Int) {
+        remember(image, for: url, maxPixelSize: maxPixelSize, expectedDiskGeneration: diskCache?.generation)
+    }
+
+    private func remember(_ image: CGImage?, for url: URL, maxPixelSize: Int, expectedDiskGeneration: UInt64?) {
+        guard expectedDiskGeneration == diskCache?.generation else { return }
         guard let image else { return }
         let identity = SourceFileIdentity.read(at: url)
         let key = "\(identity.versionToken)|\(maxPixelSize)"
         let cost = image.bytesPerRow * image.height
-        cache.setObject(CGImageBox(image), forKey: key as NSString, cost: cost)
-        accounting.noteInsert(cost: cost)
-        diskCache?.store(image, forKey: key)
+        insert(image, forKey: key as NSString, cost: cost)
+        diskCache?.store(image, forKey: key, generation: expectedDiskGeneration)
     }
 
     /// Downsamples an already-decoded image for the navigator preview. This is a
@@ -215,7 +236,9 @@ public actor ThumbnailPipeline {
     /// runs off the main actor.
     public func preview(from image: CGImage, maxPixelSize: Int) async -> CGImage? {
         ThumbnailPipelineMetrics.notePreview()
-        return await Task.detached(priority: .utility) {
+        let generation = cacheGeneration
+        let diskGeneration = diskCache?.generation
+        let result = await Task.detached(priority: .utility) { () -> CGImage? in
             let width = image.width
             let height = image.height
             guard width > 0, height > 0, maxPixelSize > 0 else { return nil }
@@ -232,20 +255,43 @@ public actor ThumbnailPipeline {
             context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
             return context.makeImage()
         }.value
+        guard generation == cacheGeneration, diskGeneration == diskCache?.generation else { return nil }
+        return result
+    }
+
+    /// The preview and its cache write share one generation across the suspension.
+    public func previewAndRemember(from image: CGImage, for url: URL, maxPixelSize: Int) async -> CGImage? {
+        let generation = cacheGeneration
+        let diskGeneration = diskCache?.generation
+        let identity = SourceFileIdentity.read(at: url).versionToken
+        let result = await preview(from: image, maxPixelSize: maxPixelSize)
+        guard generation == cacheGeneration, diskGeneration == diskCache?.generation,
+              identity == SourceFileIdentity.read(at: url).versionToken, !Task.isCancelled else { return nil }
+        remember(result, for: url, maxPixelSize: maxPixelSize, expectedDiskGeneration: diskGeneration)
+        return result
     }
 
     public func cancelAll() {
+        cacheGeneration &+= 1
+        lateQuickLookRequests.removeAll()
         for task in inFlight.values { task.cancel() }
         inFlight.removeAll()
     }
 
     public func purge() {
+        cancelAll()
         cache.removeAllObjects()
         accounting.reset()
     }
 
-    /// Forgets the on-disk copies as well. Tests use it to prove a second decode really is a second
-    /// decode; the app has no reason to call it.
+    private func insert(_ image: CGImage, forKey key: NSString, cost: Int) {
+        if let old = cache.object(forKey: key) { accounting.remove(old) }
+        let box = CGImageBox(image)
+        accounting.insert(box, cost: cost)
+        cache.setObject(box, forKey: key, cost: cost)
+    }
+
+    /// Forgets the persistent copies; app-wide clearing also purges each live pipeline.
     public func purgeDiskCache() {
         diskCache?.removeAll()
     }
@@ -312,32 +358,30 @@ final class CGImageBox: @unchecked Sendable {
 /// delegate is called from whichever thread evicts, so the counters are locked.
 final class ThumbnailCacheAccounting: NSObject, NSCacheDelegate, @unchecked Sendable {
     private let lock = NSLock()
-    nonisolated(unsafe) private var count = 0
-    nonisolated(unsafe) private var cost = 0
+    nonisolated(unsafe) private var costs: [ObjectIdentifier: Int] = [:]
 
-    func noteInsert(cost: Int) {
+    func insert(_ box: CGImageBox, cost: Int) {
         lock.lock(); defer { lock.unlock() }
-        count += 1
-        self.cost += cost
+        costs[ObjectIdentifier(box)] = cost
+    }
+
+    func remove(_ box: CGImageBox) {
+        lock.lock(); defer { lock.unlock() }
+        costs.removeValue(forKey: ObjectIdentifier(box))
     }
 
     func reset() {
         lock.lock(); defer { lock.unlock() }
-        count = 0
-        cost = 0
+        costs.removeAll()
     }
 
     func cache(_ cache: NSCache<AnyObject, AnyObject>, willEvictObject obj: Any) {
-        lock.lock(); defer { lock.unlock() }
-        count = max(0, count - 1)
-        if let box = obj as? CGImageBox {
-            cost = max(0, cost - box.image.bytesPerRow * box.image.height)
-        }
+        if let box = obj as? CGImageBox { remove(box) }
     }
 
     var snapshot: (count: Int, cost: Int) {
         lock.lock(); defer { lock.unlock() }
-        return (count, cost)
+        return (costs.count, costs.values.reduce(0, +))
     }
 }
 

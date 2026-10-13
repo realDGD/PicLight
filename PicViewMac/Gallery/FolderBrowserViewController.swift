@@ -208,6 +208,14 @@ final class FolderBrowserViewController {
         requestVisibleThumbnails()
     }
 
+    func clearCachedThumbnails(reloadVisible: Bool) {
+        folderGeneration += 1
+        pending.removeAll()
+        host?.cancelGalleryThumbnails()
+        view.gallery.clearCachedThumbnails()
+        if reloadVisible { requestVisibleThumbnails() }
+    }
+
     /// The URL list the in-flight requests belong to, so a re-published identical list keeps them.
     private var lastRequestedURLs: [URL] = []
 

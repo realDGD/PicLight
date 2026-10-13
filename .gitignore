@@ -19,6 +19,8 @@ build/
 # dist/PicViewMac-<version>.dmg; both are reproducible from source.
 dist/
 dist/dmg-staging/
+bugs/
+new_feature/
 *.dmg
 *.xcarchive
 *.app
@@ -38,6 +40,7 @@ IDEWorkspaceChecks.plist
 
 # ------------------------------------------------------------------ tooling
 # Coverage and Instruments output, plus local editor state.
+__pycache__/
 *.profraw
 *.profdata
 *.trace

@@ -185,7 +185,6 @@ final class WindowArchitectureTests: XCTestCase {
         let frameBefore = window.frame
         let screenBefore = window.screen
         let numberBefore = window.windowNumber
-        let maskBefore = window.styleMask
 
         // Open overlay chrome first, otherwise "immersive hides it" is not observable. The
         // drawer's own control is the explicit toggle — the pointer cannot open it.
@@ -193,6 +192,9 @@ final class WindowArchitectureTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertTrue(viewer.chromeSnapshot.drawer,
                       "the drawer must be visible before immersive")
+        // Opening the drawer reveals the native titlebar. Capture its presentation
+        // after that explicit action so only the immersive transition is compared.
+        let maskBefore = window.styleMask
 
         viewer.perform(.toggleImmersive)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
@@ -331,6 +333,12 @@ final class DrawerReservationInvarianceTests: XCTestCase {
         return viewer.viewerState.currentImage != nil
     }
 
+    private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { settle(0.05) }
+        return condition()
+    }
+
     /// The drawer is a reserving pane, not an overlay: opening it takes its width from the
     /// canvas, which is the one chrome-driven geometry change the spec allows (and requires an
     /// explicit user action to happen at all). What must hold is that the user's *view* of the
@@ -348,10 +356,16 @@ final class DrawerReservationInvarianceTests: XCTestCase {
         let controller = ViewerWindowController()
         defer { controller.close() }
         let viewer = controller.viewerViewController
-        controller.showWindow(nil)
+        TestAppKit.presentOffScreen(controller)
         _ = viewer.view
         viewer.open(url: directory.appendingPathComponent("b.png"))
         XCTAssertTrue(waitForImage(viewer), "the fixture image must load")
+
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        if (controller.window as? ViewerWindow)?.titlebarMode == .autoHide {
+            XCTAssertTrue(waitUntil { viewer.chromeSnapshot.titlebar == .hidden })
+        }
 
         let baseline = viewer.chromeSnapshot
         XCTAssertEqual(baseline.drawerReservedWidth, 0, "nothing is reserved while it is closed")
@@ -370,7 +384,9 @@ final class DrawerReservationInvarianceTests: XCTestCase {
                            "round \(round): Fit is still Fit, measured against the smaller canvas")
 
             viewer.toggleDrawerForTesting()
-            settle(0.5)
+            XCTAssertTrue(waitUntil {
+                !viewer.chromeSnapshot.drawer && viewer.chromeSnapshot.titlebar == baseline.titlebar
+            }, "round \(round): closing the drawer lets the native titlebar hide again")
             let closed = viewer.chromeSnapshot
             XCTAssertEqual(closed.canvasFrame, baseline.canvasFrame,
                            "round \(round): closing it returns the canvas to exactly where it was")

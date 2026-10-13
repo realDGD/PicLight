@@ -47,12 +47,23 @@ public struct TitlebarVisibilityModel: Sendable {
     /// Whether the titlebar auto-hides at all. False in "始终显示" mode, where the standard titlebar
     /// is permanently present and none of the rest of this applies.
     public private(set) var isAutoHiding = true
+    public private(set) var isAlwaysHidden = false
     public private(set) var state: State = .hidden
     public private(set) var blockedReasons: Set<BlockReason> = []
 
     private var exitedAt: TimeInterval?
+    // A completed hide consumes its timer, but the pointer can remain outside
+    // through several keyboard-driven reveals without producing another event.
+    private var pointerInRevealZone = false
 
     public init() {}
+
+    public mutating func setAlwaysHidden(_ hidden: Bool, at time: TimeInterval) {
+        guard hidden != isAlwaysHidden else { return }
+        isAlwaysHidden = hidden
+        if hidden { state = .hidden; exitedAt = nil }
+        else { exitedAt = pointerInRevealZone ? nil : time }
+    }
 
     // MARK: - Inputs
 
@@ -61,7 +72,7 @@ public struct TitlebarVisibilityModel: Sendable {
         isAutoHiding = value
         // Always-visible mode is the standard window: the titlebar is simply there.
         if !value { state = .full }
-        exitedAt = nil
+        exitedAt = value && !pointerInRevealZone ? time : nil
     }
 
     /// Shows the whole bar now, whatever the pointer is doing.
@@ -72,7 +83,7 @@ public struct TitlebarVisibilityModel: Sendable {
     /// once the reason to stay lifts, the hide delay is measured from when the pointer actually
     /// left, not from the reveal.
     public mutating func reveal() {
-        guard isAutoHiding else { return }   // always-visible mode is already showing everything
+        guard isAutoHiding, !isAlwaysHidden else { return }
         state = .full
     }
 
@@ -84,7 +95,7 @@ public struct TitlebarVisibilityModel: Sendable {
     public mutating func setBlocked(_ reason: BlockReason, _ blocked: Bool, at time: TimeInterval) {
         let wasBlocked = !blockedReasons.isEmpty
         if blocked { blockedReasons.insert(reason) } else { blockedReasons.remove(reason) }
-        if wasBlocked, blockedReasons.isEmpty, exitedAt != nil {
+        if wasBlocked, blockedReasons.isEmpty, !pointerInRevealZone {
             exitedAt = time
         }
     }
@@ -94,7 +105,8 @@ public struct TitlebarVisibilityModel: Sendable {
         // The pointer's position is recorded even while blocked: the countdown that starts here is
         // restarted by `setBlocked` when the last reason to stay lifts, so the bar is never held
         // longer than it should be and never hidden the instant a drag ends.
-        guard isAutoHiding else { return }
+        pointerInRevealZone = inTrafficLightsZone || inTitlebarZone
+        guard isAutoHiding, !isAlwaysHidden else { return }
         if inTitlebarZone {
             state = .full
             exitedAt = nil
@@ -111,7 +123,10 @@ public struct TitlebarVisibilityModel: Sendable {
     @discardableResult
     public mutating func update(at time: TimeInterval) -> Bool {
         let before = state
-        if !isAutoHiding {
+        if isAlwaysHidden {
+            state = .hidden
+            exitedAt = nil
+        } else if !isAutoHiding {
             state = .full
             exitedAt = nil
         } else if !blockedReasons.isEmpty {

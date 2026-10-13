@@ -25,8 +25,8 @@ final class TitlebarVisibilityTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = AppSettings(defaults: defaults)
         XCTAssertEqual(settings.titlebar, .autoHide)
-        XCTAssertEqual(TitlebarBehavior.autoHide.localizedName, "自动隐藏")
-        XCTAssertEqual(TitlebarBehavior.alwaysVisible.localizedName, "始终显示")
+        XCTAssertEqual(TitlebarBehavior.autoHide.localizedName, "自动")
+        XCTAssertEqual(TitlebarBehavior.alwaysVisible.localizedName, "显示")
     }
 
     /// …and for an install that has never written the key, which is the same thing here: the key is
@@ -87,6 +87,36 @@ final class TitlebarVisibilityTests: XCTestCase {
         XCTAssertEqual(model.state, .full, "the bar stays up")
     }
 
+    func testClosingRepeatedKeyboardOpenedColumnsHidesWithoutAnotherPointerEvent() {
+        var model = TitlebarVisibilityModel()
+        // The pointer is already over the canvas. The first hide consumes its countdown.
+        model.setPointer(inTrafficLightsZone: false, inTitlebarZone: false, at: 0)
+        model.update(at: 1)
+        XCTAssertEqual(model.state, .hidden)
+
+        for round in 0..<3 {
+            let time = Double(round) * 3 + 2
+            model.setBlocked(.leftColumnOpen, true, at: time)
+            model.reveal()
+            XCTAssertEqual(model.state, .full)
+            model.setBlocked(.leftColumnOpen, false, at: time + 1)
+            model.update(at: time + 1.6)
+            XCTAssertEqual(model.state, .full, "closing preserves the normal hide delay")
+            model.update(at: time + 1.8)
+            XCTAssertEqual(model.state, .hidden,
+                           "a keyboard toggle must not require a new mouse movement to hide")
+        }
+    }
+
+    func testClosingColumnKeepsTitlebarWhilePointerRemainsOverIt() {
+        var model = TitlebarVisibilityModel()
+        model.setPointer(inTrafficLightsZone: false, inTitlebarZone: true, at: 0)
+        model.setBlocked(.leftColumnOpen, true, at: 0.1)
+        model.setBlocked(.leftColumnOpen, false, at: 1)
+        model.update(at: 5)
+        XCTAssertEqual(model.state, .full, "closing a column must not hide controls under the pointer")
+    }
+
     /// The hide delay is the spec's 0.7 s, and it is measured from the pointer leaving.
     func testItHidesSevenTenthsOfASecondAfterThePointerLeaves() {
         XCTAssertEqual(TitlebarVisibilityModel.Timing().hideDelay, 0.7, accuracy: 1e-9)
@@ -120,6 +150,27 @@ final class TitlebarVisibilityTests: XCTestCase {
             model.update(at: 11 + model.timing.hideDelay + 0.05)
             XCTAssertEqual(model.state, .hidden, "\(reason): and then the normal delay applies")
         }
+    }
+
+    func testReturningToAutoHideSchedulesCountdownWithStationaryOutsidePointer() {
+        var model = TitlebarVisibilityModel()
+        model.setAutoHiding(false, at: 0)
+        model.setPointer(inTrafficLightsZone: false, inTitlebarZone: false, at: 1)
+        model.setAutoHiding(true, at: 2)
+        model.update(at: 2.6)
+        XCTAssertEqual(model.state, .full, "restoring auto-hide keeps its normal delay")
+        model.update(at: 2.8)
+        XCTAssertEqual(model.state, .hidden,
+                       "returning from a pinned browser must not depend on another pointer event")
+    }
+
+    func testReturningToAutoHideKeepsTitlebarUnderStationaryInsidePointer() {
+        var model = TitlebarVisibilityModel()
+        model.setAutoHiding(false, at: 0)
+        model.setPointer(inTrafficLightsZone: false, inTitlebarZone: true, at: 1)
+        model.setAutoHiding(true, at: 2)
+        model.update(at: 5)
+        XCTAssertEqual(model.state, .full)
     }
 
     /// Always-visible mode ignores the pointer entirely.

@@ -46,6 +46,8 @@ final class CanvasContextMenuTests: XCTestCase {
     func testTheMenuIsTheDocumentedOrder() {
         XCTAssertEqual(CanvasContextMenu.items, [
             .copyImage,
+            .command(.copyFilePath),
+            .command(.revealInFinder),
             .separator,
             .command(.zoomOut),
             .command(.zoomIn),
@@ -55,6 +57,7 @@ final class CanvasContextMenuTests: XCTestCase {
             .separator,
             .command(.previousImage),
             .command(.nextImage),
+            .command(.randomImage),
             .separator,
             .command(.rotateClockwise),
             .command(.rotateCounterClockwise),
@@ -144,7 +147,7 @@ final class CanvasContextMenuTests: XCTestCase {
         XCTAssertEqual(separators, 5, "the declared separators, one per group boundary")
 
         let actions = menu.items.filter { !$0.isSeparatorItem }
-        XCTAssertEqual(actions.count, 15)
+        XCTAssertEqual(actions.count, 18)
         for entry in actions {
             XCTAssertEqual(entry.action, #selector(ViewerViewController.performContextMenuCommand(_:)),
                            "every entry routes through the single command action")

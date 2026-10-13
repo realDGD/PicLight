@@ -22,6 +22,12 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
     case rotateCounterClockwise
     case toggleMirror
     case moveToTrash
+    case moveToTrashWithoutConfirmation
+    case copyFilePath
+    case revealInFinder
+    case randomImage
+    case toggleAlwaysOnTop
+    case openFolder
     case togglePlayback
     case nextPage
     case previousPage
@@ -52,6 +58,12 @@ public enum ViewerCommand: String, CaseIterable, Codable, Sendable {
         case .rotateCounterClockwise: return "逆时针旋转"
         case .toggleMirror: return "水平镜像"
         case .moveToTrash: return "移到废纸篓"
+        case .moveToTrashWithoutConfirmation: return "直接移到废纸篓"
+        case .copyFilePath: return "复制文件路径"
+        case .revealInFinder: return "在 Finder 中显示"
+        case .randomImage: return "随机一张"
+        case .toggleAlwaysOnTop: return "窗口置顶"
+        case .openFolder: return "选择文件夹…"
         case .togglePlayback: return "暂停 / 播放"
         case .nextPage: return "下一页"
         case .previousPage: return "上一页"

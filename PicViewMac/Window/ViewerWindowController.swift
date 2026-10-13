@@ -39,6 +39,7 @@ public final class ViewerWindowController: NSWindowController {
             visibleFrame: NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         )
         let window = ViewerWindow(contentRect: contentRect)
+        window.level = AppSettings.shared.defaultAlwaysOnTop ? .floating : .normal
         self.viewerViewController = viewer
         super.init(window: window)
         window.contentViewController = viewerViewController
@@ -88,12 +89,24 @@ public final class ViewerWindowController: NSWindowController {
         sizeLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         sizeLabel.setFrameSize(NSSize(width: 120, height: 16))
 
+        // AppKit stretches a side accessory to the titlebar's full height. A label
+        // used as the accessory itself draws at that expanded rectangle's top edge.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 140, height: 32))
+        sizeLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(sizeLabel)
+        NSLayoutConstraint.activate([
+            sizeLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            sizeLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            sizeLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            sizeLabel.heightAnchor.constraint(equalToConstant: 16),
+        ])
         let accessory = NSTitlebarAccessoryViewController()
-        accessory.layoutAttribute = .trailing
-        accessory.view = sizeLabel
+        accessory.layoutAttribute = .right
+        accessory.view = container
         window?.addTitlebarAccessoryViewController(accessory)
         sizeAccessory = accessory
         (window as? ViewerWindow)?.viewerAccessories.append(accessory)
+        (window as? ViewerWindow)?.imageOnlyAccessories.append(accessory)
     }
 
     /// Called by the viewer whenever the picture changes.
@@ -221,6 +234,7 @@ extension ViewerWindowController: NSWindowDelegate {
 
     public func windowDidBecomeKey(_ notification: Notification) {
         viewerViewController.windowTitlebarContextChanged()
+        viewerViewController.restoreImageInputFocus()
     }
 
     public func windowDidResignKey(_ notification: Notification) {

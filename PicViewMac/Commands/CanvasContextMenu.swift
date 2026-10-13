@@ -40,6 +40,8 @@ public enum CanvasContextMenu {
     /// destructive action on its own at the bottom.
     public static let items: [Item] = [
         .copyImage,
+        .command(.copyFilePath),
+        .command(.revealInFinder),
         .separator,
         .command(.zoomOut),
         .command(.zoomIn),
@@ -49,6 +51,7 @@ public enum CanvasContextMenu {
         .separator,
         .command(.previousImage),
         .command(.nextImage),
+        .command(.randomImage),
         .separator,
         .command(.rotateClockwise),
         .command(.rotateCounterClockwise),
@@ -72,8 +75,11 @@ public enum CanvasContextMenu {
             switch command {
             case .zoomIn, .zoomOut, .zoomToFit, .zoomToFitWidth, .zoomActualPixels,
                  .rotateClockwise, .rotateCounterClockwise, .toggleMirror, .moveToTrash,
-                 .showImageInfo, .browseFolder, .toggleThumbnailDrawer:
+                 .showImageInfo, .browseFolder, .toggleThumbnailDrawer, .copyFilePath,
+                 .revealInFinder, .moveToTrashWithoutConfirmation:
                 return availability.hasImage
+            case .randomImage:
+                return availability.hasImage && (availability.canGoPrevious || availability.canGoNext)
             case .previousImage, .firstImage:
                 return availability.canGoPrevious
             case .nextImage, .lastImage:

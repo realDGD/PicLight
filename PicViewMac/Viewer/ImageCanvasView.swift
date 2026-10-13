@@ -129,6 +129,9 @@ public final class ImageCanvasView: NSView {
     }
     public var swipeMode: SwipeMode = .smart { didSet { router.swipeMode = swipeMode } }
     public var doubleClickMode: DoubleClickMode = .fitDoubleFit
+    public var wheelZoomSensitivity: CGFloat = 0.0015 {
+        didSet { router.wheelZoomSensitivity = wheelZoomSensitivity }
+    }
 
     /// -1 previous, +1 next. The canvas never touches folder state itself.
     public var onNavigate: ((Int) -> Void)?
@@ -464,12 +467,15 @@ public final class ImageCanvasView: NSView {
     }
 
     public override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         onPointerActivity?()
         if event.clickCount == 2 {
             switch doubleClickMode {
             case .fitDoubleFit: toggleFitAndDoubleFit()
             case .actualPixels: setZoomToActualPixels()
             case .toggleImmersive: onDoubleClickAction?()
+            case .none: break
+            case .closeWindow, .toggleFullScreen, .folderBrowser: onDoubleClickAction?()
             }
             return
         }

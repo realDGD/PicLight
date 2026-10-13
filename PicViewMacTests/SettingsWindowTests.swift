@@ -59,12 +59,33 @@ final class SettingsWindowTests: XCTestCase {
         let viewController = try XCTUnwrap(controller.window?.contentViewController
                                             as? SettingsViewController)
         let heights = viewController.tabContentHeightsForTesting()
-        XCTAssertEqual(heights.count, 4, "four tabs: 浏览, 交互, 外观, 快捷键")
+        XCTAssertEqual(heights.map(\.title), ["浏览", "交互", "外观", "快捷键", "格式关联", "文件与缓存"])
         for entry in heights {
             XCTAssertGreaterThan(entry.available, 0, "\(entry.title): the tab has a real size")
             XCTAssertLessThanOrEqual(entry.content, entry.available,
                                      "\(entry.title): \(entry.content) pt of rows in "
                                        + "\(entry.available) pt of tab")
+        }
+    }
+
+    func testInteractionCheckboxesAlignWithTheControlsColumn() throws {
+        let controller = try makeWindow()
+        let content = try XCTUnwrap(controller.window?.contentView)
+        let tabs = try XCTUnwrap(allViews(in: content).compactMap { $0 as? NSTabView }.first)
+        let interaction = try XCTUnwrap(tabs.tabViewItems.first { $0.label == "交互" })
+        tabs.selectTabViewItem(interaction)
+        content.layoutSubtreeIfNeeded()
+        let container = try XCTUnwrap(interaction.view)
+        let controls = allViews(in: container)
+        let popup = try XCTUnwrap(controls.compactMap { $0 as? NSPopUpButton }.first)
+        let controlColumnX = container.convert(popup.bounds, from: popup).minX
+        for title in ["自动播放动画", "显示顶部文件名"] {
+            let checkbox = try XCTUnwrap(controls.compactMap { $0 as? NSButton }
+                .first { $0.title == title })
+            let frame = container.convert(checkbox.bounds, from: checkbox)
+            XCTAssertEqual(frame.minX, controlColumnX, accuracy: 0.5,
+                           "\(title) belongs below the interaction controls")
+            XCTAssertTrue(container.bounds.contains(frame), "\(title) remains visible")
         }
     }
 
