@@ -1,4 +1,4 @@
-# PicViewMac
+# PicLight
 
 A fast, native macOS image viewer with a Picview-style minimalist experience:
 the image is the focus, chrome appears on hover, and a left-edge drawer shows the
@@ -9,6 +9,23 @@ current folder.
   Developer Program required for v0.1)
 - **Status:** v0.1 implementation — see `docs/release/v0.1-checklist.md` for what
   is verified and what still needs a human
+
+## Install with Homebrew from source
+
+Requires Command Line Tools with Swift 6+ and macOS SDK 26+. This route requires
+a published `main` revision containing `Formula/piclight.rb` and
+`Resources/Precompiled/`; older revisions cannot use it.
+
+```bash
+brew tap --custom-remote realdgd/piclight https://github.com/realDGD/PicLight.git
+brew install --HEAD --build-from-source realdgd/piclight/piclight
+open "$(brew --prefix)/opt/piclight/PicLight.app"
+```
+
+The formula compiles Swift / C locally with CLT, reuses the checked icon and Metal
+resources, and ad-hoc signs the app. It needs no paid Developer ID certificate.
+See the [installation guide](docs/release/unsigned-installation.md) for tap trust,
+an optional Applications link, updates and the limits of local signing.
 
 ## Build and run
 
@@ -22,11 +39,11 @@ xcodebuild -scheme PicViewMac -destination 'platform=macOS' test   # same suite
 Release artifacts:
 
 ```bash
-./scripts/build-release.sh  # dist/PicViewMac.app (ad-hoc signed)
-./scripts/make-dmg.sh       # dist/PicViewMac-0.1.0.dmg
+./scripts/build-release.sh  # dist/PicLight.app (ad-hoc signed)
+./scripts/make-dmg.sh       # dist/PicLight-0.1.0.dmg
 ```
 
-macOS hands an unsigned, un-notarized app to Gatekeeper; the per-app
+Downloaded bundles are ad-hoc signed without Apple notarization; the per-app
 **Open Anyway** path is documented in
 `docs/release/unsigned-installation.md`.
 
@@ -38,7 +55,7 @@ prints a pass/fail report. It exists because the behavior that matters most here
 unit tests alone:
 
 ```bash
-PICVIEW_SELFTEST=/path/to/photo.jpg dist/PicViewMac.app/Contents/MacOS/PicViewMac
+PICVIEW_SELFTEST=/path/to/photo.jpg dist/PicLight.app/Contents/MacOS/PicLight
 ```
 
 It ends with `=== ALL PASSED ===` or a list of failures.
@@ -145,7 +162,8 @@ only the tiles the viewport needs plus a ring, and draws them over the bounded p
 revisiting a far region costs another pass, and the backend serves PNG that is 8-bit and not
 interlaced — other formats keep the proxy path.
 
-One packaging limit remains: a released build wants a compiled `default.metallib` —
-`scripts/build-release.sh` fails loudly without the Metal toolchain
-(`xcodebuild -downloadComponent MetalToolchain`) instead of shipping a fallback-only app,
-while a local run compiles the shipped `ImageShaders.metal` source at startup and says so.
+Daily packaging validates and copies the precompiled icon and Metal library.
+Changed resource inputs or targets require an explicit refresh with the resource
+compiler tools; ordinary CLT builds do not invoke them. A bare development run
+can compile the shipped shader source at first use. See the
+[installation and build guide](docs/release/unsigned-installation.md).
