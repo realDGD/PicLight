@@ -1,5 +1,5 @@
 class Piclight < Formula
-  desc "Native macOS image viewer"
+  desc "Native macOS image viewer with bounded animation buffering"
   homepage "https://github.com/realDGD/PicLight"
   head "https://github.com/realDGD/PicLight.git", branch: "main"
 
@@ -29,12 +29,14 @@ class Piclight < Formula
 
   def caveats
     <<~EOS
-      Run the locally compiled app:
-        open "#{opt_prefix}/PicLight.app"
+      Create the system Applications entry (does not overwrite an existing app):
+        ln -s "#{opt_prefix}/PicLight.app" "/Applications/"
 
-      Optional Finder / Launchpad link (fails safely if the destination exists):
-        mkdir -p "$HOME/Applications"
-        ln -s "#{opt_prefix}/PicLight.app" "$HOME/Applications/PicLight.app"
+      Run the locally compiled app:
+        open "/Applications/PicLight.app"
+
+      Homebrew maintains the app files in its Cellar; the link follows upgrades.
+      If /Applications is not writable, authorize only the ln command with sudo.
 
       This build is ad-hoc signed locally and does not need a Developer ID certificate.
     EOS

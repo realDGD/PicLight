@@ -20,7 +20,12 @@ public actor DecodeCoordinator {
     private let probe: DimensionProbing
     private var generation = 0
     private var currentTask: Task<Void, Never>?
+    /// In-flight preloads, with the token that owns each entry. The token is what stops an older
+    /// preload's completion from clearing the record of a newer one — a cancelled preload leaves its
+    /// entry behind, a fresh one takes the slot, and the old task's `defer` must not take it away.
     private var preloadTasks: [String: Task<Void, Never>] = [:]
+    private var preloadTokens: [String: Int] = [:]
+    private var preloadSequence = 0
 
     private let cache = DecodeCache()
 
@@ -54,6 +59,7 @@ public actor DecodeCoordinator {
         next: URL? = nil,
         direction: NavigationDirection = .unknown,
         target: DecodeTarget = .fullResolution,
+        streamAnimationFrames: Bool = true,
         onEvent: @escaping @Sendable (DecodeEvent) -> Void
     ) async -> Task<Void, Never> {
         currentTask?.cancel()
@@ -61,12 +67,21 @@ public actor DecodeCoordinator {
         let decoder = self.decoder
         let cache = self.cache
         let pageIndex = target.pageIndex
+        // Which *file* this is, not just which path: a replacement at the same path must not be
+        // served the previous file's bitmap. Read before the decode starts so the lookup and the
+        // store describe one version of the file.
+        let version = SourceFileIdentity.read(at: url).versionToken
         // Predict the level with a cheap header probe so the lookup key matches what
         // the decoder will produce. A wrong prediction costs one extra decode — never
         // a wrong bitmap, because the store key uses the level that was produced.
         let predicted = DecodeBudget.level(sourceLongEdge: await probe.longEdge(of: url),
                                            budget: target.maxPixelSize)
-        let lookupKey = DecodeCacheKey(url: url, pageIndex: pageIndex, level: predicted)
+        // The probe is a suspension point: a newer request may have taken over while the header was
+        // being read, and publishing this one's key would put the old request back on screen — and
+        // a cache hit here would be attributed to it.
+        guard isCurrent(token) else { return Task {} }
+        let lookupKey = DecodeCacheKey(url: url, version: version, pageIndex: pageIndex,
+                                       level: predicted)
         self.currentKey = lookupKey
         cache.setCurrent(lookupKey)
 
@@ -79,8 +94,10 @@ public actor DecodeCoordinator {
         let task = Task(priority: .userInitiated) {
             do {
                 let head = try await decoder.decodeFirstDisplayableFrame(url, target: target)
-                guard !Task.isCancelled, self.isCurrent(token) else { return }
-                let storeKey = DecodeCacheKey(url: url, pageIndex: pageIndex, level: head.level)
+                guard !Task.isCancelled, self.isCurrent(token),
+                      SourceFileIdentity.read(at: url).versionToken == version else { return }
+                let storeKey = DecodeCacheKey(url: url, version: version, pageIndex: pageIndex,
+                                              level: head.level)
                 cache.store(head: head, for: storeKey)
                 self.currentKey = storeKey
                 cache.setCurrent(storeKey)
@@ -88,7 +105,7 @@ public actor DecodeCoordinator {
 
                 // Pages of a multi-page document are not animation frames; they are
                 // decoded only when the user asks for one.
-                guard head.descriptor.animated else { return }
+                guard streamAnimationFrames, head.descriptor.animated else { return }
                 let stream = decoder.decodeRemainingFrames(url, descriptor: head.descriptor)
                 for try await frame in stream {
                     guard !Task.isCancelled, self.isCurrent(token) else { return }
@@ -133,6 +150,7 @@ public actor DecodeCoordinator {
         for (path, task) in preloadTasks where !wanted.contains(path) {
             task.cancel()
             preloadTasks[path] = nil
+            preloadTokens[path] = nil
         }
 
         for url in Self.preloadOrder(previous: previous, next: next, direction: direction) {
@@ -145,29 +163,43 @@ public actor DecodeCoordinator {
             let longEdge = await probe.longEdge(of: url)
             guard !OversizedPolicy.isOversized(sourceLongEdge: longEdge) else { continue }
             let level = DecodeBudget.level(sourceLongEdge: longEdge, budget: target.maxPixelSize)
-            let key = DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: level)
+            let version = SourceFileIdentity.read(at: url).versionToken
+            let key = DecodeCacheKey(url: url, version: version, pageIndex: target.pageIndex,
+                                     level: level)
             guard cache.head(for: key) == nil else { continue }
+            preloadSequence += 1
+            let token = preloadSequence
+            preloadTokens[url.path] = token
             preloadTasks[url.path] = Task(priority: .utility) {
-                await self.runPreload(url: url, target: target)
+                await self.runPreload(url: url, version: version, target: target, token: token)
             }
         }
     }
 
     /// Actor-isolated so the bookkeeping entry is cleared as soon as the work
     /// ends, without spawning yet another task to do it.
-    private func runPreload(url: URL, target: DecodeTarget) async {
-        defer { preloadTasks[url.path] = nil }
+    private func runPreload(url: URL, version: String, target: DecodeTarget, token: Int) async {
+        // Only the preload that owns the slot may clear it.
+        defer {
+            if preloadTokens[url.path] == token {
+                preloadTasks[url.path] = nil
+                preloadTokens[url.path] = nil
+            }
+        }
         guard let head = try? await decoder.decodeFirstDisplayableFrame(url, target: target) else { return }
         guard !Task.isCancelled else { return }
         // Store under the level that was produced, so an exact-level lookup by the
-        // later navigation hits.
-        cache.store(head: head, for: DecodeCacheKey(url: url, pageIndex: target.pageIndex, level: head.level))
+        // later navigation hits. The version is the one the preload was started for, so a file
+        // replaced while it ran is not stored as if it were the new one.
+        cache.store(head: head, for: DecodeCacheKey(url: url, version: version,
+                                                    pageIndex: target.pageIndex, level: head.level))
     }
 
     public func cancelAll() {
         currentTask?.cancel()
         for task in preloadTasks.values { task.cancel() }
         preloadTasks.removeAll()
+        preloadTokens.removeAll()
     }
 
     /// The identity the cache must protect, so a purge keeps the on-screen level.

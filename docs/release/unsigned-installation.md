@@ -37,21 +37,24 @@ caches. An unavailable or outdated CLT must be installed or updated separately.
 See [Homebrew's tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap)
 for the tap and trust model.
 
-Run the installed app:
+Create the system-wide Finder / Launchpad entry, without overwriting an existing app:
 
 ```bash
-open "$(brew --prefix)/opt/piclight/PicLight.app"
+ln -s "$(brew --prefix)/opt/piclight/PicLight.app" "/Applications/"
 ```
 
-Optional Finder / Launchpad link, without overwriting an existing app:
+Launch from the system Applications directory:
 
 ```bash
-mkdir -p "$HOME/Applications"
-ln -s "$(brew --prefix)/opt/piclight/PicLight.app" "$HOME/Applications/PicLight.app"
+open "/Applications/PicLight.app"
 ```
 
-This link follows the current Homebrew version after upgrades. If the destination
+The launch entry is `/Applications/PicLight.app`; no user Applications directory is used.
+Homebrew owns the app files in its Cellar, and the system Applications link follows
+the current version after upgrades. If the destination
 already exists, `ln` stops; keep or remove the old installation deliberately.
+If your account cannot write to `/Applications`, authorize only this link command
+with `sudo`; the Formula itself does not require administrator access.
 Quit PicLight before upgrading:
 
 ```bash
@@ -95,7 +98,8 @@ Unchanged resources do not invoke compilers. `--force` refreshes both resources.
 resources does not install tools or switch `xcode-select`. Classic icon updates
 are described in [AppIcon](../../Resources/AppIcon/README.md).
 
-Targeted script checks do not open windows or run the Swift suite:
+The Swift XCTest suite requires Xcode's XCTest module; CLT-only app compilation
+and packaging do not. Targeted script checks do not open windows or run that suite:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_precompiled_resources.py' -v

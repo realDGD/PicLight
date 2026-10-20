@@ -5,15 +5,25 @@ import CoreGraphics
 /// levels, on several pages. One value carries all of it so a lookup, a store and
 /// the memory-pressure purge all agree on what "the current entry" means.
 ///
+/// The version is not decoration: a path is not a file. An editor saving over
+/// `photo.png` keeps the path and changes the bytes, and a key without the version
+/// then serves the *previous* file's pixels and dimensions — measured, a 64×48
+/// picture replaced by an 8192×256 one at the same path came back from this cache
+/// as the 64×48 bitmap. The token is `SourceFileIdentity.versionToken`, the same
+/// file identity snapshot used by the animation decoder.
+///
 /// Do not spell a key by concatenating strings anywhere else: `DecodeCache` is the
 /// only place that knows how identity maps onto `NSCache` keys.
 public struct DecodeCacheKey: Hashable, Sendable {
     public let url: URL
+    /// `SourceFileIdentity.versionToken` of the file this decode belongs to.
+    public let version: String
     public let pageIndex: Int
     public let level: DecodeLevel
 
-    public init(url: URL, pageIndex: Int = 0, level: DecodeLevel) {
+    public init(url: URL, version: String? = nil, pageIndex: Int = 0, level: DecodeLevel) {
         self.url = url
+        self.version = version ?? SourceFileIdentity.read(at: url).versionToken
         self.pageIndex = pageIndex
         self.level = level
     }
@@ -99,11 +109,11 @@ public final class DecodeCache: @unchecked Sendable {
     // MARK: - Key spelling (the only place identity becomes a string)
 
     private static func nsKey(_ key: DecodeCacheKey) -> NSString {
-        "head:\(key.url.path):p\(key.pageIndex):l\(key.level.token)" as NSString
+        "head:\(key.url.path)#\(key.version):p\(key.pageIndex):l\(key.level.token)" as NSString
     }
 
     private static func nsKey(_ key: DecodeCacheKey, frame index: Int) -> NSString {
-        "frame:\(key.url.path):p\(key.pageIndex):l\(key.level.token):f\(index)" as NSString
+        "frame:\(key.url.path)#\(key.version):p\(key.pageIndex):l\(key.level.token):f\(index)" as NSString
     }
 }
 

@@ -19,20 +19,21 @@ a published `main` revision containing `Formula/piclight.rb` and
 ```bash
 brew tap --custom-remote realdgd/piclight https://github.com/realDGD/PicLight.git
 brew install --HEAD --build-from-source realdgd/piclight/piclight
-open "$(brew --prefix)/opt/piclight/PicLight.app"
+ln -s "$(brew --prefix)/opt/piclight/PicLight.app" "/Applications/"
+open "/Applications/PicLight.app"
 ```
 
 The formula compiles Swift / C locally with CLT, reuses the checked icon and Metal
 resources, and ad-hoc signs the app. It needs no paid Developer ID certificate.
 See the [installation guide](docs/release/unsigned-installation.md) for tap trust,
-an optional Applications link, updates and the limits of local signing.
+the system `/Applications/PicLight.app` entry, updates and the limits of local signing.
 
 ## Build and run
 
 ```bash
 swift build                 # debug build
 swift run                   # launch the viewer
-swift test                  # 138 unit tests
+swift test                  # XCTest suite; requires Xcode's XCTest
 xcodebuild -scheme PicViewMac -destination 'platform=macOS' test   # same suite
 ```
 
@@ -88,8 +89,12 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
 - Zoom navigator minimap that only exists while `zoom > Fit`.
 - Pointer-centered wheel zoom, pinch always zooms, drag pan, and a smart
   trackpad swipe that pans first and switches images at the edge.
-- Formats: BMP, GIF, ICO, PNG, JPG/JPEG, TIF/TIFF, WebP — including animated GIF,
+- Formats: BMP, GIF, ICO, PNG/APNG, JPG/JPEG, TIF/TIFF, WebP — including animated GIF,
   animated WebP and multi-page TIFF.
+- Animation follows source frame durations and the selected loop policy, with three
+  reusable frame slots or a budget-limited complete cache for small animations.
+  See the [animation Agent Note](.agents/notes/implemented/2026-10-20-bounded-animation-playback.md)
+  for the resource limits and verification scope.
 - EXIF orientation is honored for display without ever rewriting the file;
   rotation and mirroring are view-only.
 - Color-managed SDR rendering (sRGB and Display P3 preserved through decode).

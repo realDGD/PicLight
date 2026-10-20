@@ -3,13 +3,13 @@ import XCTest
 
 final class SupportedImageTypesTests: XCTestCase {
     func testRequiredExtensionsAreCandidates() {
-        for ext in ["bmp", "gif", "ico", "png", "jpg", "jpeg", "tif", "tiff", "webp"] {
+        for ext in ["bmp", "gif", "ico", "png", "apng", "jpg", "jpeg", "tif", "tiff", "webp"] {
             XCTAssertTrue(SupportedImageTypes.isCandidate(URL(fileURLWithPath: "/tmp/a.\(ext)")), ext)
         }
     }
 
     func testUppercaseExtensionsAreCandidates() {
-        for ext in ["BMP", "GIF", "ICO", "PNG", "JPG", "JPEG", "TIF", "TIFF", "WEBP"] {
+        for ext in ["BMP", "GIF", "ICO", "PNG", "APNG", "JPG", "JPEG", "TIF", "TIFF", "WEBP"] {
             XCTAssertTrue(SupportedImageTypes.isCandidate(URL(fileURLWithPath: "/tmp/a.\(ext)")), ext)
         }
     }
@@ -29,8 +29,9 @@ final class SupportedImageTypesTests: XCTestCase {
             URL(fileURLWithPath: "/tmp/a.png"),
             URL(fileURLWithPath: "/tmp/b.pdf"),
             URL(fileURLWithPath: "/tmp/c.WEBP"),
+            URL(fileURLWithPath: "/tmp/d.apng"),
         ], behavior: .newWindow)
-        XCTAssertEqual(opened.map(\.lastPathComponent), ["a.png", "c.WEBP"])
+        XCTAssertEqual(opened.map(\.lastPathComponent), ["a.png", "c.WEBP", "d.apng"])
     }
 
     @MainActor

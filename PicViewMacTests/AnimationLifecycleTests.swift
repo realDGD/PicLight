@@ -30,6 +30,41 @@ final class AnimationLifecycleTests: XCTestCase {
         }
     }
 
+    func testOpeningAPNGKeepsTheRequestedFileWhenGIFIsInTheSameFolder() async throws {
+        let directory = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("poster.apng")
+        let fixture = Fixtures.directory.appendingPathComponent("animation/poster-default.apng")
+        try FileManager.default.copyItem(at: fixture, to: url)
+        let viewer = ViewerViewController()
+        _ = viewer.view
+        defer { viewer.cancelFolderRequest() }
+        await open(viewer, url)
+        XCTAssertEqual(viewer.session.currentItem?.url.resolvingSymlinksInPath(), url.resolvingSymlinksInPath())
+        XCTAssertEqual(viewer.viewerState.descriptor?.sourceURL.resolvingSymlinksInPath(), url.resolvingSymlinksInPath())
+        XCTAssertTrue(viewer.viewerState.isAnimated)
+        XCTAssertEqual(viewer.viewerState.descriptor?.frameCount, 3)
+    }
+
+    func testEmptyFolderReleasesTheDisplayedAnimationAndItsBuffer() async throws {
+        let directory = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let viewer = ViewerViewController()
+        _ = viewer.view
+        defer { viewer.cancelFolderRequest() }
+        await open(viewer, directory.appendingPathComponent("a-anim.gif"))
+        let deadline = Date().addingTimeInterval(3)
+        while viewer.canvasViewForTesting.animationFrame == nil, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertNotNil(viewer.canvasViewForTesting.animationFrame)
+        XCTAssertNotNil(viewer.animationDiagnostics)
+        viewer.session.setItems([])
+        XCTAssertFalse(viewer.chromeSnapshot.isAnimationTimerActive)
+        XCTAssertNil(viewer.canvasViewForTesting.animationFrame)
+        XCTAssertNil(viewer.animationDiagnostics, "an empty viewer must release cached frames and stop its producer")
+    }
+
     func testAnimatedContentAutoplaysWhileStaticContentDoesNot() async throws {
         let directory = try makeFolder()
         defer { try? FileManager.default.removeItem(at: directory) }

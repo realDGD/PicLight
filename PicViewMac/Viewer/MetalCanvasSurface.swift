@@ -16,6 +16,8 @@ final class MetalCanvasSurface: MTKView, MTKViewDelegate {
 
     private let renderer: MetalImageRenderer
     private var renderImage: RenderImage?
+    private var animationFrame: AnimationFrameLease?
+    let animationPresentationMetrics = AnimationPresentationMetrics()
     private var nativeTiles: [NativeTile] = []
     private var viewport = ViewportState()
     private var backgroundColor: CGColor = NSColor.clear.cgColor
@@ -38,15 +40,21 @@ final class MetalCanvasSurface: MTKView, MTKViewDelegate {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     func update(renderImage: RenderImage?, nativeTiles: [NativeTile],
-                viewport: ViewportState, backgroundColor: NSColor) {
+                viewport: ViewportState, backgroundColor: NSColor,
+                animationFrame: AnimationFrameLease? = nil) {
         self.renderImage = renderImage
+        self.animationFrame = animationFrame
+        if let animationFrame {
+            animationPresentationMetrics.begin(sourceID: animationFrame.sourceID)
+            animationPresentationMetrics.select(animationFrame)
+        }
         self.nativeTiles = nativeTiles
         self.viewport = viewport
         self.backgroundColor = backgroundColor.cgColor
         guard renderImage != nil else { return }
         // Colour management belongs on the surface: a Display-P3 image must be
         // composited as P3 rather than reinterpreted as sRGB downstream (spec §10).
-        (layer as? CAMetalLayer)?.colorspace = renderImage?.bitmap.colorSpace
+        (layer as? CAMetalLayer)?.colorspace = animationFrame?.colorSpace ?? renderImage?.bitmap.colorSpace
             ?? CGColorSpace(name: CGColorSpace.sRGB)
         setNeedsDisplay(bounds)
     }
@@ -71,12 +79,27 @@ final class MetalCanvasSurface: MTKView, MTKViewDelegate {
                                         width: Double(drawable.texture.width),
                                         height: Double(drawable.texture.height),
                                         znear: 0, zfar: 1))
-        renderer.encode(image: renderImage.bitmap,
+        if let animationFrame, let texture = animationFrame.texture {
+            animationPresentationMetrics.submit(animationFrame)
+            renderer.encode(texture: texture, sourcePixelSize: renderImage.sourcePixelSize,
+                            viewport: viewport, viewSize: bounds.size,
+                            contentsScale: window?.backingScaleFactor ?? 2, into: encoder)
+            // Metal can execute this draw after a new frame is selected. Its lease
+            // must survive until completion, including redraws while paused.
+            commandBuffer.addCompletedHandler { [animationFrame] _ in withExtendedLifetime(animationFrame) {} }
+            let metrics = animationPresentationMetrics
+            let presentedFrame = AnimationPresentationMetrics.Frame(animationFrame)
+            drawable.addPresentedHandler { [presentedFrame, metrics] drawable in
+                metrics.record(presentedFrame, at: drawable.presentedTime)
+            }
+        } else {
+            renderer.encode(image: renderImage.bitmap,
                         sourcePixelSize: renderImage.sourcePixelSize,
                         viewport: viewport,
                         viewSize: bounds.size,
                         contentsScale: window?.backingScaleFactor ?? 2,
                         into: encoder)
+        }
         // Native detail is layered over the proxy, so a tile that has not arrived yet is
         // simply the proxy showing through.
         for tile in nativeTiles {
