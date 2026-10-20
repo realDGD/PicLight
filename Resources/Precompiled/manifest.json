@@ -29,7 +29,7 @@
     "metal": {
       "artifact": {
         "path": "default.metallib",
-        "sha256": "27724ed054c320f9f410d4aa4dfb2a628a12515d3463cbd8e17e61186f22e380"
+        "sha256": "c248ececbf1933832db7af0ac1b6f0c84cd0c9d4d0afd7f2be6cbf52bfccb6eb"
       },
       "compiler": {
         "sdk_version": "27.0",
@@ -43,9 +43,9 @@
         "recipe": 1,
         "target": "air64-apple-macos14.0"
       },
-      "generated_at_utc": "2026-10-20T09:47:57.112649+00:00",
+      "generated_at_utc": "2026-10-20T10:10:00.128143+00:00",
       "inputs": {
-        "PicViewMac/Shaders/ImageShaders.metal": "9748728ba6a72c59b875d18e23414c3151cc4df5009a3a2fb5a51c6c3927cbb0"
+        "PicViewMac/Shaders/ImageShaders.metal": "2eee5ba7ec0dc960104e761fffedbeef7e02ffe29046172af0738382b5df84f2"
       }
     }
   },

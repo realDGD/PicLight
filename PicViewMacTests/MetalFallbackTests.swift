@@ -101,4 +101,23 @@ final class MetalFallbackTests: XCTestCase {
         XCTAssertNil(MetalImageRenderer(device: nil, library: nil),
                      "no device means no renderer, which selects the Quartz fallback")
     }
+
+    func testSwitchFromMetalToSixteenBitHidesTheOldSurface() async throws {
+        TestAppKit.ensureApplication()
+        let controller = ViewerWindowController()
+        defer { controller.close() }
+        _ = controller.window
+        _ = controller.viewerViewController.view
+        let canvas = controller.viewerViewController.canvasViewForTesting
+        let descriptor = ImageDescriptor(sourceURL: URL(fileURLWithPath: "/tmp/test.png"), pixelSize: CGSize(width: 32, height: 24))
+        canvas.renderImage = RenderImage(bitmap: try solidBitmap(width: 32, height: 24), descriptor: descriptor)
+        let surface = try XCTUnwrap(canvas.subviews.first { $0 is MetalCanvasSurface })
+        XCTAssertFalse(surface.isHidden)
+        let image = try XCTUnwrap(CGContext(data: nil, width: 32, height: 24, bitsPerComponent: 16,
+            bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage())
+        canvas.renderImage = RenderImage(bitmap: image, descriptor: descriptor)
+        XCTAssertFalse(canvas.isUsingMetalForCurrentImage)
+        XCTAssertTrue(surface.isHidden, "the old drawable must not cover Quartz's new image")
+    }
 }

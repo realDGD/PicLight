@@ -25,8 +25,25 @@ public struct ImageIODecoder: ImageDecoding {
                 throw ImageDecodeError.cannotCreateSource
             }
             let descriptor = try Self.descriptor(for: source, url: url)
-            let index = try Self.selectIndex(source: source, descriptor: descriptor, target: target)
-            guard let decoded = Self.decodeLimited(source: source, index: index, target: target) else {
+            let index = descriptor.animated ? 0 : try Self.selectIndex(source: source, descriptor: descriptor, target: target)
+            let poster = !descriptor.animated && CGImageSourceGetType(source) as String? == "public.png" ? try APNGFirstFrame.read(from: url) : nil
+            let decoded: (image: CGImage, level: DecodeLevel)?
+            if descriptor.animated {
+                let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+                let depth = (properties?[kCGImagePropertyDepth] as? NSNumber)?.intValue ?? 8
+                let edge = AnimationResourcePolicy.maximumEdge(size: descriptor.displayPixelSize, highDepth: depth > 8)
+                let animation = try AnimationImageSource(url: url, source: source, descriptor: descriptor)
+                let image = try AnimationImageSource.detached(animation.frame(at: 0, maxPixelSize: edge))
+                decoded = (image, max(descriptor.pixelSize.width, descriptor.pixelSize.height) <= Double(edge) ? .native : .bucket(edge))
+            } else if let poster {
+                let edge = min(8192, target.maxPixelSize ?? 8192)
+                decoded = poster.decode(maxPixelSize: edge).map { image in
+                    (image, max(poster.canvasWidth, poster.canvasHeight) <= edge ? .native : .bucket(edge))
+                }
+            } else {
+                decoded = Self.decodeLimited(source: source, index: index, target: target)
+            }
+            guard let decoded else {
                 throw ImageDecodeError.noDisplayableImage
             }
             let metadata = MetadataReader.read(source: source, url: url, index: index)
@@ -51,7 +68,8 @@ public struct ImageIODecoder: ImageDecoding {
             // budgeting is out of scope for this iteration, and materializing every frame
             // measured as an animation regression (24.6 materializations per second while
             // only ~8 frames/s reach the screen). Stills keep the A3 win.
-            guard let image = Self.decodeOriented(source: source, index: index) else {
+            let poster = index == 0 && CGImageSourceGetType(source) as String? == "public.png" ? try APNGFirstFrame.read(from: url) : nil
+            guard let image = poster?.decode(maxPixelSize: target.maxPixelSize) ?? Self.decodeOriented(source: source, index: index) else {
                 throw ImageDecodeError.noDisplayableImage
             }
             let durations = Self.frameDurations(source: source)
@@ -158,6 +176,12 @@ public struct ImageIODecoder: ImageDecoding {
                 durations.append(delay(from: webp,
                                        unclamped: kCGImagePropertyWebPUnclampedDelayTime,
                                        clamped: kCGImagePropertyWebPDelayTime))
+            } else if let png = properties[kCGImagePropertyPNGDictionary] as? [CFString: Any],
+                      png[kCGImagePropertyAPNGDelayTime] != nil || png[kCGImagePropertyAPNGUnclampedDelayTime] != nil {
+                sawDictionary = true
+                durations.append(delay(from: png,
+                                       unclamped: kCGImagePropertyAPNGUnclampedDelayTime,
+                                       clamped: kCGImagePropertyAPNGDelayTime))
             } else {
                 durations.append(0)
             }
@@ -193,6 +217,10 @@ public struct ImageIODecoder: ImageDecoding {
         }
         if let webp = properties[kCGImagePropertyWebPDictionary] as? [CFString: Any],
            let value = webp[kCGImagePropertyWebPLoopCount] as? NSNumber {
+            return value.intValue
+        }
+        if let png = properties[kCGImagePropertyPNGDictionary] as? [CFString: Any],
+           let value = png[kCGImagePropertyAPNGLoopCount] as? NSNumber {
             return value.intValue
         }
         return nil

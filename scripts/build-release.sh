@@ -97,10 +97,24 @@ ${ICON_PLIST_ENTRIES}    <key>LSMinimumSystemVersion</key><string>$MINIMUM_SYSTE
                 <string>com.compuserve.gif</string>
                 <string>com.microsoft.ico</string>
                 <string>public.png</string>
+                <string>com.piclight.apng</string>
                 <string>public.jpeg</string>
                 <string>public.tiff</string>
                 <string>org.webmproject.webp</string>
             </array>
+        </dict>
+    </array>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.piclight.apng</string>
+            <key>UTTypeDescription</key><string>Animated PNG</string>
+            <key>UTTypeConformsTo</key><array><string>public.png</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key><array><string>apng</string></array>
+                <key>public.mime-type</key><string>image/apng</string>
+            </dict>
         </dict>
     </array>
 </dict>

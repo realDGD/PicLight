@@ -587,6 +587,16 @@ public final class MetalImageRenderer {
 
     public var hasMipmaps: Bool { (proxyTexture?.mipmapLevelCount ?? 1) > 1 }
 
+    /// Animation owns its bounded texture pool; it must not also leave a proxy upload resident.
+    func discardProxyTexture() { proxyTexture = nil; proxyTextureKey = nil }
+
+    func encode(texture: MTLTexture, sourcePixelSize: CGSize, viewport: ViewportState,
+                viewSize: CGSize, contentsScale: CGFloat, into encoder: MTLRenderCommandEncoder) {
+        encodeQuad(sourceRect: CGRect(origin: .zero, size: sourcePixelSize), texture: texture,
+                   sourcePixelSize: sourcePixelSize, viewport: viewport, viewSize: viewSize,
+                   contentsScale: contentsScale, into: encoder)
+    }
+
     /// Renders one frame into an offscreen texture. Used by the parity tests, which
     /// compare this against the Quartz renderer pixel for pixel.
     public func renderOffscreen(image: CGImage, sourcePixelSize: CGSize, viewport: ViewportState,

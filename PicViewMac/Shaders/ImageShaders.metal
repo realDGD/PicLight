@@ -30,3 +30,17 @@ fragment float4 imageFragment(ImageVertexOut in [[stage_in]],
                               sampler imageSampler [[sampler(0)]]) {
     return image.sample(imageSampler, in.uv);
 }
+
+#include <metal_stdlib>
+using namespace metal;
+struct AnimationPixelParameters {uint rowBytes; uint width; uint height; uint flags; uint4 offsets;};
+kernel void animationNormalize32(device const uchar* bytes [[buffer(0)]],
+  constant AnimationPixelParameters& p [[buffer(1)]], texture2d<float,access::write> out [[texture(0)]],
+  uint2 xy [[thread_position_in_grid]]) {
+  if (xy.x>=p.width || xy.y>=p.height) return;
+  uint base=xy.y*p.rowBytes+xy.x*4;
+  uint4 c=uint4(bytes[base+p.offsets.x],bytes[base+p.offsets.y],bytes[base+p.offsets.z],bytes[base+p.offsets.w]);
+  if (p.flags & 1) c.w=255;
+  if (!(p.flags & 2)) c.xyz=(c.xyz*c.w+127)/255;
+  out.write(float4(c)/255.0,xy);
+}

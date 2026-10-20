@@ -123,6 +123,7 @@ public final class ViewerWindowController: NSWindowController {
 
 extension ViewerWindowController: NSWindowDelegate {
     public func windowWillClose(_ notification: Notification) {
+        viewerViewController.cancelFolderRequest()
         rememberContentSize()
     }
 

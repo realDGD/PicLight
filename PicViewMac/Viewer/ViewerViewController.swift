@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import QuartzCore
 
 /// Owns one viewer: canvas, hover chrome, drawer, minimap, decode pipeline and
 /// command handling. Hover UI lives inside this single window.
@@ -44,7 +45,20 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private var hover = HoverVisibilityModel()
     private var chromeTimer: Timer?
     private var animationTimer: Timer?
-    private let clock = AnimationClock()
+    private var animationDisplayLink: CADisplayLink?
+    private let animationRefreshTarget = AnimationRefreshTarget()
+    private var animationClock = AnimationMediaClock()
+    private var animationTimeline: AnimationTimeline?
+    private var animationBuffer: AnimationFrameBuffer?
+    private var animationLastSequence = -1
+    private var animationClockStarted = false
+    private var animationCompleted = false
+    private var decodeRequestGeneration = 0
+    var animationDiagnostics: AnimationFrameBuffer.Diagnostics? { animationBuffer?.diagnostics }
+    var animationTraceForTesting: AnimationFrameBuffer.TraceSnapshot? { animationBuffer?.traceSnapshot }
+
+    deinit { animationBuffer?.stop() }
+    private var folderRequestGeneration = 0
     private var drawerWidthConstraint: NSLayoutConstraint?
     // Canvas leading is switched when the drawer is pinned, so every consumer of
     // canvas bounds (fit, zoom, navigator, dock, info card) sees the real area.
@@ -393,6 +407,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self?.refreshCanvas()
         }
         viewerState.onPlaybackChanged = { [weak self] in
+            self?.synchronizeAnimationPlayback()
             self?.refreshPlaybackChrome()
         }
     }
@@ -420,6 +435,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Folder session
 
     public func open(url: URL) {
+        folderRequestGeneration += 1
+        let generation = folderRequestGeneration
         // Scanning resolves symlinks, so the directory is canonicalized once here
         // to keep the opened file and the scanned items speaking the same path
         // spelling (`/tmp` versus `/private/tmp`, symlinked folders).
@@ -435,6 +452,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             let scanner = FolderScanner()
             let items = (try? await scanner.scan(directory: directory)) ?? []
             let sorted = await self.sortedItems(items)
+            guard self.folderRequestGeneration == generation else { return }
             self.session.setItems(sorted, preferredIdentity: FileIdentity(url: canonicalURL))
             self.session.select(url: canonicalURL)
         }
@@ -476,10 +494,22 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         }
     }
 
+    /// Stop producers and invalidate delayed publications when the viewer closes.
+    func cancelFolderRequest() {
+        folderRequestGeneration += 1
+        decodeRequestGeneration += 1
+        watcher.stop()
+        stopAnimation()
+        let coordinator = self.coordinator
+        Task { await coordinator.cancelAll() }
+    }
+
     // MARK: - Decode
 
     private func loadCurrentImage() {
+        decodeRequestGeneration += 1
         guard let item = session.currentItem else {
+            stopAnimation()
             viewerState.clearForNewImage()
             viewerState.applyEmptyState()
             canvas.renderImage = nil
@@ -544,6 +574,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// arrives (§9.5: never blank the canvas).
     private func startDecode(url: URL, previous: URL?, next: URL?,
                              direction: NavigationDirection, target: DecodeTarget) {
+        decodeRequestGeneration += 1
+        let generation = decodeRequestGeneration
+        let version = SourceFileIdentity.read(at: url).versionToken
         isDecodingCurrentItem = true
         if let size = session.currentItem?.pixelSize, size.width > 0 {
             inFlightLevel = DecodeBudget.level(
@@ -553,10 +586,15 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // means "decoding", not "nothing here".
         refreshEmptyState()
         Task { [weak self] in
-            guard let self else { return }
+            guard let self, self.decodeRequestGeneration == generation else { return }
             _ = await self.coordinator.show(item: url, previous: previous, next: next,
-                                            direction: direction, target: target) { event in
-                Task { @MainActor in self.handle(event: event) }
+                                            direction: direction, target: target, streamAnimationFrames: false) { event in
+                Task { @MainActor in
+                    guard self.decodeRequestGeneration == generation,
+                          self.session.currentItem?.url == url,
+                          SourceFileIdentity.read(at: url).versionToken == version else { return }
+                    self.handle(event: event)
+                }
             }
         }
     }
@@ -1241,62 +1279,120 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Animation
 
     private func startAnimation(descriptor: ImageDescriptor, autoplay: Bool) {
-        let totalPlays: Int?
+        stopAnimation()
+        let plays: Int
         switch settings.animationLoop {
-        case .followSource:
-            totalPlays = descriptor.loopCount == 0 ? nil : descriptor.loopCount
-        case .once:
-            totalPlays = 1
-        case .infinite:
-            totalPlays = nil
+        case .followSource: plays = descriptor.loopCount ?? 1
+        case .once: plays = 1
+        case .infinite: plays = 0
         }
-        clock.start(schedule: AnimationClock.Schedule(durations: descriptor.frameDurations,
-                                                      totalPlays: totalPlays),
-                    at: Date().timeIntervalSinceReferenceDate)
+        let durations = descriptor.frameDurations.map { $0.isFinite && $0 > 0 ? $0 : 0.1 }
+        guard let timeline = try? AnimationTimeline(durations: durations, loops: max(0, plays)) else { return }
+        animationTimeline = timeline
+        let buffer = AnimationFrameBuffer(url: descriptor.sourceURL, descriptor: descriptor,
+                                          device: canvas.animationDevice, totalPlays: max(0, plays))
+        animationBuffer = buffer; buffer.start()
         viewerState.playback = autoplay ? .playing : .paused
         startAnimationTimer()
         refreshPlaybackChrome()
     }
 
+    private func stopAnimationRefresh() {
+        animationTimer?.invalidate(); animationTimer = nil
+        animationDisplayLink?.invalidate(); animationDisplayLink = nil
+    }
+
     private func stopAnimation() {
-        clock.stop()
-        animationTimer?.invalidate()
-        animationTimer = nil
-        onDemandFrameTask?.cancel()
-        onDemandFrameTask = nil
+        stopAnimationRefresh()
+        animationBuffer?.stop(); animationBuffer = nil
+        canvas.animationFrame = nil
+        animationTimeline = nil; animationClock = AnimationMediaClock()
+        animationLastSequence = -1; animationClockStarted = false; animationCompleted = false
+        onDemandFrameTask?.cancel(); onDemandFrameTask = nil
     }
 
     private func startAnimationTimer() {
-        animationTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.animationTick() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        animationTimer = timer
-    }
-
-    private func animationTick() {
-        guard viewerState.playback == .playing, let descriptor = viewerState.descriptor else { return }
-        let now = Date().timeIntervalSinceReferenceDate
-        guard let index = clock.tick(at: now) else { return }
-        requestFrame(index: index, descriptor: descriptor)
-    }
-
-    private func requestFrame(index: Int, descriptor: ImageDescriptor) {
-        guard let url = descriptor.sourceURL as URL? else { return }
-        // One decode at a time. Cancelling an in-flight frame decode throws the work
-        // away (ImageIO cannot abort mid-stream) and the next tick starts another, so
-        // the old code measured 195 decodes for 81 published frames. Skipping the tick
-        // instead keeps playback at the rate the decoder can actually sustain.
-        if let inFlight = onDemandFrameTask, !inFlight.isCancelled { return }
-        onDemandFrameTask = Task { [weak self] in
-            guard let self else { return }
-            let decoder = ImageIODecoder()
-            let frame = try? await decoder.decodeFrame(url, index: index)
-            await MainActor.run {
-                if let frame, !Task.isCancelled { self.viewerState.apply(frame: frame) }
-                self.onDemandFrameTask = nil
+        stopAnimationRefresh()
+        if canvas.window != nil {
+            animationRefreshTarget.tick = { [weak self] link in self?.animationTick(presentationTime: link.targetTimestamp) }
+            let link = canvas.displayLink(target: animationRefreshTarget, selector: #selector(AnimationRefreshTarget.fire))
+            let maximum = Float(canvas.window?.screen?.maximumFramesPerSecond ?? 60)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum, maximum: maximum, preferred: maximum)
+            link.add(to: .main, forMode: .common)
+            animationDisplayLink = link
+        } else {
+            // Tests / a viewer not yet attached to a screen still advance correctly.
+            let timer = Timer(timeInterval: 1.0 / 240.0, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.animationTick() }
             }
+            RunLoop.main.add(timer, forMode: .common); animationTimer = timer
+        }
+    }
+
+    private func synchronizeAnimationPlayback() {
+        let now = ProcessInfo.processInfo.systemUptime
+        if viewerState.playback == .playing {
+            if animationCompleted, let descriptor = viewerState.descriptor {
+                startAnimation(descriptor: descriptor, autoplay: true)
+                return
+            }
+            animationClock.resume(at: now)
+            animationBuffer?.updateClock(elapsed: animationClock.elapsed(at: now), running: true)
+            if animationTimeline != nil, animationTimer == nil, animationDisplayLink == nil { startAnimationTimer() }
+        } else {
+            animationClock.pause(at: now)
+            animationBuffer?.updateClock(elapsed: animationClock.elapsed(at: now), running: false)
+            canvas.discardAnimationPresentationInterval()
+            if animationClockStarted { stopAnimationRefresh() }
+        }
+    }
+
+    private func animationTick(presentationTime: Double? = nil) {
+        guard let buffer = animationBuffer, let timeline = animationTimeline else { return }
+        if let error = buffer.diagnostics.error {
+            stopAnimationRefresh()
+            viewerState.pausePlayback()
+            viewerState.errorMessage = error
+            errorLabel.stringValue = error; errorLabel.isHidden = false
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        // A display-link callback arrives before its intended refresh. Select the
+        // source frame for that refresh, rather than callback-arrival jitter.
+        let renderTime = presentationTime.map { $0.isFinite && $0 > now ? $0 : now } ?? now
+        guard animationClockStarted || buffer.isPrimed else { return }
+        // The clock begins only once frame zero is ready. Thereafter missing frames
+        // never shift the epoch; only an explicit user pause changes elapsed time.
+        let elapsed = animationClockStarted ? animationClock.elapsed(at: renderTime) : 0
+        let producerElapsed = animationClockStarted ? animationClock.elapsed(at: now) : nil
+        let position = timeline.position(at: elapsed)
+        if position.sequence != animationLastSequence,
+           let frame = buffer.frame(sequence: position.sequence, elapsed: producerElapsed,
+                                    minimumSequence: animationLastSequence + 1) {
+            if !animationClockStarted {
+                animationClock.start(at: renderTime); animationClockStarted = true
+                if viewerState.playback != .playing { animationClock.pause(at: now) }
+                buffer.updateClock(elapsed: 0, running: viewerState.playback == .playing)
+            }
+            if frame.texture != nil { canvas.animationFrame = frame; viewerState.frameIndex = frame.index }
+            else if let image = frame.bitmap {
+                // Keep the lease until this bitmap leaves the view, including redraws.
+                canvas.animationFrame = frame
+                viewerState.apply(frame: DecodedFrame(image: image, index: frame.index, duration: nil))
+            }
+            animationLastSequence = frame.sequence
+            canvas.recordAnimationPoll(sequence: position.sequence, at: now, available: frame.sequence == position.sequence)
+            if viewerState.playback != .playing { stopAnimationRefresh() }
+        } else if animationClockStarted {
+            canvas.recordAnimationPoll(sequence: position.sequence, at: now, available: position.sequence == animationLastSequence)
+            // A second frame lookup could consume and immediately discard a frame
+            // that became ready between the two calls. Update only the clock here.
+            buffer.updateClock(elapsed: producerElapsed ?? 0, running: viewerState.playback == .playing)
+        }
+        if position.finished, animationLastSequence == position.sequence {
+            animationCompleted = true
+            viewerState.pausePlayback(); stopAnimationRefresh()
+            buffer.stop() // the displayed lease survives; unused frames are released
         }
     }
 
@@ -1932,8 +2028,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             drawerView: drawer,
             minimapView: minimap,
             topBarView: toolDock,
-            isAnimationTimerActive: animationTimer != nil,
-            activeAnimationClocks: animationTimer == nil ? 0 : 1
+            isAnimationTimerActive: animationTimer != nil || animationDisplayLink != nil,
+            activeAnimationClocks: animationTimer == nil && animationDisplayLink == nil ? 0 : 1
         )
     }
 
@@ -1966,4 +2062,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             super.keyDown(with: event)
         }
     }
+}
+
+/// CADisplayLink retains its target; the closure holds the viewer weakly.
+@MainActor
+private final class AnimationRefreshTarget: NSObject {
+    var tick: ((CADisplayLink) -> Void)?
+    @objc func fire(_ link: CADisplayLink) { tick?(link) }
 }

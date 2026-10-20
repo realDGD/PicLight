@@ -151,13 +151,13 @@ final class OpenPathTests: XCTestCase {
         }
         let declared = Set(SupportedImageTypes.requiredContentTypes.map(\.identifier))
         for ext in SupportedImageTypes.requiredExtensions {
-            let type = UTType(filenameExtension: ext)
+            let type = ext == "apng" ? SupportedImageTypes.apngContentType : UTType(filenameExtension: ext)
             XCTAssertNotNil(type, "\(ext) must resolve to a UTType")
             XCTAssertTrue(declared.contains(type?.identifier ?? ""),
                           "\(ext) resolves to \(type?.identifier ?? "nil"), which is not declared to Finder")
         }
         // Aliases share a type on purpose: jpg/jpeg and tif/tiff.
-        XCTAssertEqual(declared.count, 7, "seven UTIs cover the nine extensions")
+        XCTAssertEqual(declared.count, 8, "eight UTIs cover the ten extensions")
     }
 
     func testExtensionAliasesRouteToTheSameTypes() {

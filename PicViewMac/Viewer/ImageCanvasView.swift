@@ -1,4 +1,5 @@
 import AppKit
+import Metal
 
 /// Layer-backed canvas that draws the current `RenderImage` with the viewport
 /// transform. Color-space information travels with the image; nothing is
@@ -19,6 +20,22 @@ public final class ImageCanvasView: NSView {
     /// The bitmap currently on screen. Read-only on purpose: pixels cannot be
     /// published without the geometry they belong to.
     public var image: CGImage? { renderImage?.bitmap }
+
+    /// Already uploaded by the animation worker; drawing only binds this texture.
+    var animationFrame: AnimationFrameLease? {
+        didSet {
+            if animationFrame?.texture != nil { metalRenderer?.discardProxyTexture() }
+            pushToMetal(); needsDisplay = true
+        }
+    }
+    var animationDevice: MTLDevice? { metalRenderer?.device }
+    var animationPresentationSnapshot: AnimationPresentationMetrics.Snapshot? {
+        metalSurface?.animationPresentationMetrics.snapshot
+    }
+    func discardAnimationPresentationInterval() { metalSurface?.animationPresentationMetrics.discardInterval() }
+    func recordAnimationPoll(sequence: Int, at time: Double, available: Bool) {
+        metalSurface?.animationPresentationMetrics.poll(sequence: sequence, at: time, available: available)
+    }
 
     /// Native-detail tiles drawn over the bounded proxy. The proxy is always drawn
     /// first, so a missing or late tile degrades to exactly what was on screen before
@@ -66,7 +83,7 @@ public final class ImageCanvasView: NSView {
     /// source-rectangle geometry, never an oversized native decode.
     public var isUsingMetalForCurrentImage: Bool {
         guard metalSurface != nil, let renderImage else { return false }
-        return MetalImageRenderer.canRender(renderImage.bitmap)
+        return animationFrame?.texture != nil || MetalImageRenderer.canRender(renderImage.bitmap)
     }
 
     /// Metal is set up only inside a real window, so headless tests and the drawing
@@ -104,11 +121,12 @@ public final class ImageCanvasView: NSView {
 
     private func pushToMetal() {
         guard let surface = metalSurface else { return }
-        let renderable = renderImage.map { MetalImageRenderer.canRender($0.bitmap) } ?? false
+        let renderable = animationFrame?.texture != nil || (renderImage.map { MetalImageRenderer.canRender($0.bitmap) } ?? false)
+        surface.isHidden = !renderable
         let renderableTiles = renderable ? nativeTiles.filter { MetalImageRenderer.canRender($0.image) } : []
         surface.update(renderImage: renderable ? renderImage : nil,
                        nativeTiles: renderableTiles,
-                       viewport: viewport, backgroundColor: backgroundColor)
+                       viewport: viewport, backgroundColor: backgroundColor, animationFrame: animationFrame)
     }
 
     public var wheelMode: WheelMode = .zoom { didSet { router.wheelMode = wheelMode } }

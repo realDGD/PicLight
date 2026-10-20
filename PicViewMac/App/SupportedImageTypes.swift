@@ -4,13 +4,16 @@ import UniformTypeIdentifiers
 /// Fast eligibility filter for the v0.1 format set. Decoder inspection stays
 /// authoritative; this only decides whether a file is worth listing.
 public enum SupportedImageTypes {
+    /// macOS does not consistently tag the .apng extension as public.png.
+    /// The bundle imports this PNG subtype for Finder and the native open panel.
+    public static let apngContentType = UTType(importedAs: "com.piclight.apng", conformingTo: .png)
     /// v0.1 hard-required formats. HEIC/HEIF are deliberately not advertised.
     public static let requiredExtensions: Set<String> = [
-        "bmp", "gif", "ico", "png", "jpg", "jpeg", "tif", "tiff", "webp"
+        "bmp", "gif", "ico", "png", "apng", "jpg", "jpeg", "tif", "tiff", "webp"
     ]
 
     public static var requiredContentTypes: [UTType] {
-        [.bmp, .gif, .ico, .png, .jpeg, .tiff, .webP]
+        [.bmp, .gif, .ico, .png, apngContentType, .jpeg, .tiff, .webP]
     }
 
     public static func isCandidate(_ url: URL) -> Bool {
