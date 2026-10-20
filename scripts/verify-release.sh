@@ -107,10 +107,10 @@ if [ -f "$BUNDLE_IN_APP/Contents/Resources/default.metallib" ]; then
     METALLIB_REQUIRED=1
 elif [ "${PICLIGHT_ALLOW_SOURCE_SHADER:-0}" = "1" ]; then
     echo "SKIPPED: compiled Metal library absent — development build (PICLIGHT_ALLOW_SOURCE_SHADER=1)."
-    echo "         A release must be built where \`xcrun metal\` works."
+    echo "         A release must package a validated precompiled default.metallib."
     METALLIB_REQUIRED=0
 else
-    fail "compiled Metal library missing (build with the Metal toolchain)"
+    fail "compiled Metal library missing (refresh precompiled resources and rebuild the app)"
     METALLIB_REQUIRED=0
 fi
 

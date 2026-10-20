@@ -1,0 +1,53 @@
+{
+  "resources": {
+    "icon": {
+      "artifact": {
+        "path": "Assets.car",
+        "sha256": "95e552b9544b59c68bf185ed51d7e2b7fcc8affd6fb9dda5e743c45dab78b9be"
+      },
+      "compiler": {
+        "sdk_version": "27.0",
+        "tools": {
+          "actool": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>com.apple.actool.version</key>\n\t<dict>\n\t\t<key>bundle-version</key>\n\t\t<string>25098</string>\n\t\t<key>short-bundle-version</key>\n\t\t<string>27.1</string>\n\t</dict>\n</dict>\n</plist>"
+        }
+      },
+      "configuration": {
+        "app_icon": "PicLight",
+        "minimum_system_version": "14.0",
+        "platform": "macosx",
+        "recipe": 1,
+        "target_device": "mac"
+      },
+      "generated_at_utc": "2026-10-20T09:47:55.898598+00:00",
+      "inputs": {
+        "Resources/AppIcon/PicLight.icns": "890acf31e6760313b818dbf5afb7e871f80b9fbf9ec24bc9bd30a7b657537cb9",
+        "Resources/AppIcon/PicLight.icon/Assets/beam.svg": "7cb1981029fc2be88605d90edd65546a2692bc40be4471dc75ee98c987b7ce45",
+        "Resources/AppIcon/PicLight.icon/Assets/foreground.png": "ee0c262277941f3924539806c70980f8f614c3de6d4419c87f1d9a8feff857b6",
+        "Resources/AppIcon/PicLight.icon/icon.json": "51bb38714520d66e9c62c8ba001d89763d4fd91822b5d6b628b23c26cd6ed4b0"
+      }
+    },
+    "metal": {
+      "artifact": {
+        "path": "default.metallib",
+        "sha256": "27724ed054c320f9f410d4aa4dfb2a628a12515d3463cbd8e17e61186f22e380"
+      },
+      "compiler": {
+        "sdk_version": "27.0",
+        "tools": {
+          "metal": "Apple metal version 32023.921 (metalfe-32023.921.6)\nTarget: air64-apple-darwin27.0.0\nThread model: posix",
+          "metallib": "AIR-LLD 32023.921 (metalfe-32023.921.6) (compatible with legacy metallib linker)"
+        }
+      },
+      "configuration": {
+        "platform": "macosx",
+        "recipe": 1,
+        "target": "air64-apple-macos14.0"
+      },
+      "generated_at_utc": "2026-10-20T09:47:57.112649+00:00",
+      "inputs": {
+        "PicViewMac/Shaders/ImageShaders.metal": "9748728ba6a72c59b875d18e23414c3151cc4df5009a3a2fb5a51c6c3927cbb0"
+      }
+    }
+  },
+  "schema": 1
+}
