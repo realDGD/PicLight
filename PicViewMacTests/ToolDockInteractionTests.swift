@@ -32,7 +32,10 @@ final class ToolDockInteractionTests: XCTestCase {
 
     func testThePinIsNotAnImageCommand() {
         let dock = self.dock()
-        XCTAssertEqual(dock.commands, ViewerToolDockView.toolDefinitions.map(\.command),
+        XCTAssertEqual(dock.commands, ViewerToolDockView.layout.compactMap {
+                           if case let .command(_, command, _) = $0 { return command }
+                           return nil
+                       },
                        "the pin and the playback button are not viewer commands")
         // Clicking it must not run a viewer command either.
         var commands: [ViewerCommand] = []

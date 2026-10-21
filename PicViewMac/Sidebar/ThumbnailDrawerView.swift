@@ -1,14 +1,10 @@
 import AppKit
 
-/// Left-edge overlay drawer. It overlays the image and never reflows the canvas,
-/// so opening it cannot change canvas frame or zoom state. Rows are virtualized
-/// by `NSTableView`, so a folder with thousands of images stays responsive.
+/// The image viewer's thumbnail column. The owner reserves its width in the
+/// canvas layout. `NSTableView` virtualizes rows so large folders stay responsive.
 public final class ThumbnailDrawerView: MaterialHostView {
     public static let minimumWidth: CGFloat = 180
     public static let maximumWidth: CGFloat = 220
-    /// Edge strip that reveals the unpinned drawer. Wide enough to hit without
-    /// aiming, narrow enough that it never feels like part of the image.
-    public static let hotZoneWidth: CGFloat = 24
 
     public var onSelect: ((Int) -> Void)?
     /// Asks the owner to produce a thumbnail for a row that just became visible.
@@ -21,10 +17,6 @@ public final class ThumbnailDrawerView: MaterialHostView {
     private var items: [FolderItem] = []
     private var currentIndex: Int?
     private var isApplyingSelectionProgrammatically = false
-
-    public var filenameMode: ThumbnailFilenameMode = .hover {
-        didSet { tableView.reloadData() }
-    }
 
     public override init(style: Style = .drawer) {
         super.init(style: style)
@@ -96,6 +88,12 @@ public final class ThumbnailDrawerView: MaterialHostView {
         return true
     }
 
+    /// The cell for a row, materialized if necessary, for tests of the cell contract as the
+    /// drawer's own data source builds it.
+    func cellForTesting(row: Int) -> ThumbnailCellView? {
+        tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ThumbnailCellView
+    }
+
     /// The image a row is showing, for tests of the delivery identity.
     func thumbnailImageForTesting(at index: Int) -> CGImage? {
         guard let cell = tableView.view(atColumn: 0, row: index, makeIfNecessary: true)
@@ -116,6 +114,24 @@ public final class ThumbnailDrawerView: MaterialHostView {
     }
 
     public var visibleRowCount: Int { items.count }
+
+    /// How many rows above and below the visible rectangle the drawer prefetches. Small on purpose:
+    /// it is also the band whose thumbnails the owner is allowed to keep in memory.
+    static let prefetchRowCount = 8
+
+    /// The rows the drawer wants thumbnails for right now: the visible rectangle plus the prefetch
+    /// band. This is the window the owner's thumbnail cache is bounded to — without it the cache
+    /// grew with everything the user ever scrolled past (measured: 200 thumbnails, ≈69 MiB, still
+    /// held after the folder list was emptied).
+    var thumbnailWindow: Set<Int> {
+        guard !items.isEmpty else { return [] }
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.location != NSNotFound, visible.length > 0 else { return [] }
+        let lower = max(0, visible.location - Self.prefetchRowCount)
+        let upper = min(items.count - 1, visible.location + visible.length - 1 + Self.prefetchRowCount)
+        guard lower <= upper else { return [] }
+        return Set(lower...upper)
+    }
 
 
 
@@ -149,7 +165,7 @@ extension ThumbnailDrawerView: NSTableViewDelegate {
             as? ThumbnailCellView) ?? ThumbnailCellView(frame: .zero)
         let item = items[row]
         cell.configure(item: item, image: thumbnailProvider?(item),
-                       isCurrent: row == currentIndex, filenameMode: filenameMode)
+                       isCurrent: row == currentIndex)
         // The owner fills missing thumbnails in the background.
         if thumbnailProvider?(item) == nil { onThumbnailNeeded?(row, item) }
         return cell

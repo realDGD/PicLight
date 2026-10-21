@@ -38,6 +38,7 @@ final class ThumbnailRequestTests: XCTestCase {
         // A window that releases itself on close leaves the table view dangling: closing it in the
         // test teardown then crashes in objc_release.
         window.isReleasedWhenClosed = false
+        TestAppKit.prepareForOffScreen(window)
         let drawer = ThumbnailDrawerView()
         drawer.frame = NSRect(x: 0, y: 0, width: 200, height: height)
         window.contentView = drawer
@@ -244,11 +245,19 @@ final class ThumbnailRequestStateTests: XCTestCase {
     func testAQueuedRetryIsDroppedWhenTheUserMovesToAnotherItem() throws {
         let (viewer, controller, item) = try makeViewer()
         defer { controller.close() }
-        // Catch the first request for the current item, which happens before its bitmap exists.
+        // Catch the first request for the current item. The gate suspends it, so it stays in
+        // flight for the rest of the test.
         let gate = PauseGate()
         viewer.thumbnailPauseHook = gate.hookAll
         XCTAssertTrue(pump(until: { viewer.thumbnailRequestsForTesting(item.url) == 1 }, timeout: 15),
                       "the first request must be running")
+        // The retry path only queues behind a *live* request for an image that is on screen — that
+        // is what `retryCurrentItemThumbnail` guards on. Which of the two happens first (the drawer
+        // asking for the row, the bitmap arriving) is a race this test must not depend on, so the
+        // precondition is stated rather than assumed. The suspended request cannot have finished,
+        // so waiting for the bitmap does not weaken the scenario.
+        XCTAssertTrue(pump(until: { viewer.viewerState.currentImage != nil }, timeout: 15),
+                      "the current item's bitmap must be on screen before the retry")
         viewer.retryCurrentItemThumbnail()          // queued behind the running request
         XCTAssertGreaterThanOrEqual(viewer.thumbnailRequestDiagnostics().retryQueued, 1)
 

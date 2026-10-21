@@ -96,6 +96,20 @@ final class EmptyStateView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// A transparent or hidden overlay takes no events.
+    ///
+    /// This view is laid out over the whole window, and its visibility is a *pair*: `isHidden` and
+    /// `alphaValue`. Something that sets only one of them — measured: `setImageModeViewsHidden(false)`
+    /// on the way out of the folder browser, which unhid this view while it was still at alpha 0 —
+    /// leaves it invisible but perfectly hit-testable, and it then swallows every gesture over the
+    /// picture. Reported as "pinch-to-zoom does nothing after opening an image from the folder
+    /// browser", with a trace showing `target=NSStackView hidden=false alpha=0.0` for every magnify
+    /// event and not one reaching the canvas.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, alphaValue > 0.01 else { return nil }
+        return super.hitTest(point)
+    }
+
     func apply(reason: Reason) {
         self.reason = reason
         titleLabel.stringValue = reason.title

@@ -10,27 +10,29 @@ final class ThumbnailSelectionBorderTests: XCTestCase {
         try await super.setUp()
         TestAppKit.ensureApplication()
     }
-    func testSelectionBorderIsTheTopmostLayerAroundTheThumbnail() {
+    func testSelectionBorderIsTheTopmostLayerAroundTheWholeCard() {
         let item = FolderItem(url: URL(fileURLWithPath: "/tmp/a.png"))
         let cell = ThumbnailCellView(frame: NSRect(x: 0, y: 0, width: 200, height: 168))
-        cell.configure(item: item, image: Fixtures.thumbnail(), isCurrent: false,
-                       filenameMode: .hover)
+        cell.configure(item: item, image: Fixtures.thumbnail(), isCurrent: false)
         cell.layoutSubtreeIfNeeded()
 
         let border = cell.selectionBorderView
-        let image = cell.thumbnailImageView
-        let imageIndex = cell.subviews.firstIndex(of: image) ?? -1
+        // The image now lives inside the square slot, so the ordering to check is the frame
+        // against the slot that contains it.
+        let slot = cell.thumbnailSlotView
+        let slotIndex = cell.subviews.firstIndex(of: slot) ?? -1
         let borderIndex = cell.subviews.firstIndex(of: border) ?? -1
-        XCTAssertGreaterThanOrEqual(imageIndex, 0)
-        XCTAssertGreaterThan(borderIndex, imageIndex,
+        XCTAssertGreaterThanOrEqual(slotIndex, 0)
+        XCTAssertGreaterThan(borderIndex, slotIndex,
                              "the frame must be added above the thumbnail, not below it")
         XCTAssertTrue(border.wantsLayer)
         XCTAssertEqual(border.layer?.borderWidth, 2)
         XCTAssertEqual(border.layer?.borderColor, NSColor.controlAccentColor.cgColor)
 
-        // The frame surrounds the image area rather than the whole row.
-        XCTAssertGreaterThan(border.frame.width, image.frame.width,
-                             "the frame is slightly larger than the image it frames")
+        // The frame encloses the thumbnail, filename, and complete tinted card.
+        XCTAssertEqual(border.frame, cell.selectionBackgroundView.frame)
+        XCTAssertTrue(border.frame.contains(cell.nameLabelView.frame),
+                      "the selected filename must be inside the accent frame")
         XCTAssertLessThan(border.frame.width, cell.bounds.width,
                           "the frame does not span the entire row")
     }
@@ -38,8 +40,7 @@ final class ThumbnailSelectionBorderTests: XCTestCase {
     func testSelectionBorderTracksTheCurrentItemAndIgnoresClicks() {
         let item = FolderItem(url: URL(fileURLWithPath: "/tmp/a.png"))
         let cell = ThumbnailCellView(frame: NSRect(x: 0, y: 0, width: 200, height: 168))
-        cell.configure(item: item, image: Fixtures.thumbnail(), isCurrent: false,
-                       filenameMode: .hover)
+        cell.configure(item: item, image: Fixtures.thumbnail(), isCurrent: false)
         XCTAssertTrue(cell.selectionBorderView.isHidden, "not the current item: no frame")
 
         cell.setCurrent(true)

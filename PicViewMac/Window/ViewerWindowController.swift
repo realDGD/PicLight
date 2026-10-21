@@ -6,8 +6,25 @@ import AppKit
 public final class ViewerWindowController: NSWindowController {
     public let viewerViewController: ViewerViewController
 
+    /// Whether this window has a picture to show — on screen, or still decoding. An empty window is a
+    /// placeholder, and a file opened while one is up belongs in it (see `AppEnvironment.open`).
+    public var isShowingPicture: Bool {
+        viewerViewController.isShowingPicture
+    }
+
+    /// Whether this window has already been handed a file. A window that has is not the empty
+    /// placeholder any more, even before its picture arrives: opening three files in a row must produce
+    /// three windows, not one window that keeps replacing itself.
+    public private(set) var hasReceivedFileRequest = false
+
+    public func noteFileRequested() {
+        hasReceivedFileRequest = true
+    }
+
     private var drawerButton: NSButton?
     private var drawerAccessory: NSTitlebarAccessoryViewController?
+    private var sizeAccessory: NSTitlebarAccessoryViewController?
+    private let sizeLabel = NSTextField(labelWithString: "")
 
     public convenience init() {
         self.init(viewer: ViewerViewController())
@@ -22,6 +39,7 @@ public final class ViewerWindowController: NSWindowController {
             visibleFrame: NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         )
         let window = ViewerWindow(contentRect: contentRect)
+        window.level = AppSettings.shared.defaultAlwaysOnTop ? .floating : .normal
         self.viewerViewController = viewer
         super.init(window: window)
         window.contentViewController = viewerViewController
@@ -29,18 +47,76 @@ public final class ViewerWindowController: NSWindowController {
         viewerViewController.onDescriptorAvailable = { [weak self] descriptor in
             self?.applyImageSizedFrameIfNeeded(imagePixels: descriptor.displayPixelSize)
         }
+        viewerViewController.onSizeReadoutChanged = { [weak self] text in
+            self?.updateSizeReadout(text)
+        }
         viewerViewController.onTitleChanged = { [weak self] name in
             self?.window?.title = name ?? "PicLight"
         }
-        viewerViewController.onDrawerPinnedChanged = { [weak self] pinned in
-            self?.updateDrawerButton(pinned: pinned)
+        viewerViewController.onDrawerOpenChanged = { [weak self] open in
+            self?.updateDrawerButton(open: open)
         }
+        // The button renders whichever left column is in force: the drawer in the image mode, the
+        // folder tree while the browser is up.
+        viewerViewController.onLeftColumnChanged = { [weak self] open in
+            self?.updateDrawerButton(open: open)
+        }
+        // The titlebar mode is a window property, so the window applies it as soon as it exists.
+        viewerViewController.onTitlebarModeNeeded = { [weak self] in
+            self?.viewerViewController.applyTitlebarModeForWindow()
+        }
+        viewerViewController.applyTitlebarModeForWindow()
         installDrawerTitlebarButton()
+        installSizeReadout()
+        // Both accessories were added after the window applied its titlebar state, so they have to be
+        // brought into line with it now: an accessory that appears afterwards would sit in the bar on
+        // its own, and with the auto-hide bar away that means floating over the picture.
+        (window as? ViewerWindow)?.refreshTrafficLights()
         window.setFrame(contentRect, display: false)
         window.center()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    // MARK: - Pixel size in the titlebar
+
+    /// The picture's pixel size, in the titlebar's trailing corner — a native accessory, so it lives in
+    /// the bar the system draws rather than on a surface of our own. Empty while nothing is on screen.
+    private func installSizeReadout() {
+        sizeLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        sizeLabel.textColor = .secondaryLabelColor
+        sizeLabel.alignment = .right
+        sizeLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        sizeLabel.setFrameSize(NSSize(width: 120, height: 16))
+
+        // AppKit stretches a side accessory to the titlebar's full height. A label
+        // used as the accessory itself draws at that expanded rectangle's top edge.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 140, height: 32))
+        sizeLabel.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(sizeLabel)
+        NSLayoutConstraint.activate([
+            sizeLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            sizeLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            sizeLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            sizeLabel.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .right
+        accessory.view = container
+        window?.addTitlebarAccessoryViewController(accessory)
+        sizeAccessory = accessory
+        (window as? ViewerWindow)?.viewerAccessories.append(accessory)
+        (window as? ViewerWindow)?.imageOnlyAccessories.append(accessory)
+    }
+
+    /// Called by the viewer whenever the picture changes.
+    fileprivate func updateSizeReadout(_ text: String) {
+        sizeLabel.stringValue = text
+        sizeLabel.isHidden = text.isEmpty
+    }
+
+    /// What the bar says, for tests.
+    var sizeReadoutTextForTesting: String { sizeLabel.stringValue }
 
     // MARK: - Drawer control in the titlebar
 
@@ -64,25 +140,37 @@ public final class ViewerWindowController: NSWindowController {
         accessory.view = button
         window?.addTitlebarAccessoryViewController(accessory)
         drawerAccessory = accessory
-        updateDrawerButton(pinned: viewerViewController.isDrawerPinned)
+        // Registered with the window so it can be taken out of the titlebar when the bar is away
+        // and put back when the bar appears: a titlebar accessory's `isHidden` does not take its
+        // view out of a `.fullSizeContentView` window, which left the button floating over the
+        // content (and, once the lights were revealed, on top of them).
+        (window as? ViewerWindow)?.viewerAccessories.append(accessory)
+        updateDrawerButton(open: viewerViewController.isDrawerOpen)
+        // The accessory was added after the window applied its titlebar state, so it has to be
+        // brought into line with it now: an accessory that appears after the bar has hidden would
+        // otherwise sit over the image on its own.
+        (window as? ViewerWindow)?.refreshTrafficLights()
     }
 
     /// Size of the titlebar drawer control.
     static let drawerButtonSize = NSSize(width: 30, height: 22)
 
-    fileprivate func updateDrawerButton(pinned: Bool) {
+    fileprivate func updateDrawerButton(open: Bool) {
         let symbol = NSImage(
-            systemSymbolName: pinned ? "rectangle.lefthalf.inset.filled" : "sidebar.left",
-            accessibilityDescription: pinned ? "关闭左栏" : "打开左栏"
+            systemSymbolName: open ? "rectangle.lefthalf.inset.filled" : "sidebar.left",
+            accessibilityDescription: open ? "关闭左栏" : "打开左栏"
         )?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .regular))
         drawerButton?.image = symbol
-        drawerButton?.toolTip = pinned ? "关闭左栏" : "打开左栏"
-        drawerButton?.setAccessibilityLabel(pinned ? "关闭左栏" : "打开左栏")
-        drawerButton?.contentTintColor = pinned ? .controlAccentColor : nil
+        drawerButton?.toolTip = open ? "关闭左栏" : "打开左栏"
+        drawerButton?.setAccessibilityLabel(open ? "关闭左栏" : "打开左栏")
+        drawerButton?.contentTintColor = open ? .controlAccentColor : nil
     }
 
     @objc private func toggleDrawerFromTitlebar() {
-        viewerViewController.toggleDrawerPinned()
+        // Mode-aware: the browser's left column is the folder tree, the image mode's is the
+        // thumbnail drawer. Driving the drawer unconditionally left the button doing nothing
+        // visible while the browser was up.
+        viewerViewController.toggleLeftColumn()
     }
 
     /// The titlebar drawer button, for tests.
@@ -125,13 +213,46 @@ extension ViewerWindowController: NSWindowDelegate {
     public func windowWillClose(_ notification: Notification) {
         viewerViewController.cancelFolderRequest()
         rememberContentSize()
+        // The viewer's repeating chrome tick belongs to the window it was started for.
+        viewerViewController.stopChromeTimer()
     }
 
     public func windowDidExitFullScreen(_ notification: Notification) {
         rememberContentSize()
+        // The system has handed the top strip back: re-apply the user's titlebar mode and state.
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    public func windowDidEnterFullScreen(_ notification: Notification) {
+        viewerViewController.windowTitlebarContextChanged()
     }
 
     public func windowDidResize(_ notification: Notification) {
         rememberContentSize()
+        // AppKit re-lays out the titlebar on a resize, which can bring the controls back.
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    public func windowDidBecomeKey(_ notification: Notification) {
+        viewerViewController.windowTitlebarContextChanged()
+        viewerViewController.restoreImageInputFocus()
+    }
+
+    public func windowDidResignKey(_ notification: Notification) {
+        viewerViewController.windowTitlebarContextChanged()
+    }
+
+    /// A window drag must not hide the bar the user is dragging by. `windowWillMove` is the start;
+    /// the end is the last `windowDidMove`, and a run loop turn after it the block is lifted.
+    public func windowWillMove(_ notification: Notification) {
+        viewerViewController.setTitlebarBlocked(.windowDrag, true)
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        viewerViewController.titlebarDragDidContinue()
+    }
+
+    public func windowDidChangeOcclusionState(_ notification: Notification) {
+        viewerViewController.refreshTitlebarBlocks()
     }
 }

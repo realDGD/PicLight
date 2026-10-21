@@ -23,23 +23,47 @@ extension DimensionProbing {
 }
 
 public actor DimensionProbe: DimensionProbing {
-    private var longEdges: [String: Int] = [:]
-    private var inFlight: [String: Task<Int?, Never>] = [:]
+    /// One remembered answer, with the version of the file it was read from.
+    private struct Entry {
+        let version: String
+        let longEdge: Int
+    }
+
+    private var longEdges: [String: Entry] = [:]
+    private var inFlight: [String: InFlight] = [:]
 
     public init() {}
 
     /// Longest source edge in pixels, or nil when the header cannot be read.
+    ///
+    /// The remembered answer belongs to a *version* of the file, not to its path: an editor saving
+    /// over the path changes the bytes, and a path-keyed answer then kept classifying the new file by
+    /// the old one's size — measured as a 32×24 replacement still answering 8192. The version is one
+    /// `stat`, and the answer is only reused when it still describes the file at that path.
+    /// A read in flight, and the version it is reading. Joined only by requests for the same
+    /// version: a file replaced while its header is being read is a different question, and reusing
+    /// the old answer would classify the new file by the old one's size.
+    private struct InFlight {
+        let version: String
+        let task: Task<Int?, Never>
+    }
+
     public func longEdge(of url: URL) async -> Int? {
-        if let cached = longEdges[url.path] { return cached }
-        if let existing = inFlight[url.path] { return await existing.value }
+        let version = SourceFileIdentity.read(at: url).versionToken
+        if let cached = longEdges[url.path], cached.version == version { return cached.longEdge }
+        if let existing = inFlight[url.path], existing.version == version {
+            return await existing.task.value
+        }
 
         let task = Task.detached(priority: .utility) { () -> Int? in
             DimensionProbe.readLongEdge(of: url)
         }
-        inFlight[url.path] = task
+        inFlight[url.path] = InFlight(version: version, task: task)
         let value = await task.value
-        inFlight[url.path] = nil
-        if let value { longEdges[url.path] = value }
+        // Only the request that started this read may clear it: a newer version may have replaced
+        // the entry while this one was suspended.
+        if inFlight[url.path]?.version == version { inFlight[url.path] = nil }
+        if let value { longEdges[url.path] = Entry(version: version, longEdge: value) }
         return value
     }
 

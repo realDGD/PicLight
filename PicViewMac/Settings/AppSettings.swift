@@ -1,15 +1,74 @@
 import Foundation
 
-public enum ThumbnailFilenameMode: String, CaseIterable, Codable, Sendable {
-    case never
-    case always
-    case hover
+/// What the titlebar does. Auto-hide is the default for a new install and for anyone who has never
+/// chosen: the key is new, so an existing install has no value for it and reads the default.
+/// What the tool dock is made of.
+///
+/// Three looks, all three the system's own surfaces — nothing hand-drawn:
+/// - `.frosted`: the HUD material, an opaque-ish frosted panel (`NSVisualEffectView`, `.hudWindow`).
+/// - `.liquidGlass`: native glass on macOS 26+, the regular variant, which is what the dock has always
+///   used where the OS offers it.
+/// - `.sidebar`: the left column's material, more opaque, for reading over a busy picture.
+public enum DockSurface: String, CaseIterable, Codable, Sendable {
+    case frosted
+    case liquidGlass
+    case sidebar
 
     public var localizedName: String {
         switch self {
-        case .never: return "从不"
-        case .always: return "始终"
-        case .hover: return "悬停时"
+        case .frosted: return "磨砂玻璃"
+        case .liquidGlass: return "Liquid Glass"
+        case .sidebar: return "左栏材质"
+        }
+    }
+}
+
+/// Which way a mouse wheel (or a smooth-scrolling mouse) moves the picture in pan mode.
+///
+/// The two devices genuinely disagree, so the default detects which one sent the event and the user
+/// can override it when the detection guesses wrong for their hardware — which is exactly what happened
+/// with a smooth-scrolling mouse, whose events look like a trackpad's.
+public enum WheelPanDirection: String, CaseIterable, Codable, Sendable {
+    /// Decide per event: a trackpad reports a gesture phase, a wheel does not.
+    case automatic
+    /// Wheel up means "go up the picture": the picture moves down and what was above comes into view.
+    case document
+    /// Wheel up moves the picture up, following the wheel the way a finger drag does.
+    case followGesture
+
+    public var localizedName: String {
+        switch self {
+        case .automatic: return "自动（按设备判断）"
+        case .document: return "上滚看上方（文档式）"
+        case .followGesture: return "上滚看下方（跟手式）"
+        }
+    }
+}
+
+public enum TitlebarBehavior: String, CaseIterable, Codable, Sendable {
+    case autoHide
+    case alwaysVisible
+    case alwaysHidden
+
+    public var localizedName: String {
+        switch self {
+        case .autoHide: return "自动"
+        case .alwaysVisible: return "显示"
+        case .alwaysHidden: return "隐藏"
+        }
+    }
+}
+
+public enum ChromeDisplayPolicy: String, CaseIterable, Codable, Sendable {
+    case automatic
+    case alwaysVisible
+    case alwaysHidden
+
+    public var localizedName: String {
+        switch self {
+        case .automatic: return "自动"
+        case .alwaysVisible: return "显示"
+        case .alwaysHidden: return "隐藏"
         }
     }
 }
@@ -52,25 +111,6 @@ public enum DeleteFollowUp: String, CaseIterable, Codable, Sendable {
     }
 }
 
-public enum BottomInfoField: String, CaseIterable, Codable, Sendable {
-    case index
-    case zoom
-    case dimensions
-    case fileSize
-    case fileType
-    case colorSpace
-
-    public var localizedName: String {
-        switch self {
-        case .index: return "序号 / 总数"
-        case .zoom: return "缩放"
-        case .dimensions: return "像素尺寸"
-        case .fileSize: return "文件大小"
-        case .fileType: return "类型"
-        case .colorSpace: return "色彩空间"
-        }
-    }
-}
 
 public enum AnimationLoopPreference: String, CaseIterable, Codable, Sendable {
     case followSource
@@ -102,13 +142,13 @@ public final class AppSettings {
 
     private func registerDefaults() {
         defaults.register(defaults: [
-            Key.thumbnailFilenames: ThumbnailFilenameMode.hover.rawValue,
             Key.sortKey: ImageSortKey.filename.rawValue,
+            Key.titlebar: TitlebarBehavior.autoHide.rawValue,
+            Key.dockSurface: DockSurface.liquidGlass.rawValue,
+            Key.wheelPanDirection: WheelPanDirection.automatic.rawValue,
             Key.sortDirection: SortDirection.ascending.rawValue,
             Key.openBehavior: OpenBehavior.newWindow.rawValue,
             Key.showTopFilename: true,
-            Key.bottomFields: [BottomInfoField.index, .zoom, .dimensions]
-                .map(\.rawValue),
             Key.windowSizing: WindowSizingPolicy.rememberLastSize.rawValue,
             Key.wheelMode: WheelMode.zoom.rawValue,
             Key.swipeMode: SwipeMode.smart.rawValue,
@@ -118,16 +158,27 @@ public final class AppSettings {
             Key.deleteFollowUp: DeleteFollowUp.smart.rawValue,
             Key.appearance: ViewerAppearanceMode.system.rawValue,
             Key.immersive: false,
+            Key.quitAfterLastWindowClosed: true,
+            Key.loopBrowsing: false,
+            Key.defaultAlwaysOnTop: false,
+            Key.hideMinimap: false,
+            Key.confirmBeforeTrash: false,
+            Key.wheelZoomSensitivity: 0.0015,
+            Key.dockDisplayPolicy: ChromeDisplayPolicy.automatic.rawValue,
+            Key.navigationDisplayPolicy: ChromeDisplayPolicy.automatic.rawValue,
+            Key.excludedExtensions: [String](),
+            Key.promptForFolderAccess: true,
         ])
     }
 
     private enum Key {
-        static let thumbnailFilenames = "thumbnailFilenames"
         static let sortKey = "sortKey"
+        static let titlebar = "titlebar"
+        static let dockSurface = "dockSurface"
+        static let wheelPanDirection = "wheelPanDirection"
         static let sortDirection = "sortDirection"
         static let openBehavior = "openBehavior"
         static let showTopFilename = "showTopFilename"
-        static let bottomFields = "bottomFields"
         static let windowSizing = "windowSizing"
         static let lastWindowSize = "lastWindowSize"
         static let wheelMode = "wheelMode"
@@ -138,17 +189,48 @@ public final class AppSettings {
         static let deleteFollowUp = "deleteFollowUp"
         static let appearance = "appearance"
         static let immersive = "immersive"
+        static let quitAfterLastWindowClosed = "quitAfterLastWindowClosed"
+        static let loopBrowsing = "loopBrowsing"
+        static let defaultAlwaysOnTop = "defaultAlwaysOnTop"
+        static let hideMinimap = "hideMinimap"
+        static let confirmBeforeTrash = "confirmBeforeTrash"
+        static let wheelZoomSensitivity = "wheelZoomSensitivity"
+        static let dockDisplayPolicy = "dockDisplayPolicy"
+        static let navigationDisplayPolicy = "navigationDisplayPolicy"
+        static let excludedExtensions = "excludedExtensions"
+        static let promptForFolderAccess = "promptForFolderAccess"
     }
 
     private func notify() {
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
 
-    // MARK: - Thumbnails and sorting
+    // MARK: - Browsing and sorting
 
-    public var thumbnailFilenames: ThumbnailFilenameMode {
-        get { ThumbnailFilenameMode(rawValue: defaults.string(forKey: Key.thumbnailFilenames) ?? "") ?? .hover }
-        set { defaults.set(newValue.rawValue, forKey: Key.thumbnailFilenames); notify() }
+    // There is deliberately no thumbnail-filename preference. Drawer filenames are always
+    // shown; the old `thumbnailFilenames` key is not read here, so a value left in the
+    // defaults by an older build ("never", "hover") cannot change what the drawer does.
+
+    /// The titlebar behaviour. Auto-hide by default: `register(defaults:)` supplies it, so an
+    /// install that has never written the key reads "auto-hide" and one that has keeps its choice.
+    /// Which way a wheel pans. Defaults to detecting the device per event.
+    public var wheelPanDirection: WheelPanDirection {
+        get {
+            WheelPanDirection(rawValue: defaults.string(forKey: Key.wheelPanDirection) ?? "")
+                ?? .automatic
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.wheelPanDirection); notify() }
+    }
+
+    /// The tool dock's surface. Defaults to the native glass the dock has always used.
+    public var dockSurface: DockSurface {
+        get { DockSurface(rawValue: defaults.string(forKey: Key.dockSurface) ?? "") ?? .liquidGlass }
+        set { defaults.set(newValue.rawValue, forKey: Key.dockSurface); notify() }
+    }
+
+    public var titlebar: TitlebarBehavior {
+        get { TitlebarBehavior(rawValue: defaults.string(forKey: Key.titlebar) ?? "") ?? .autoHide }
+        set { defaults.set(newValue.rawValue, forKey: Key.titlebar); notify() }
     }
 
     public var sortKey: ImageSortKey {
@@ -173,17 +255,6 @@ public final class AppSettings {
         set { defaults.set(newValue, forKey: Key.showTopFilename); notify() }
     }
 
-    public var bottomFields: [BottomInfoField] {
-        get {
-            let raw = defaults.stringArray(forKey: Key.bottomFields) ?? []
-            let fields = raw.compactMap(BottomInfoField.init(rawValue:))
-            return fields.isEmpty ? [.index, .zoom, .dimensions] : fields
-        }
-        set {
-            defaults.set(newValue.map(\.rawValue), forKey: Key.bottomFields)
-            notify()
-        }
-    }
 
     public var windowSizing: WindowSizingPolicy {
         get { WindowSizingPolicy(rawValue: defaults.string(forKey: Key.windowSizing) ?? "") ?? .rememberLastSize }
@@ -248,5 +319,75 @@ public final class AppSettings {
     public var immersive: Bool {
         get { defaults.bool(forKey: Key.immersive) }
         set { defaults.set(newValue, forKey: Key.immersive); notify() }
+    }
+
+    public var quitAfterLastWindowClosed: Bool {
+        get { defaults.bool(forKey: Key.quitAfterLastWindowClosed) }
+        set { defaults.set(newValue, forKey: Key.quitAfterLastWindowClosed); notify() }
+    }
+
+    public var loopBrowsing: Bool {
+        get { defaults.bool(forKey: Key.loopBrowsing) }
+        set { defaults.set(newValue, forKey: Key.loopBrowsing); notify() }
+    }
+
+    public var defaultAlwaysOnTop: Bool {
+        get { defaults.bool(forKey: Key.defaultAlwaysOnTop) }
+        set { defaults.set(newValue, forKey: Key.defaultAlwaysOnTop); notify() }
+    }
+
+    public var hideMinimap: Bool {
+        get { defaults.bool(forKey: Key.hideMinimap) }
+        set { defaults.set(newValue, forKey: Key.hideMinimap); notify() }
+    }
+
+    public var confirmBeforeTrash: Bool {
+        get { defaults.bool(forKey: Key.confirmBeforeTrash) }
+        set { defaults.set(newValue, forKey: Key.confirmBeforeTrash); notify() }
+    }
+
+    public var wheelZoomSensitivity: Double {
+        get {
+            let value = defaults.double(forKey: Key.wheelZoomSensitivity)
+            return value.isFinite ? min(0.02, max(0.0001, value)) : 0.0015
+        }
+        set {
+            defaults.set(newValue.isFinite ? min(0.02, max(0.0001, newValue)) : 0.0015,
+                         forKey: Key.wheelZoomSensitivity)
+            notify()
+        }
+    }
+
+    public var dockDisplayPolicy: ChromeDisplayPolicy {
+        get { ChromeDisplayPolicy(rawValue: defaults.string(forKey: Key.dockDisplayPolicy) ?? "") ?? .automatic }
+        set { defaults.set(newValue.rawValue, forKey: Key.dockDisplayPolicy); notify() }
+    }
+
+    public var navigationDisplayPolicy: ChromeDisplayPolicy {
+        get { ChromeDisplayPolicy(rawValue: defaults.string(forKey: Key.navigationDisplayPolicy) ?? "") ?? .automatic }
+        set { defaults.set(newValue.rawValue, forKey: Key.navigationDisplayPolicy); notify() }
+    }
+
+    public var promptForFolderAccess: Bool {
+        get { defaults.bool(forKey: Key.promptForFolderAccess) }
+        set { defaults.set(newValue, forKey: Key.promptForFolderAccess); notify() }
+    }
+
+    public var excludedExtensions: Set<String> {
+        get { Self.normalizeExcludedExtensions((defaults.stringArray(forKey: Key.excludedExtensions) ?? []).joined(separator: ",")) }
+        set {
+            let normalized = Self.normalizeExcludedExtensions(newValue.sorted().joined(separator: ","))
+            defaults.set(normalized.sorted(), forKey: Key.excludedExtensions)
+            notify()
+        }
+    }
+
+    public nonisolated static func normalizeExcludedExtensions(_ text: String) -> Set<String> {
+        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;，；"))
+        return Set(text.components(separatedBy: separators).compactMap { token in
+            let value = token.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".*"))
+            guard !value.isEmpty, value.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) else { return nil }
+            return value
+        })
     }
 }

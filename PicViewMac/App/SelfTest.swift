@@ -233,14 +233,34 @@ enum SelfTest {
         drainRunLoop(0.4)
         let viewer = controller.viewerViewController
 
-        // 2a. The window management strip is the standard AppKit titlebar.
+        // 2a. The titlebar auto-hides by default, and it is still a real NSWindow titlebar: the
+        //     content reaches the top edge, and the controls are the standard ones.
         let window = controller.window
-        check("viewer uses the standard visible titlebar",
-              window?.titleVisibility == .visible
-                && window?.titlebarAppearsTransparent == false
-                && window?.styleMask.contains(.fullSizeContentView) == false,
+        let viewerWindow = window as? ViewerWindow
+        check("viewer window is auto-hiding its titlebar by default",
+              viewerWindow?.titlebarMode == .autoHide,
+              "\(String(describing: viewerWindow?.titlebarMode))")
+        check("auto-hide lets the content reach the top of the window",
+              window?.styleMask.contains(.fullSizeContentView) == true)
+        check("the hidden titlebar is transparent, not an opaque bar with no title",
+              window?.titlebarAppearsTransparent == true
+                && window?.titleVisibility == .hidden,
               "titleVisibility=\(String(describing: window?.titleVisibility)) "
                 + "transparent=\(String(describing: window?.titlebarAppearsTransparent))")
+        check("the traffic lights are the real standard controls",
+              [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
+                  window?.standardWindowButton($0) != nil
+              })
+        check("the traffic lights start hidden with the titlebar",
+              [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].allSatisfy {
+                  window?.standardWindowButton($0)?.isHidden == true
+              })
+        let titlebarZones = viewer.titlebarRevealZones
+        check("zone A sits over the traffic lights and zone B beside it",
+              titlebarZones.a.maxX <= titlebarZones.b.maxX
+                && titlebarZones.a.height == TitlebarZoneGeometry.zoneHeight
+                && titlebarZones.b.maxX == viewer.view.bounds.width,
+              "A=\(titlebarZones.a) B=\(titlebarZones.b)")
         check("viewer has no viewer-owned top bar",
               viewer.chromeViewsForTesting["topBar"] == nil,
               "top bar views: \(viewer.chromeViewsForTesting.keys.filter { $0.contains("top") })")
@@ -261,21 +281,21 @@ enum SelfTest {
         drainRunLoop(0.6)
         var notHidden: [String] = []
         for (name, chrome) in viewer.chromeViewsForTesting
-        where ["topBar", "bottomBar", "drawer", "minimap"].contains(name) {
+        where ["topBar", "drawer", "minimap"].contains(name) {
             if !chrome.isHidden { notHidden.append("\(name) alpha=\(chrome.alphaValue)") }
         }
         check("chrome starts genuinely hidden, not just transparent",
               notHidden.isEmpty, notHidden.joined(separator: ", "))
 
-        // 3. The left edge is a narrow band and a hidden drawer is not clickable.
+        // 3. The left edge is not a trigger: the drawer opens only from an explicit control, and a
+        //    hidden drawer is not clickable.
         let bounds = viewer.view.bounds
-        check("left hot zone is 24 px",
-              ThumbnailDrawerView.hotZoneWidth == 24,
-              "\(ThumbnailDrawerView.hotZoneWidth) px")
-        check("25 px in is not the drawer trigger",
-              viewer.zone(forRootPoint: CGPoint(x: 25, y: bounds.midY)) != .leftEdgeHotZone)
-        check("23 px in is still the drawer trigger",
-              viewer.zone(forRootPoint: CGPoint(x: 23, y: bounds.midY)) == .leftEdgeHotZone)
+        check("the left edge does not open the drawer",
+              viewer.zone(forRootPoint: CGPoint(x: 0, y: bounds.midY)) == .canvas)
+        check("nor 23 px in",
+              viewer.zone(forRootPoint: CGPoint(x: 23, y: bounds.midY)) == .canvas)
+        check("nor the top-left corner",
+              viewer.zone(forRootPoint: CGPoint(x: 2, y: bounds.maxY - 2)) == .canvas)
         check("drawer width stays in the 180-220 px range",
               ThumbnailDrawerView.minimumWidth >= 180 && ThumbnailDrawerView.maximumWidth <= 220)
         if let content = controller.window?.contentView {
@@ -302,7 +322,7 @@ enum SelfTest {
             reporter.check(name, condition, detail)
         }
         let baseline = viewer.chromeSnapshot
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.5)
         let pinned = viewer.chromeSnapshot
         check("pinning opens the drawer", pinned.drawer)
@@ -317,7 +337,7 @@ enum SelfTest {
         drainRunLoop(0.8)
         check("a pinned drawer survives the pointer leaving", viewer.chromeSnapshot.drawer)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.8)
         check("unpinning restores hover auto-close", viewer.chromeSnapshot.drawer == false)
         check("unpinning gives the full width back to the canvas",
@@ -472,6 +492,11 @@ enum SelfTest {
 
     /// The viewer layout refactor: standard titlebar, fixed dock, canvas-anchored
     /// panels, and an information card instead of a separate window.
+    /// The pixel size the window's titlebar is showing, if this viewer's window has one.
+    private static func sizeReadout(in viewer: ViewerViewController) -> String? {
+        (viewer.view.window?.windowController as? ViewerWindowController)?.sizeReadoutTextForTesting
+    }
+
     private static func verifyViewerLayout(_ viewer: ViewerViewController,
                                            _ reporter: SelfTestReporter) {
         func check(_ name: String, _ condition: Bool, _ detail: String = "") {
@@ -481,36 +506,73 @@ enum SelfTest {
         guard let dock = chrome["toolDock"] as? ViewerToolDockView,
               let canvas = chrome["canvas"],
               let minimap = chrome["minimap"],
-              let bottomBar = chrome["bottomBar"],
+
               let card = chrome["infoCard"] as? ImageInfoCardView else {
             check("viewer layout views exist", false)
             return
         }
 
-        // The drawer opens from the titlebar; its own pin control is gone.
-        let viewerWindow = viewer.view.window
+        // The drawer opens from the titlebar; its own pin control is gone. The accessory lives in
+        // the titlebar whenever the bar is up and is taken out of it while the bar is away (so
+        // nothing floats over the image), which is why the check reveals the bar first.
+        let viewerWindow = viewer.view.window as? ViewerWindow
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        drainRunLoop(0.35)
+        let revealedAccessories = viewerWindow?.titlebarAccessoryViewControllers ?? []
         check("titlebar carries the drawer control",
-              viewerWindow?.titlebarAccessoryViewControllers.count == 1
-                && viewerWindow?.titlebarAccessoryViewControllers.first?.layoutAttribute == .leading,
-              "accessories: \(viewerWindow?.titlebarAccessoryViewControllers.count ?? 0)")
+              revealedAccessories.count == 1
+                && revealedAccessories.first?.layoutAttribute == .leading,
+              "state \(String(describing: viewerWindow?.titlebarState)), "
+                + "accessories \(revealedAccessories.count)")
+        // Leave the bar as the rest of the run expects it: away.
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        drainRunLoop(0.35)
         check("drawer has no pin control of its own",
               !Self.containsButton(in: chrome["drawer"] ?? NSView()),
               "the drawer is content only")
 
         check("tool dock carries the viewer commands",
-              dock.commands == [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomToFitWidth,
-                                .previousImage, .nextImage, .zoomActualPixels,
-                                .moveToTrash, .showImageInfo],
+              dock.commands == [.zoomOut, .zoomIn, .zoomToFit, .zoomToFitWidth,
+                                .zoomActualPixels, .previousImage, .nextImage,
+                                .rotateClockwise, .toggleMirror, .moveToTrash,
+                                .browseFolder, .toggleThumbnailDrawer, .showImageInfo],
               "\(dock.commands.count) commands")
         let pairIndexes = dock.commands.indices.filter {
             [.previousImage, .nextImage].contains(dock.commands[$0])
         }
         let pairCentre = pairIndexes.isEmpty ? -1
             : Double(pairIndexes.reduce(0, +)) / Double(pairIndexes.count)
-        check("previous/next sit in the middle of the dock",
-              pairIndexes.count == 2
-                && abs(pairCentre - Double(dock.commands.count - 1) / 2) <= 1.0,
-              "pair centre \(pairCentre) of \(dock.commands.count)")
+        check("previous/next are adjacent",
+              pairIndexes.count == 2 && pairIndexes[1] == pairIndexes[0] + 1,
+              "pair at \(pairIndexes)")
+        check("the pin is the last control in the dock",
+              dock.arrangedViewsForTesting.last === dock.pinControl)
+        let contextMenu = (chrome["canvas"] as? ImageCanvasView)?.contextMenuProvider?()
+        check("the canvas serves a context menu",
+              contextMenu?.items.count == CanvasContextMenu.items.count,
+              "\(contextMenu?.items.count ?? 0) entries")
+        check("the context menu routes every command through one action",
+              contextMenu?.items.filter { !$0.isSeparatorItem }.allSatisfy {
+                  $0.action == #selector(ViewerViewController.performContextMenuCommand(_:))
+              } == true)
+        check("the context menu can copy the image",
+              contextMenu?.items.contains { $0.representedObject as? String
+                  == ViewerCommand.copyImage.rawValue } == true)
+        let navigation = chrome["floatingNavigation"] as? FloatingNavigationView
+        check("the floating navigation starts hidden and offline",
+              navigation?.isHidden == true)
+        check("the floating navigation is anchored to the canvas, not the window",
+              navigation?.frame.minX == viewer.chromeSnapshot.canvasFrame.minX
+                && navigation?.frame.midY == viewer.chromeSnapshot.canvasFrame.midY)
+        check("the dock reports a real zoom percentage",
+              dock.zoomReadoutText.hasSuffix("%") && !dock.zoomReadoutText.isEmpty,
+              dock.zoomReadoutText)
+        check("the dock reports the folder position",
+              dock.positionReadoutText.contains("/"),
+              dock.positionReadoutText)
         check("tool dock is a viewer subview, not a window",
               dock.isDescendant(of: viewer.view))
 
@@ -539,15 +601,19 @@ enum SelfTest {
         drainRunLoop(0.3)
         let unpinnedCanvas = canvas.frame
         check("panels sit inside the canvas area",
-              minimap.frame.maxX <= canvas.frame.maxX + 1
-                && bottomBar.frame.minX >= canvas.frame.minX - 1,
+              minimap.frame.maxX <= canvas.frame.maxX + 1,
               "minimap \(minimap.frame) canvas \(canvas.frame)")
+        // The bar is the system's: the name is the window's title and the size is its trailing readout.
+        check("the titlebar carries the file name and the pixel size",
+              (viewer.view.window?.title.isEmpty == false)
+                && (SelfTest.sizeReadout(in: viewer)?.isEmpty == false),
+              "title \(viewer.view.window?.title ?? "nil") size \(SelfTest.sizeReadout(in: viewer) ?? "-")")
         check("tool dock is centred on the canvas",
               abs(dock.frame.midX - canvas.frame.midX) <= 2,
               "dock \(dock.frame.midX) canvas \(canvas.frame.midX)")
 
         // Pinning reserves space, and every canvas-anchored panel follows.
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.6)
         let pinnedCanvas = canvas.frame
         check("pinned drawer shrinks the canvas by exactly its width",
@@ -566,7 +632,7 @@ enum SelfTest {
               abs(viewer.viewerState.viewport.fitScale - expectedFit) < 0.35,
               "fit \(viewer.viewerState.viewport.fitScale) vs canvas fit \(expectedFit) "
                 + "for \(currentPixels) in \(pinnedCanvas.size)")
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         drainRunLoop(0.6)
         check("unpinning restores the canvas width",
               abs(canvas.frame.width - unpinnedCanvas.width) <= 1,
@@ -657,11 +723,12 @@ enum SelfTest {
         check("drawer lists the whole folder", before.drawerRows == viewer.session.items.count,
               "\(before.drawerRows) rows")
 
-        // The bottom info bar is fixed chrome; the tool dock auto-hides and comes
-        // back through the invisible strip along the bottom of the image area.
+        // The tool dock auto-hides and comes back through the invisible strip along the bottom of the
+        // image area. (The bottom info bar that used to sit here is gone: the title strip carries the
+        // name and the pixel size.)
         var snapshot = viewer.chromeSnapshot
-        check("bottom info bar is fixed chrome, not hover-revealed",
-              !viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
+        check("the old bottom info bar is gone",
+              viewer.chromeViewsForTesting["bottomBar"] == nil)
 
         guard let dock = viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView else {
             check("the tool dock exists", false)
@@ -733,18 +800,26 @@ enum SelfTest {
         check("unpinning hands the dock back to auto-hide",
               waitForDock({ dock.isHidden }, nudge: pointerAway))
 
-        // Pointer into the left-edge hot zone.
+        // The viewer-ux redesign removed the left-edge hover auto-open: a pointer into the
+        // left-edge zone must not open the drawer, and the drawer opens on demand instead.
         let leftEdge = NSPoint(x: 3, y: viewer.view.bounds.midY)
         viewer.simulatePointer(atWindowPoint: leftEdge)
         drainRunLoop(0.4)
         snapshot = viewer.chromeSnapshot
-        check("left-edge hover opens the drawer", snapshot.drawer)
+        check("left-edge hover does not open the drawer", snapshot.drawer == false,
+              "drawer=\(snapshot.drawer) after a pointer into the left edge")
+        viewer.perform(.toggleThumbnailDrawer)
+        drainRunLoop(0.6)
+        snapshot = viewer.chromeSnapshot
+        check("the drawer opens on demand", snapshot.drawer,
+              "drawer=\(snapshot.drawer) after the toggle command")
         check("drawer rows equal the folder contents",
               snapshot.drawerRows == viewer.session.items.count)
-        check("opening the drawer never changes canvas geometry",
-              snapshot.canvasFrame == before.canvasFrame && snapshot.zoomScale == before.zoomScale,
-              "before frame \(before.canvasFrame.size) zoom \(before.zoomScale); "
-                + "after frame \(snapshot.canvasFrame.size) zoom \(snapshot.zoomScale)")
+        // The redesign's drawer reserves canvas width when open (that geometry is asserted
+        // precisely in verifyDrawerPin/verifyViewerLayout); the hover-era "overlay, canvas
+        // unchanged" contract no longer exists.
+        viewer.perform(.toggleThumbnailDrawer)
+        drainRunLoop(0.2)
 
         // The minimap is only permitted while zoomed past Fit.
         viewer.perform(.zoomToFit)
@@ -783,7 +858,7 @@ enum SelfTest {
         check("immersive hides overlay chrome",
               viewer.chromeSnapshot.drawer == false
                 && viewer.chromeViewsForTesting["toolDock"]!.isHidden
-                && viewer.chromeViewsForTesting["bottomBar"]!.isHidden)
+                && viewer.chromeViewsForTesting["drawer"]!.isHidden)
         check("immersive does not touch the window or its titlebar",
               viewer.view.window?.frame == frameBeforeImmersive
                 && viewer.view.window?.styleMask.contains(.fullScreen) == false,
@@ -920,11 +995,28 @@ enum SelfTest {
               viewer.viewerState.errorMessage ?? "no message")
         check("no pixels are fabricated for a corrupt image", viewer.viewerState.currentImage == nil)
 
+        // The folder is scanned off the main actor, so "next" has to wait for the list it moves
+        // within: pressed against a session whose scan has not finished there is no next to move
+        // to, and the image after the corrupt one never arrives. That race is what the packaged run
+        // reported; the navigation path itself is covered by CorruptImageNavigationTests.
+        let listDeadline = Date().addingTimeInterval(10)
+        while viewer.session.items.count < 2, Date() < listDeadline { drainRunLoop(0.05) }
+        drainRunLoop(0.3)
+
+        // Navigation must survive the corrupt file wherever the folder's order puts it: the sort is
+        // shared with the app's settings, so "next" may already be at the end of the list (measured:
+        // 2 items with the corrupt image at index 1, where next has nowhere to go). One step in
+        // either direction is what "navigation stays alive" means here.
         viewer.perform(.nextImage)
-        drainRunLoop(1.5)
+        drainRunLoop(1.0)
+        if viewer.viewerState.currentImage == nil {
+            viewer.perform(.previousImage)
+            drainRunLoop(1.0)
+        }
         check("navigation stays alive after a corrupt image",
               viewer.viewerState.currentImage != nil,
-              viewer.session.currentItem?.displayName ?? "none")
+              "\(viewer.session.items.count) items, index \(viewer.session.currentIndex.map(String.init) ?? "none"), "
+                + "current \(viewer.session.currentItem?.displayName ?? "none")")
         controller.close()
     }
 

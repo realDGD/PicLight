@@ -2,7 +2,7 @@ import AppKit
 import XCTest
 @testable import PicViewMac
 
-/// main's older viewer must own the new producer without importing unrelated UI work.
+/// Viewer integration must retain bounded playback and reject obsolete publications.
 @MainActor
 final class AnimationMainIntegrationTests: XCTestCase {
     func testViewerPipelineCanDisableTheLegacyUnboundedFrameStream() async throws {

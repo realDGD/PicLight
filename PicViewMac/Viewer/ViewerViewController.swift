@@ -10,16 +10,33 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public let viewerState = ViewerState()
 
     public var onTitleChanged: ((String?) -> Void)?
+    /// The picture's pixel size, for the titlebar's trailing readout.
+    public var onSizeReadoutChanged: ((String) -> Void)?
     /// Reports the decoded descriptor so the window can apply the configured
     /// window-sizing policy (for example sizing the window to the image).
     public var onDescriptorAvailable: ((ImageDescriptor) -> Void)?
 
     private let rootView = ViewerRootView()
+    /// Which mode the viewer is presenting. The two are separate hierarchies: the image mode's
+    /// chrome (canvas, dock, HUD, navigation, drawer) is one set of views, the folder browser's
+    /// (toolbar, tree, gallery) is another, and only one of the two is in the tree at a time. They
+    /// share the folder session, the sort order and the thumbnail cache, and nothing else.
+    public enum ViewerMode: Equatable, Sendable {
+        case image
+        case folderBrowser
+    }
+
+    public private(set) var viewerMode: ViewerMode = .image
+    /// The folder browser, built on demand: a viewer that never opens it never pays for it.
+    private var folderBrowser: FolderBrowserViewController?
     private let emptyState = EmptyStateView()
     private let canvas = ImageCanvasView()
     private let toolDock = ViewerToolDockView()
     private let infoCard = ImageInfoCardView()
-    private let bottomBar = BottomInfoBarView(style: .hud)
+    /// The auto-hiding previous/next controls. An overlay on the canvas.
+    private let floatingNavigation = FloatingNavigationView()
+    /// Hosts the folder browser. Empty until the mode is first entered.
+    private let folderBrowserContainer = NSView()
     private let drawer = ThumbnailDrawerView(style: .drawer)
     private let minimap = NavigatorView()
     private let errorLabel = NSTextField(labelWithString: "")
@@ -41,8 +58,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private let probe: DimensionProbing
     private(set) var thumbnailRequestCount = 0
     private let watcher = FolderWatcher()
+    var folderAccessStore: FolderAccessStore = .shared
+    var folderScanner: any FolderDirectoryScanning = FolderScanner()
+    private let folderAccessBanner = FolderAccessBannerView()
+    private(set) var folderReadFailure: FolderReadFailure?
+    private enum FolderSelection { case file(URL), first, preserve }
+    private var failedFolderRequest: (directory: URL, selection: FolderSelection, generation: Int)?
+    private var permissionPromptShown = false
+    private var folderRequestsEnabled = true
+    private var directlyOpenedFile: URL?
+    private var pendingDirectOpenURL: URL?
+    private var appliedExcludedExtensions: Set<String> = []
+    private var appliedDockDisplayPolicy: ChromeDisplayPolicy?
+    private var thumbnailCacheGeneration: UInt64 = 0
 
-    private var hover = HoverVisibilityModel()
+    private var chrome = ViewerChromeModel()
     private var chromeTimer: Timer?
     private var animationTimer: Timer?
     private var animationDisplayLink: CADisplayLink?
@@ -58,8 +88,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     var animationTraceForTesting: AnimationFrameBuffer.TraceSnapshot? { animationBuffer?.traceSnapshot }
 
     deinit { animationBuffer?.stop() }
-    private var folderRequestGeneration = 0
     private var drawerWidthConstraint: NSLayoutConstraint?
+    private var drawerTopConstraint: NSLayoutConstraint?
+    private weak var drawerLayoutWindow: NSWindow?
     // Canvas leading is switched when the drawer is pinned, so every consumer of
     // canvas bounds (fit, zoom, navigator, dock, info card) sees the real area.
     private var canvasLeadingToRoot: NSLayoutConstraint?
@@ -79,12 +110,19 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// fails. The empty state uses it to say "decoding" instead of blaming the folder.
     private var isDecodingCurrentItem = false
 
+    /// Whether this viewer has a picture to show: on screen, or on its way. An empty viewer is a
+    /// placeholder — the window the app opens with — and that is what decides where a newly opened file
+    /// goes.
+    var isShowingPicture: Bool {
+        viewerState.currentImage != nil || isDecodingCurrentItem
+    }
+
     public private(set) var settings = AppSettings.shared
 
     /// The decoder and thumbnail pipeline are injectable so tests can drive the
     /// real viewer with a counting or deliberately slow implementation.
     public init(decoder: ImageDecoding = ImageIODecoder(),
-                thumbnails: ThumbnailPipeline = ThumbnailPipeline(),
+                thumbnails: ThumbnailPipeline = ThumbnailCacheService.shared.makePipeline(),
                 probe: DimensionProbing = DimensionProbe(),
                 nativeDetail: NativeDetailScheduler = NativeDetailScheduler()) {
         // One probe instance is shared with the coordinator so the drawer's
@@ -110,14 +148,16 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     /// Chrome views by name, for hit-testing and layering tests.
     var chromeViewsForTesting: [String: NSView] {
-        ["bottomBar": bottomBar, "drawer": drawer, "minimap": minimap,
+        ["drawer": drawer, "minimap": minimap,
+         "floatingNavigation": floatingNavigation,
          "canvas": canvas, "emptyState": emptyState,
          "toolDock": toolDock, "infoCard": infoCard]
     }
 
     /// Chrome that participates in hover/idle visibility (the titlebar does not:
     /// it is AppKit's and always visible).
-    static let hoverChromeNames: Set<String> = ["bottomBar", "drawer", "minimap", "toolDock"]
+    static let hoverChromeNames: Set<String> = ["drawer", "minimap", "toolDock",
+                                                "floatingNavigation"]
     /// Usable canvas width the window's minimum size must leave.
     static let minimumCanvasWidth: CGFloat = 320
     /// Breathing room between the tool dock and the canvas edges.
@@ -148,48 +188,57 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             + "bounds=\(minimap.bounds.size) canvasPixels=\(canvas.imagePixelSize)")
     }
 
-    /// Reports the drawer's pinned state so the window can reflect it.
-    public var onDrawerPinnedChanged: ((Bool) -> Void)?
+    /// Reports the drawer's state so the window can reflect it.
+    public var onDrawerOpenChanged: ((Bool) -> Void)?
 
-    /// Opens or closes the drawer: the titlebar button and the ⇧⌘T command both land
-    /// here, and the drawer itself no longer carries a pin control.
-    public func setDrawerPinned(_ pinned: Bool) {
+    /// Opens or closes the drawer. This is the drawer's only entry point: the titlebar button,
+    /// the dock's sidebar control and the `缩略图抽屉` command all land here, and no pointer
+    /// position can change it.
+    public func setDrawerOpen(_ open: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.setDrawerPinned(pinned, at: now)
-        hover.update(at: now)
+        chrome.setDrawerOpen(open, at: now)
+        // An open left column keeps the titlebar and shows it: the column's control lives there, and
+        // a bar that hid while the column was open left a column with no visible way to close it.
+        chrome.titlebar.setBlocked(.leftColumnOpen, open, at: now)
+        if open { chrome.titlebar.reveal() }
+        chrome.update(at: now)
         applyChromeVisibility()
-        onDrawerPinnedChanged?(hover.drawerPinned)
+        applyTitlebarVisibility()
+        onDrawerOpenChanged?(chrome.drawerOpen)
+        onLeftColumnChanged?(chrome.drawerOpen)
     }
 
-    public func toggleDrawerPinned() {
-        setDrawerPinned(!hover.drawerPinned)
+    public func toggleDrawer() {
+        setDrawerOpen(!chrome.drawerOpen)
     }
 
-    /// Whether the drawer is currently held open.
-    public var isDrawerPinned: Bool { hover.drawerPinned }
+    /// Whether the drawer is open, immersive mode aside.
+    public var isDrawerOpen: Bool { chrome.drawerOpen }
 
-    func toggleDrawerPinForTesting() {
-        toggleDrawerPinned()
+    func toggleDrawerForTesting() {
+        toggleDrawer()
     }
 
     /// Pins the tool dock open, or hands it back to the auto-hide rules.
     ///
-    /// Pinning is per window and deliberately not persisted: it is a momentary
-    /// statement about the pointer, not an app setting.
+    /// Pinning in automatic mode is local to this window.
     public func setToolDockPinned(_ pinned: Bool) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.toolDock.setPinned(pinned, at: now)
+        if !pinned, settings.dockDisplayPolicy == .alwaysVisible {
+            settings.dockDisplayPolicy = .automatic
+        }
+        chrome.toolDock.setPinned(pinned, at: now)
         toolDock.setPinned(pinned)
-        hover.update(at: now)
+        chrome.update(at: now)
         applyChromeVisibility()
     }
 
     public func toggleToolDockPinned() {
-        setToolDockPinned(!hover.toolDock.pinned)
+        setToolDockPinned(!chrome.toolDock.pinned)
     }
 
     /// Whether the tool dock is currently held open.
-    public var isToolDockPinned: Bool { hover.toolDock.pinned }
+    public var isToolDockPinned: Bool { chrome.toolDock.pinned }
 
     func toggleToolDockPinForTesting() {
         toggleToolDockPinned()
@@ -200,27 +249,45 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         rootView.wantsLayer = true
         let root = rootView
         view = root
+        root.canvas = canvas
 
         canvas.translatesAutoresizingMaskIntoConstraints = false
         toolDock.translatesAutoresizingMaskIntoConstraints = false
         infoCard.translatesAutoresizingMaskIntoConstraints = false
-        bottomBar.translatesAutoresizingMaskIntoConstraints = false
         drawer.translatesAutoresizingMaskIntoConstraints = false
         minimap.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        floatingNavigation.translatesAutoresizingMaskIntoConstraints = false
+        folderBrowserContainer.translatesAutoresizingMaskIntoConstraints = false
+        folderBrowserContainer.isHidden = true
+        folderAccessBanner.translatesAutoresizingMaskIntoConstraints = false
 
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
         errorLabel.isHidden = true
+        // The empty window's first frame must not fade away fully visible image chrome.
+        for surface in [drawer, minimap, toolDock, infoCard] as [NSView] {
+            surface.isHidden = true
+            surface.alphaValue = 0
+        }
 
         root.addSubview(canvas)
         root.addSubview(emptyState)
         root.addSubview(errorLabel)
-        root.addSubview(bottomBar)
         root.addSubview(drawer)
         root.addSubview(minimap)
         root.addSubview(toolDock)
         root.addSubview(infoCard)
+        // Added last so it sits above the canvas; it is an overlay and the canvas is never
+        // constrained to it, so it cannot move the image geometry.
+        root.addSubview(floatingNavigation)
+        // The folder browser's container is a sibling of the image mode's views, not a child of
+        // them: switching modes shows one hierarchy and hides the other.
+        root.addSubview(folderBrowserContainer)
+        // Shared recovery UI stays visible in both browsing modes without changing canvas layout.
+        root.addSubview(folderAccessBanner)
+        folderAccessBanner.onChoose = { [weak self] in self?.chooseFolderAccess() }
+        folderAccessBanner.onRetry = { [weak self] in self?.retryFolderAccess() }
 
         let minimapWidth = minimap.widthAnchor.constraint(
             equalToConstant: NavigatorView.defaultSize.width)
@@ -230,6 +297,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
         let drawerWidth = drawer.widthAnchor.constraint(equalToConstant: ThumbnailDrawerView.minimumWidth)
         drawerWidthConstraint = drawerWidth
+        let drawerTop = drawer.topAnchor.constraint(equalTo: root.topAnchor)
+        drawerTopConstraint = drawerTop
         let canvasLeadingToRoot = canvas.leadingAnchor.constraint(equalTo: root.leadingAnchor)
         let canvasLeadingToDrawer = canvas.leadingAnchor.constraint(equalTo: drawer.trailingAnchor)
         self.canvasLeadingToRoot = canvasLeadingToRoot
@@ -253,12 +322,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
             // The bottom cluster is anchored to the canvas, so pinning the drawer
             // moves it with the image instead of leaving it off-centre.
-            bottomBar.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
-            bottomBar.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -8),
-            bottomBar.heightAnchor.constraint(equalToConstant: BottomInfoBarView.height),
 
             drawer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            drawer.topAnchor.constraint(equalTo: root.topAnchor),
+            drawerTop,
             drawer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             drawerWidth,
 
@@ -272,8 +338,30 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                                              constant: -ViewerToolDockView.bottomInset),
 
             infoCard.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 14),
-            infoCard.bottomAnchor.constraint(equalTo: bottomBar.topAnchor, constant: -8),
+            // Lower-left of the image area, where it has always been: the readout it used to sit above
+            // (the bottom info bar) is gone, so it anchors to the canvas itself.
+            infoCard.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -8),
             infoCard.widthAnchor.constraint(lessThanOrEqualToConstant: ImageInfoCardView.maximumWidth),
+
+            // The navigation overlay is *anchored to* the canvas on every side, and nothing anchors
+            // the canvas to it. That is what keeps the controls at the vertical centre of the image
+            // area rather than of the window, makes the left control follow the canvas's left edge
+            // when a pinned drawer has taken its width, and guarantees that showing or hiding them
+            // cannot move, fit, zoom or re-centre the picture.
+            floatingNavigation.leadingAnchor.constraint(equalTo: canvas.leadingAnchor),
+            floatingNavigation.trailingAnchor.constraint(equalTo: canvas.trailingAnchor),
+            floatingNavigation.centerYAnchor.constraint(equalTo: canvas.centerYAnchor),
+            floatingNavigation.heightAnchor.constraint(
+                equalToConstant: FloatingNavigationView.buttonSize),
+
+            folderAccessBanner.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
+            folderAccessBanner.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
+            folderAccessBanner.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -80),
+
+            folderBrowserContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            folderBrowserContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            folderBrowserContainer.topAnchor.constraint(equalTo: root.topAnchor),
+            folderBrowserContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         // The card grows with its content up to a fraction of the canvas.
         infoCardHeightConstraint = infoCard.heightAnchor.constraint(equalToConstant: 0)
@@ -284,13 +372,37 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public override func viewDidLoad() {
         super.viewDidLoad()
         session.onItemsChanged = { [weak self] in
-            self?.rebuildDrawer()
-            self?.refreshBottomBar()
+            guard let self else { return }
+            // Before the drawer is rebuilt: a thumbnail of a file that is gone, or of bytes the file
+            // no longer has, must not be handed to the cells that are about to be created.
+            self.pruneThumbnailCache()
+            self.rebuildDrawer()
+            self.refreshTitlebarReadout()
+            // The gallery draws the same list, so a change to it has to reach the grid — or the grid
+            // shows one list while the session holds another, and a click in a cell opens the file
+            // that happens to share its index. A hidden gallery is not rebuilt: it reads the session
+            // when it is next entered, and rebuilding a view nobody can see is work whose only
+            // effect would be to steal a scroll position.
+            if self.viewerMode == .folderBrowser {
+                self.folderBrowser?.reload(.passive)
+            }
+            // The file on screen may have been replaced at its path while the list was rescanned.
+            self.showCurrentItemIfNeeded(revealSelection: false)
         }
         session.onCurrentChanged = { [weak self] in
-            self?.loadCurrentImage()
+            guard let self else { return }
+            let reason = self.session.lastChangeReason
+            self.showCurrentItemIfNeeded(revealSelection: reason.revealsSelection)
+            // The gallery shows the same index: a move made from the image mode's keyboard, or by a
+            // delete, has to move the highlight too — and its viewport, when the user is the one who
+            // moved.
+            self.folderBrowser?.syncSelectionFromSession(reveal: reason.revealsSelection)
         }
         applySettings()
+        NotificationCenter.default.addObserver(self, selector: #selector(folderAccessChanged(_:)),
+                                               name: FolderAccessStore.didChangeNotification, object: folderAccessStore)
+        NotificationCenter.default.addObserver(self, selector: #selector(clearLocalThumbnailCache),
+                                               name: ThumbnailCacheService.didClearNotification, object: ThumbnailCacheService.shared)
         NotificationCenter.default.addObserver(
             forName: AppSettings.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -311,7 +423,247 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Wiring
 
+    // MARK: - Context menu
+
+    // MARK: - Viewer modes
+
+    /// Enters the folder browser. The image mode's views go away as a group; the browser's appear.
+    /// Nothing about the image is decoded again on the way in or out — the viewport and the decoded
+    /// bitmap stay exactly where they were.
+    public func enterFolderBrowser() {
+        guard viewerMode != .folderBrowser, let browser = makeFolderBrowser() else { return }
+        viewerMode = .folderBrowser
+        // The browser is a working mode with its own top bar: the window merges that bar into the
+        // titlebar strip — one row, the browser's toolbar with the traffic lights and the drawer
+        // button in it — and the bar never auto-hides while the browser is up. The toolbar keeps
+        // clear of those controls, which is what the leading inset is for.
+        isFolderBrowserPinningTitlebar = true
+        applyTitlebarMode()
+        (view.window as? ViewerWindow)?.isTopBarMergedWithContent = true
+        browser.view.setToolbarLeadingInset(Self.mergedToolbarLeadingInset)
+        alignBrowserToolbarWithTitlebar()
+        // Entering is a navigation: the grid starts at the selected item and the tree shows the
+        // folder being browsed.
+        browser.reload(.navigation)
+        folderBrowserContainer.isHidden = false
+        setImageModeViewsHidden(true)
+        // The left-column button follows the mode: in the browser it opens and closes the folder
+        // tree, which is this mode's left column.
+        onLeftColumnChanged?(isFolderTreeSidebarVisible)
+        view.window?.makeFirstResponder(browser.view.gallery)
+        GestureTrace.note("enterFolderBrowser responder=\(String(describing: view.window?.firstResponder))")
+    }
+
+    /// Room the browser's toolbar leaves for the native controls in the merged top row: the traffic
+    /// lights (9…69 in window coordinates) plus the drawer button beside them (78…108) plus a gap.
+    static let mergedToolbarLeadingInset: CGFloat = 120
+
+    /// Centres the browser's toolbar controls on the titlebar's own centre line — the line the
+    /// traffic lights and the left-column button sit on in the merged row.
+    private func alignBrowserToolbarWithTitlebar() {
+        guard let window = view.window else { return }
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        folderBrowser?.view.alignToolbarContent(withTitlebarHeight: titlebarHeight)
+    }
+
+    /// Whether the browser's folder-tree sidebar — this mode's left column — is showing.
+    var isFolderTreeSidebarVisible: Bool { folderBrowser?.view.isSidebarVisible ?? false }
+
+    /// The titlebar's left-column button, routed by mode: the folder tree while the browser is up,
+    /// the thumbnail drawer in the image mode. One button, the left column of whichever mode is
+    /// showing — the drawer itself is not this mode's column.
+    public func toggleLeftColumn() {
+        if viewerMode == .folderBrowser {
+            let visible = isFolderTreeSidebarVisible
+            folderBrowser?.view.setSidebarVisible(!visible)
+            onLeftColumnChanged?(!visible)
+        } else {
+            toggleDrawer()
+        }
+    }
+
+    /// Fired when the left column this window is showing opens or closes, so the titlebar button
+    /// renders the state of whichever column is in force.
+    public var onLeftColumnChanged: ((Bool) -> Void)?
+
+    /// Leaves the folder browser and returns to the image. The selected image is whatever the
+    /// browser left in the session, so it comes back on screen; the viewport is untouched.
+    public func leaveFolderBrowser() {
+        guard viewerMode == .folderBrowser else { return }
+        viewerMode = .image
+        isFolderBrowserPinningTitlebar = false
+        (view.window as? ViewerWindow)?.isTopBarMergedWithContent = false
+        folderBrowser?.view.setToolbarLeadingInset(0)
+        folderBrowser?.view.alignToolbarContent(withTitlebarHeight: 0)
+        applyTitlebarMode()
+        folderBrowser?.teardown()
+        folderBrowserContainer.isHidden = true
+        setImageModeViewsHidden(false)
+        applyChromeVisibility()
+        // The button goes back to being the image mode's drawer control.
+        onLeftColumnChanged?(isDrawerOpen)
+        // The session's current item may have moved while the gallery was up; showing it is the
+        // one decode this transition can cause, and only when the selection actually changed.
+        // Anything else — coming back to the same file — leaves the decoded bitmap alone, which
+        // is what makes entering and leaving the browser free.
+        showCurrentItemIfNeeded()
+        view.window?.makeFirstResponder(canvas)
+        GestureTrace.note("leaveFolderBrowser key=\(view.window?.isKeyWindow ?? false) "
+                          + "responder=\(String(describing: view.window?.firstResponder)) "
+                          + "canvasHidden=\(canvas.isHidden) metal=\(canvas.isUsingMetalForCurrentImage)")
+    }
+
+    private func makeFolderBrowser() -> FolderBrowserViewController? {
+        if let folderBrowser { return folderBrowser }
+        let browser = FolderBrowserViewController(host: self)
+        folderBrowser = browser
+        let browserView = browser.view
+        browserView.translatesAutoresizingMaskIntoConstraints = false
+        folderBrowserContainer.addSubview(browserView)
+        NSLayoutConstraint.activate([
+            browserView.leadingAnchor.constraint(equalTo: folderBrowserContainer.leadingAnchor),
+            browserView.trailingAnchor.constraint(equalTo: folderBrowserContainer.trailingAnchor),
+            browserView.topAnchor.constraint(equalTo: folderBrowserContainer.topAnchor),
+            browserView.bottomAnchor.constraint(equalTo: folderBrowserContainer.bottomAnchor),
+        ])
+        return browser
+    }
+
+    /// Hides or shows every view that belongs to image mode. One list, so a view added to image
+    /// mode later cannot be forgotten here and float over the gallery.
+    private func setImageModeViewsHidden(_ hidden: Bool) {
+        for chrome in [canvas as NSView, emptyState, errorLabel, drawer, minimap,
+                       toolDock, infoCard, floatingNavigation] {
+            chrome.isHidden = hidden
+        }
+        guard !hidden else { return }
+        // Coming back is not the same as showing everything: the empty state and the error label have
+        // their own reasons to be on screen, and forcing them visible left the empty state unhidden at
+        // alpha 0 — an invisible overlay over the whole window that took every gesture (see
+        // `EmptyStateView.hitTest`). Ask their own logic instead.
+        refreshEmptyState()
+        errorLabel.isHidden = (viewerState.errorMessage ?? "").isEmpty
+    }
+
+    /// Whether image mode's views are off screen because the browser is up.
+    var isImageModeHidden: Bool { viewerMode == .folderBrowser }
+
+    /// The browser's layout and thumbnail size. Per window and per session rather than an app
+    /// preference: they describe what this window is showing, not how the app should behave.
+    private var galleryLayoutKindStorage: GalleryLayoutKind = .uniformGrid
+    private var galleryThumbnailSizeStorage: CGFloat = GalleryLayout.defaultThumbnailSize
+    /// In-flight gallery thumbnails, so leaving the browser cancels work nobody is waiting for.
+    private var galleryThumbnailTasks: [String: Task<Void, Never>] = [:]
+    private var galleryThumbnailRequestIDs: [String: UUID] = [:]
+    /// The item whose bitmap is on screen. Used to decide whether returning from the folder browser
+    /// needs a decode at all — comparing against the *descriptor* asked the wrong question, because
+    /// a descriptor's source URL is not always set.
+    /// Set when the user moves the viewport, cleared by each load and each publish. See
+    /// `refreshCanvas()`: it is what keeps a pinch made during a slow decode from being undone.
+    private var userMovedViewportWhileLoading = false
+    private var displayedItemURL: URL?
+    /// The `SourceFileIdentity.versionToken` of the file that bitmap was decoded from.
+    ///
+    /// `FileIdentity` answers "which path", and its `==` compares paths only, so it cannot see an
+    /// editor saving over `photo.png`. The token can: it carries size, both timestamps, the inode
+    /// and the volume, and it is the same value the tile and thumbnail caches already key on.
+    private var displayedItemVersion: String?
+    /// The item and version a decode has been started for but not delivered yet.
+    ///
+    /// One publication reaches this view through two callbacks — the list changed and the selection
+    /// changed — and both have to ask "is the right picture on screen?". Without this record the
+    /// second answer was another decode of the same file: measured as two full decodes for one open,
+    /// which is also two 48,000-pixel streams for an oversized image.
+    private var requestedItem: (url: URL, version: String)?
+
+    /// Shows the session's current item, decoding again only when the file on screen is not it.
+    ///
+    /// Both directions matter. A republish that only added metadata (the dimension probe) or a
+    /// re-sort that moved the *same* file must not decode again: that resets a multi-page document
+    /// to its first page and throws away the viewport for a picture that has not changed. A
+    /// *replacement* at the same path must decode again: the bytes on screen are not the file's
+    /// bytes any more.
+    /// - Parameter revealSelection: whether the drawer may scroll the selection into sight. It is
+    ///   driven by the session's change reason, so a rescan that shifts an index does not move the
+    ///   drawer under the pointer.
+    private func showCurrentItemIfNeeded(revealSelection: Bool = false) {
+        guard let item = session.currentItem else {
+            // Nothing is current: whatever is on screen belongs to a list that is gone, and the
+            // empty state has to be rendered for *this* situation — a fresh launch and a folder
+            // with no images read differently, and only the load path knows which one this is.
+            loadCurrentImage()
+            return
+        }
+        let version = SourceFileIdentity.read(at: item.url).versionToken
+        if item.url == displayedItemURL, version == displayedItemVersion {
+            // The same file is still on screen: the position moved, the picture did not. The chrome
+            // that reads the index still follows it.
+            drawer.setCurrentIndex(session.currentIndex)
+            if revealSelection { drawer.scrollCurrentIntoView() }
+            refreshTitlebarReadout()
+            return
+        }
+        if let requested = requestedItem, requested.url == item.url, requested.version == version {
+            // Already on its way: asking again would start a second decode of the same bytes.
+            return
+        }
+        loadCurrentImage()
+        if revealSelection { drawer.scrollCurrentIntoView() }
+    }
+
+    /// The folder browser, for tests and the acceptance runner.
+    var folderBrowserForTesting: FolderBrowserViewController? { folderBrowser }
+    var folderBrowserContainerForTesting: NSView { folderBrowserContainer }
+
+    /// The canvas's right-click menu. Built from the declared item list, with one target and one
+    /// action for every command in it.
+    func canvasContextMenu() -> NSMenu {
+        let availability = CanvasContextMenu.Availability(
+            hasImage: viewerState.currentImage != nil,
+            canGoPrevious: session.canGoPrevious,
+            canGoNext: session.canGoNext,
+            hasMultiplePages: viewerState.isMultiPage)
+        let menu = CanvasContextMenu.build(availability, target: self,
+                                           commandAction: #selector(performContextMenuCommand(_:)),
+                                           copyAction: #selector(performContextMenuCommand(_:)))
+        // Titles that depend on the state they change say what the click will do.
+        for entry in menu.items {
+            guard let raw = entry.representedObject as? String,
+                  let command = ViewerCommand(rawValue: raw) else { continue }
+            entry.title = CanvasContextMenu.title(for: command, drawerOpen: isDrawerOpen,
+                                                  infoVisible: isInfoCardVisible)
+        }
+        return menu
+    }
+
+    /// The single action every context-menu entry routes through. The command then goes to the same
+    /// `perform` the dock, the main menu and the shortcuts use.
+    @objc func performContextMenuCommand(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let command = ViewerCommand(rawValue: raw) else { return }
+        perform(command)
+    }
+
+    /// Copy, bounded. No decode happens here: the pasteboard carries the file URL for the original
+    /// and a lazily-produced TIFF of the bitmap already on screen. See `ImagePasteboardWriter` for
+    /// why both are placed rather than one being presented as the other.
+    @discardableResult
+    func copyImageToPasteboard() -> Bool {
+        guard let item = session.currentItem else { return false }
+        let image = canvas.animationFrame == nil ? viewerState.currentImage : canvas.animationFrame?.bitmapForCopy()
+        guard let image else { return false }
+        copyCount += 1
+        return ImagePasteboardWriter.write(fileURL: item.url, image: image)
+    }
+
+    /// How many times a copy was performed, for the acceptance runner.
+    private(set) var copyCount = 0
+
     private func configureCallbacks() {
+        canvas.contextMenuProvider = { [weak self] in self?.canvasContextMenu() }
+        floatingNavigation.onPrevious = { [weak self] in self?.perform(.previousImage) }
+        floatingNavigation.onNext = { [weak self] in self?.perform(.nextImage) }
+
         // Pointer tracking lives on the root view alone, so hover works no matter
         // which subview is on top and hidden chrome cannot swallow it.
         rootView.onPointerMoved = { [weak self] point in
@@ -320,9 +672,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         rootView.onPointerExited = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.hover.pointerExitedDrawer(at: now)
-            self.hover.toolDock.setPointer(inZone: false, at: now)
-            self.hover.update(at: now)
+            self.chrome.toolDock.setPointer(inZone: false, at: now)
+            self.chrome.navigation.setPointer(previousSide: false, nextSide: false, at: now)
+            self.chrome.navigation.pointerOnPrevious = false
+            self.chrome.navigation.pointerOnNext = false
+            self.chrome.titlebar.setPointer(inTrafficLightsZone: false,
+                                             inTitlebarZone: false, at: now)
+            self.chrome.update(at: now)
             self.applyChromeVisibility()
         }
 
@@ -338,18 +694,22 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             self.pendingDirection = delta > 0 ? .forward : .backward
             self.perform(delta > 0 ? .nextImage : .previousImage)
         }
+        // A zoom somebody asked for while a picture is still decoding must survive its arrival: the
+        // fit the new picture requests is for a picture nobody has touched yet.
+        canvas.onUserViewportChange = { [weak self] in self?.userMovedViewportWhileLoading = true }
         canvas.onViewportChange = { [weak self] viewport in
             guard let self else { return }
             self.viewerState.viewport = viewport
             self.refreshMinimap()
-            self.refreshBottomBar()
+            self.refreshTitlebarReadout()
             // Pan moves the tile window; it never re-evaluates the whole-image level.
             self.scheduleNativeDetailUpdate()
         }
         canvas.onZoomChanged = { [weak self] in
             guard let self else { return }
-            self.hover.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
-            self.hover.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
+            let now = Date().timeIntervalSinceReferenceDate
+            self.chrome.zoomActivity(at: now)
+            self.chrome.setZoomedIn(self.canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
             self.refreshMinimap()
             self.scheduleNativeDetailUpdate()
             // Zooming in is the other way a bitmap becomes undersampled (§9.5), so the
@@ -360,12 +720,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         canvas.onPointerActivity = { [weak self] in
             guard let self else { return }
             let now = Date().timeIntervalSinceReferenceDate
-            self.hover.pointerMoved(at: now)
+            self.chrome.pointerMoved(at: now)
         }
         canvas.onDoubleClickAction = { [weak self] in
             guard let self else { return }
-            self.hover.setImmersive(!self.hover.immersive, at: Date().timeIntervalSinceReferenceDate)
-            self.applyChromeVisibility()
+            switch self.settings.doubleClickMode {
+            case .toggleImmersive: self.perform(.toggleImmersive)
+            case .closeWindow: self.perform(.close)
+            case .toggleFullScreen: self.perform(.toggleFullScreen)
+            case .folderBrowser: self.enterFolderBrowser()
+            case .none, .fitDoubleFit, .actualPixels: break
+            }
         }
         canvas.onGeometryChange = { [weak self] in
             self?.scheduleLevelUpgrade()
@@ -415,15 +780,39 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     public func applySettings() {
         let settings = AppSettings.shared
         self.settings = settings
+        applyTitlebarMode()
+        toolDock.applySurface(settings.dockSurface)
         canvas.wheelMode = settings.wheelMode
+        canvas.wheelPanDirection = settings.wheelPanDirection
         canvas.swipeMode = settings.swipeMode
         canvas.doubleClickMode = settings.doubleClickMode
+        canvas.wheelZoomSensitivity = CGFloat(settings.wheelZoomSensitivity)
+        session.loopBrowsing = settings.loopBrowsing
+        let now = Date().timeIntervalSinceReferenceDate
+        if appliedDockDisplayPolicy != settings.dockDisplayPolicy {
+            appliedDockDisplayPolicy = settings.dockDisplayPolicy
+            chrome.toolDock.displayPolicy = settings.dockDisplayPolicy
+            chrome.toolDock.setPinned(settings.dockDisplayPolicy == .alwaysVisible, at: now)
+            toolDock.setPinned(settings.dockDisplayPolicy == .alwaysVisible)
+        }
+        chrome.navigation.setDisplayPolicy(settings.navigationDisplayPolicy, at: now)
+        chrome.hideMinimap = settings.hideMinimap
+        syncChromePresence()
+        chrome.update(at: now)
+        applyChromeVisibility()
+        if appliedExcludedExtensions != settings.excludedExtensions {
+            appliedExcludedExtensions = settings.excludedExtensions
+            if let directory = session.directory {
+                _ = beginFolderRequest(directory)
+                Task { [weak self] in await self?.rescanPreservingCurrent() }
+            }
+        }
         canvas.backgroundColor = settings.appearance.canvasBackground
-        // Filenames are always shown in the drawer. The preference was removed from
-        // Settings; the stored key is left alone so an old value cannot resurface.
-        drawer.filenameMode = .always
+        // Drawer filenames are always shown, and there is no preference left to read: the
+        // setting was removed from `AppSettings` outright, so a value left in the defaults by an
+        // older build cannot reach the drawer even by accident.
         applyAppearance()
-        refreshBottomBar()
+        refreshTitlebarReadout()
     }
 
     private func applyAppearance() {
@@ -435,28 +824,45 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     // MARK: - Folder session
 
     public func open(url: URL) {
-        folderRequestGeneration += 1
-        let generation = folderRequestGeneration
+        folderRequestsEnabled = true
         // Scanning resolves symlinks, so the directory is canonicalized once here
         // to keep the opened file and the scanned items speaking the same path
         // spelling (`/tmp` versus `/private/tmp`, symlinked folders).
-        let directory = url.deletingLastPathComponent().resolvingSymlinksInPath()
+        let directory = folderAccessStore.directoryForOpening(url.deletingLastPathComponent())
         let canonicalURL = directory.appendingPathComponent(url.lastPathComponent)
+        directlyOpenedFile = canonicalURL
+        pendingDirectOpenURL = canonicalURL
+        let generation = beginFolderRequest(directory)
+        clearFolderReadFailure()
+        Task { [weak self] in
+            await self?.readFolder(directory, generation: generation, selection: .file(canonicalURL))
+        }
+    }
+
+    /// Starts a folder generation and stops the old watcher. The new watcher
+    /// is opened only after saved access has been restored and preflight passes.
+    ///
+    /// The generation is what makes a slow scan harmless. Every publish compares it, so the newest
+    /// request is the only one that can land, however the scans interleave.
+    private func beginFolderRequest(_ directory: URL) -> Int {
+        folderRequestGeneration += 1
         session.setDirectory(directory)
         watcher.onChange = { [weak self] in
             Task { @MainActor in await self?.rescanPreservingCurrent() }
         }
-        watcher.start(watching: directory)
-        Task { [weak self] in
-            guard let self else { return }
-            let scanner = FolderScanner()
-            let items = (try? await scanner.scan(directory: directory)) ?? []
-            let sorted = await self.sortedItems(items)
-            guard self.folderRequestGeneration == generation else { return }
-            self.session.setItems(sorted, preferredIdentity: FileIdentity(url: canonicalURL))
-            self.session.select(url: canonicalURL)
-        }
+        // A watcher opens the directory too. Restore saved access and pass
+        // preflight in readFolder before opening the descriptor.
+        watcher.stop()
+        return folderRequestGeneration
     }
+
+    /// Whether the request that started at `generation` is still the session's folder.
+    private func isCurrentFolderRequest(_ generation: Int, directory: URL) -> Bool {
+        generation == folderRequestGeneration && session.directory == directory
+    }
+
+    /// Which folder request the session is waiting for. See `beginFolderRequest`.
+    private var folderRequestGeneration = 0
 
     /// Dimension sorting needs a lazy dimension lookup; every other mode sorts
     /// the metadata already collected during the scan.
@@ -470,38 +876,172 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     private func rescanPreservingCurrent() async {
-        guard let directory = session.directory else { return }
-        let scanner = FolderScanner()
-        guard let items = try? await scanner.scan(directory: directory) else { return }
-        let sorted = await sortedItems(items)
-        // The delete-follow-up preference decides what survives a folder change:
-        // "smart" follows the file the user was moved to, "stay in place" holds
-        // the slot. Both are observable when a rescan re-sorts the list.
-        switch settings.deleteFollowUp {
-        case .smart:
-            session.setItems(sorted, preferredIdentity: session.currentItem?.id)
-        case .stayInPlace:
-            session.setItems(sorted, preferredIndex: session.currentIndex)
+        guard folderRequestsEnabled, let directory = session.directory else { return }
+        let generation = beginFolderRequest(directory)
+        await readFolder(directory, generation: generation, selection: .preserve)
+    }
+
+    private func readFolder(_ directory: URL, generation: Int, selection: FolderSelection) async {
+        await folderAccessStore.restoreIfNeeded()
+        guard isCurrentFolderRequest(generation, directory: directory) else { return }
+        if let required = folderAccessStore.directoryRequiringSelection(beforeReading: directory) {
+            let failure = FolderReadFailure(directory: directory, awaitingSelectionOf: required)
+            folderReadFailure = failure
+            failedFolderRequest = (directory, pendingDirectOpenURL.map { .file($0) } ?? selection, generation)
+            folderAccessBanner.show(failure)
+            showFolderPermissionPromptIfNeeded(failure, generation: generation)
+            return
+        }
+        let scope = await folderAccessStore.prepareAccess(to: directory)
+        // Keep access alive even if the user removes its saved record during this scan.
+        defer { withExtendedLifetime(scope) {} }
+        guard isCurrentFolderRequest(generation, directory: directory) else { return }
+        watcher.start(watching: directory)
+        do {
+            let items = try await folderScanner.scan(directory: directory,
+                                                     excludingExtensions: settings.excludedExtensions,
+                                                     includingURL: directlyOpenedFile)
+            let sorted = await sortedItems(items)
+            guard isCurrentFolderRequest(generation, directory: directory) else { return }
+            folderAccessStore.noteReadableDirectory(directory)
+            clearFolderReadFailure()
+            switch selection {
+            case .file(let url):
+                session.setItems(sorted, preferredIdentity: FileIdentity(url: url))
+                session.select(url: url)
+                pendingDirectOpenURL = nil
+            case .first:
+                session.setItems(sorted, reason: .navigation)
+                folderBrowser?.reload(.navigation)
+            case .preserve:
+                if let pendingFile = pendingDirectOpenURL {
+                    session.setItems(sorted, preferredIdentity: FileIdentity(url: pendingFile))
+                    session.select(url: pendingFile)
+                    pendingDirectOpenURL = nil
+                } else {
+                    switch settings.deleteFollowUp {
+                    case .smart:
+                        session.setItems(sorted, preferredIdentity: session.currentItem?.id
+                            ?? directlyOpenedFile.map { FileIdentity(url: $0) })
+                    case .stayInPlace:
+                        session.setItems(sorted, preferredIndex: session.currentIndex)
+                    }
+                }
+            }
+        } catch {
+            guard isCurrentFolderRequest(generation, directory: directory) else { return }
+            if case .file(let url) = selection {
+                // Reading a selected file and listing its parent have independent permissions.
+                session.setItems([FolderItem(url: url)], preferredIdentity: FileIdentity(url: url))
+            } else if case .first = selection {
+                session.setItems([], reason: .navigation)
+                folderBrowser?.reload(.navigation)
+            }
+            let failure = FolderReadFailure(directory: directory, error: error)
+            folderReadFailure = failure
+            failedFolderRequest = (directory, pendingDirectOpenURL.map { .file($0) } ?? selection, generation)
+            folderAccessBanner.show(failure)
+            watcher.stop()
+            folderAccessStore.noteReadFailure(failure)
+            showFolderPermissionPromptIfNeeded(failure, generation: generation)
         }
     }
 
+    private func clearFolderReadFailure() {
+        folderReadFailure = nil
+        failedFolderRequest = nil
+        permissionPromptShown = false
+        folderAccessBanner.show(nil)
+    }
+
+    func retryFolderAccess() {
+        guard let request = failedFolderRequest,
+              isCurrentFolderRequest(request.generation, directory: request.directory) else { return }
+        let generation = beginFolderRequest(request.directory)
+        failedFolderRequest = (request.directory, request.selection, generation)
+        Task { [weak self] in
+            await self?.readFolder(request.directory, generation: generation, selection: request.selection)
+        }
+    }
+
+    private func chooseFolderAccess() {
+        guard let failure = folderReadFailure, let request = failedFolderRequest else { return }
+        let required = folderAccessStore.directoryRequiringSelection(beforeReading: failure.directory)
+        FolderAccessPanel.choose(store: folderAccessStore, for: view.window,
+                                 initialDirectory: required ?? failure.directory,
+                                 covering: required ?? (failure.isPermission ? failure.directory : nil),
+                                 authorizing: required) { [weak self] selected in
+            guard let self, self.isCurrentFolderRequest(request.generation, directory: request.directory) else { return }
+            // The store notification retries a matching grant. For a missing location, the user
+            // can explicitly choose a different directory instead.
+            if !FolderAccessStore.covers(selected, request.directory) { self.openFolder(selected) }
+        }
+    }
+
+    private func showFolderPermissionPromptIfNeeded(_ failure: FolderReadFailure, generation: Int) {
+        guard failure.isPermission, settings.promptForFolderAccess, !permissionPromptShown,
+              let window = view.window, window.isKeyWindow, window.attachedSheet == nil else { return }
+        permissionPromptShown = true
+        if folderAccessStore.directoryRequiringSelection(beforeReading: failure.directory) != nil {
+            chooseFolderAccess()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "需要文件夹访问"
+        alert.informativeText = failure.message + "\n选择原文件夹或其上级文件夹后重试。完全磁盘访问由系统单独管理。"
+        alert.addButton(withTitle: "选择文件夹…")
+        alert.addButton(withTitle: "稍后")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn,
+                  self.isCurrentFolderRequest(generation, directory: failure.directory) else { return }
+            self.chooseFolderAccess()
+        }
+    }
+
+    @objc private func folderAccessChanged(_ notification: Notification) {
+        guard folderRequestsEnabled, let directory = session.directory else { return }
+        if let granted = notification.userInfo?["grantedURL"] as? URL {
+            if let previous = notification.userInfo?["previousURL"] as? URL,
+               FolderAccessStore.covers(previous, directory),
+               FolderAccessStore.canonicalPath(previous) != FolderAccessStore.canonicalPath(granted) {
+                let suffix = String(FolderAccessStore.canonicalPath(directory)
+                    .dropFirst(FolderAccessStore.canonicalPath(previous).count))
+                let moved = URL(fileURLWithPath: FolderAccessStore.canonicalPath(granted) + suffix,
+                                isDirectory: true)
+                if let file = pendingDirectOpenURL ?? session.currentItem?.url {
+                    open(url: moved.appendingPathComponent(file.lastPathComponent))
+                } else { openFolder(moved) }
+            } else if folderReadFailure != nil, FolderAccessStore.covers(granted, directory) {
+                retryFolderAccess()
+            }
+        } else if let removed = notification.userInfo?["removedURL"] as? URL,
+                  FolderAccessStore.covers(removed, directory) {
+            // Removing a saved record is not proof that ordinary macOS access was revoked.
+            Task { [weak self] in await self?.rescanPreservingCurrent() }
+        }
+    }
+
+    func cancelFolderRequest() {
+        folderRequestsEnabled = false
+        decodeRequestGeneration += 1
+        stopAnimation()
+        folderRequestGeneration += 1
+        watcher.stop()
+        failedFolderRequest = nil
+        let coordinator = self.coordinator
+        Task { await coordinator.cancelAll() }
+    }
+
     public func reloadWithCurrentSort() {
+        guard let directory = session.directory else { return }
+        let generation = folderRequestGeneration
         Task { [weak self] in
             guard let self else { return }
             let identity = self.session.currentItem?.id
             let sorted = await self.sortedItems(self.session.items)
+            guard self.isCurrentFolderRequest(generation, directory: directory) else { return }
             self.session.setItems(sorted, preferredIdentity: identity)
         }
-    }
-
-    /// Stop producers and invalidate delayed publications when the viewer closes.
-    func cancelFolderRequest() {
-        folderRequestGeneration += 1
-        decodeRequestGeneration += 1
-        watcher.stop()
-        stopAnimation()
-        let coordinator = self.coordinator
-        Task { await coordinator.cancelAll() }
     }
 
     // MARK: - Decode
@@ -510,12 +1050,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         decodeRequestGeneration += 1
         guard let item = session.currentItem else {
             stopAnimation()
+            requestedItem = nil
             viewerState.clearForNewImage()
             viewerState.applyEmptyState()
             canvas.renderImage = nil
             errorLabel.isHidden = true
             onTitleChanged?(nil)
-            refreshBottomBar()
+            refreshTitlebarReadout()
             renderEmptyState()
             // No image, so no native detail: without this the pass for the deleted image kept
             // running, its tile arrivals kept scheduling publications, and its textures stayed
@@ -532,6 +1073,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         pendingDirection = .unknown
 
         viewerState.clearForNewImage()
+        // The new picture's own fit is allowed again: the flag only protects a zoom made *while this
+        // load was in flight*.
+        userMovedViewportWhileLoading = false
         stopAnimation()
         // Tiles belong to one source: drop them with the image, and stop any pass still
         // reading the previous file.
@@ -547,8 +1091,12 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         onTitleChanged?(item.displayName)
         drawer.setCurrentIndex(index)
         drawer.scrollCurrentIntoView()
-        refreshBottomBar()
+        refreshTitlebarReadout()
 
+        // Remember what is being asked for, so the second callback of the same publication does not
+        // ask again. The version travels with it: a replacement while the decode runs is a different
+        // request and must not be mistaken for this one.
+        requestedItem = (item.url, SourceFileIdentity.read(at: item.url).versionToken)
         startDecode(url: item.url, previous: previous, next: next,
                     direction: direction, target: currentDecodeTarget())
     }
@@ -613,11 +1161,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     /// Whether the tile backend can read this source (PNG, 8-bit, not interlaced). Asked
-    /// once per file.
+    /// once per file — and per *version* of it: format is a property of the bytes, so a
+    /// replacement at the same path must be asked about again.
     private func canServeNativeDetail(_ url: URL) -> Bool {
-        if let known = detailCapability[url.path] { return known }
+        let key = "\(url.path)#\(SourceFileIdentity.read(at: url).versionToken)"
+        if let known = detailCapability[key] { return known }
         let answer = NativeTileCapability.canServe(url)
-        detailCapability[url.path] = answer
+        detailCapability[key] = answer
         return answer
     }
 
@@ -1117,7 +1667,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func handle(event: DecodeEvent) {
         switch event {
         case let .head(head):
-            viewerState.apply(head: head)
+            requestedItem = nil
+            // The image (or its replacement) is on screen, so the HUD's readout is worth showing.
+            // This is the load/change trigger; it is deliberately not driven by the decode
+            // starting, which would show a readout for an image that has not arrived.
+            let url = head.descriptor.sourceURL
+            let version = SourceFileIdentity.read(at: url).versionToken
+            // A new *picture* starts fitted; another decode of the same file at another level is not
+            // a new picture and must not touch the zoom the user chose.
+            let isNewPicture = url != displayedItemURL || version != displayedItemVersion
+            displayedItemURL = url
+            displayedItemVersion = version
+            viewerState.apply(head: head, startsFitted: isNewPicture)
             displayedLevel = head.level
             inFlightLevel = nil
             isDecodingCurrentItem = false
@@ -1141,6 +1702,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
                 viewerState.apply(frame: frame)
             }
         case let .failure(message):
+            requestedItem = nil
             isDecodingCurrentItem = false
             inFlightLevel = nil
             viewerState.apply(error: message)
@@ -1258,8 +1820,22 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.renderImage = nil
         }
         canvas.refit()
-        if viewerState.viewport.zoomScale == 1 || viewerState.currentImage == nil {
+        // A picture the user did not choose a zoom for starts fitted. The request comes from the
+        // state (only a new image raises it), so a re-decode of the same picture at another level
+        // leaves the zoom alone — and so does a zoom the user asked for while this picture was
+        // still decoding, which is the case that made pinch-to-zoom look broken after opening a
+        // large file from the folder browser: the gesture worked, and then the arrival of the
+        // picture reset it seconds later.
+        let wantsFit = viewerState.consumeFitRequest()
+        let keepUserZoom = userMovedViewportWhileLoading
+        userMovedViewportWhileLoading = false
+        let appliesFit = viewerState.currentImage == nil || (wantsFit && !keepUserZoom)
+        GestureTrace.note("refreshCanvas wantsFit=\(wantsFit) keepUserZoom=\(keepUserZoom) "
+                          + "appliesFit=\(appliesFit) zoom=\(canvas.viewport.zoomScale) "
+                          + "fit=\(canvas.viewport.fitScale)")
+        if appliesFit {
             canvas.setZoomToFit()
+            GestureTrace.note("refreshCanvas fitted -> \(canvas.viewport.zoomScale)")
         }
         viewerState.viewport = canvas.viewport
         refreshEmptyState()
@@ -1273,7 +1849,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         // frames were ever drawn. It runs when the image changes instead, which is what
         // its own documentation already promised.
         refreshMinimap()
-        refreshBottomBar()
+        refreshTitlebarReadout()
     }
 
     // MARK: - Animation
@@ -1406,7 +1982,8 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     private func rebuildDrawer() {
         // A drawer rebuild never touches the canvas frame or zoom: it only
         // overlays an existing region, and rows are virtualized.
-        drawer.thumbnailProvider = { [weak self] item in self?.thumbnailCache[item.url] }
+        listedURLs = Set(session.items.map(\.url))
+        drawer.thumbnailProvider = { [weak self] item in self?.thumbnailCache[item.url]?.image }
         drawer.onThumbnailNeeded = { [weak self] index, item in
             self?.requestThumbnail(at: index, for: item)
         }
@@ -1439,11 +2016,25 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     var thumbnailCacheCountForTesting: Int { thumbnailCache.count }
 
     var thumbnailCacheBytesForTesting: Int {
-        thumbnailCache.values.reduce(0) { $0 + $1.width * $1.height * 4 }
+        thumbnailCache.values.reduce(0) { $0 + Self.byteCost(of: $1.image) }
     }
 
     /// Whether a drawer thumbnail has been delivered, for tests and the acceptance runner.
     func hasCachedThumbnailForTesting(_ url: URL) -> Bool { thumbnailCache[url] != nil }
+
+    /// The file version the cached thumbnail describes, for tests: whatever is retained must be a
+    /// picture of the file that is at that path *now*.
+    func cachedThumbnailVersionForTesting(_ url: URL) -> String? {
+        thumbnailCache[url]?.version
+    }
+
+    @objc private func clearLocalThumbnailCache() {
+        thumbnailCacheGeneration &+= 1
+        thumbnailCache.removeAll()
+        thumbnailRetryQueued.removeAll()
+        folderBrowser?.clearCachedThumbnails(reloadVisible: viewerMode == .folderBrowser)
+        if folderBrowser == nil { cancelGalleryThumbnails() }
+    }
 
     private func requestThumbnail(at index: Int, for item: FolderItem) {
         guard thumbnailCache[item.url] == nil else { return }
@@ -1454,6 +2045,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             return
         }
         inFlightThumbnails[item.url] = true
+        let generation = thumbnailCacheGeneration
         thumbnailRequestCount += 1
         thumbnailRequestsPerURL[item.url, default: 0] += 1
         activeThumbnailRequests += 1
@@ -1465,7 +2057,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // `nil` leaves the cell as a placeholder: an oversized neighbour is not
             // worth a full-stream decode for a 300 px cell.
             let image = await self.thumbnailImage(for: item)
-            self.finishThumbnailRequest(item, image: image)
+            self.finishThumbnailRequest(item, image: generation == self.thumbnailCacheGeneration ? image : nil)
         }
     }
 
@@ -1481,12 +2073,21 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         activeThumbnailRequests -= 1
         activeThumbnailRequestsPerURL[item.url, default: 0] -= 1
         if let image {
-            thumbnailCache[item.url] = image
+            // A delivery for a file the list no longer holds is a picture nothing can show: it used
+            // to be retained until the next trim, which is how emptying the folder left entries
+            // behind (measured: seven of them, still 2.4 MiB).
+            if listedURLs.contains(item.url) {
+                thumbnailDeliverySequence += 1
+                thumbnailCache[item.url] = DrawerThumbnail(
+                    image: image, version: SourceFileIdentity.read(at: item.url).versionToken,
+                    sequence: thumbnailDeliverySequence)
+            }
             // Delivered by URL: the row captured when the request started may now belong to a
             // different item.
             if !drawer.updateThumbnail(for: item.url, image: image) {
                 thumbnailStaleDeliveriesIgnored += 1
             }
+            trimThumbnailCacheToWindow()
             return
         }
         guard hadQueuedRetry else { return }
@@ -1519,14 +2120,115 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// thumbnail request and could "pass" while proving nothing.
     func thumbnailImage(for item: FolderItem) async -> CGImage? {
         if let hook = thumbnailPauseHook { await hook() }
-        if item.url == session.currentItem?.url, let bitmap = viewerState.currentImage {
+        // The *displayed* file, not the selected one: a selection that has moved onto a file still
+        // decoding would otherwise be shown the previous picture's pixels.
+        if item.url == session.currentItem?.url,
+           let bitmap = viewerState.currentImage {
             return await thumbnails.preview(from: bitmap, maxPixelSize: Self.drawerThumbnailPixelSize)
         }
-        if await probe.isOversized(item.url) { return nil }
+        if await probe.isOversized(item.url) {
+            // Before giving up on a whole-stream decode, take macOS's own thumbnail if it has one:
+            // measured 23 ms from its cache against 18–23 s to decode the file.
+            return await thumbnails.systemThumbnail(for: item.url,
+                                                    maxPixelSize: Self.drawerThumbnailPixelSize)
+        }
         return try? await thumbnails.thumbnail(for: item.url, maxPixelSize: Self.drawerThumbnailPixelSize)
     }
 
-    private var thumbnailCache: [URL: CGImage] = [:]
+    /// One delivered drawer thumbnail: the image and the version of the file it was decoded from.
+    ///
+    /// The version is what keeps a replaced file from being shown its predecessor's pixels, and
+    /// keeping it *here* rather than re-reading the file per row is what makes the check affordable.
+    private struct DrawerThumbnail {
+        let image: CGImage
+        let version: String
+        /// Delivery order, so a trim keeps the newest pictures when it has to choose.
+        let sequence: Int
+    }
+
+    /// Monotonic delivery counter for `DrawerThumbnail.sequence`.
+    private var thumbnailDeliverySequence = 0
+
+    /// Drawer thumbnails, bounded to the rows the drawer is showing. See
+    /// `trimThumbnailCacheToWindow` and `pruneThumbnailCache`.
+    private var thumbnailCache: [URL: DrawerThumbnail] = [:]
+    /// The URLs the drawer can show right now, so a delivery that arrives after the list moved on
+    /// is discarded instead of being retained for a row that no longer exists.
+    private var listedURLs: Set<URL> = []
+
+    /// Releases drawer thumbnails outside the rows the drawer is showing (plus its prefetch band).
+    ///
+    /// The floor of 48 keeps a small drawer from churning through re-decodes as it scrolls; above
+    /// it the cache is cut back to exactly the window. This is the same shape as the gallery's own
+    /// delivered window, and for the same reason: a per-window view of a folder-sized list must not
+    /// retain the folder. Measured before this: 200 thumbnails ≈ 69 MiB, still held after the list
+    /// was emptied.
+    private func trimThumbnailCacheToWindow() {
+        let window = drawer.thumbnailWindow
+        // A drawer with nothing visible (closed, or a window that has not laid out yet) has no
+        // window to keep — but it still must not keep the folder. It falls back to a small floor:
+        // bounded, and cheap to refill when the drawer is opened again.
+        let countCap = window.isEmpty
+            ? Self.closedDrawerThumbnailLimit
+            : max(Self.minimumDrawerThumbnailLimit, window.count * 2)
+        let totalBytes = thumbnailCacheBytesForTesting
+        guard thumbnailCache.count > countCap
+                || totalBytes > Self.drawerThumbnailByteBudget else { return }
+
+        let keep = Set(window.compactMap { index -> URL? in
+            session.items.indices.contains(index) ? session.items[index].url : nil
+        })
+        // The picture a visible row is showing is never evicted, whatever the budget says: blanking
+        // a row the user is looking at is a visible regression, and the window is bounded by the
+        // viewport rather than by the folder.
+        var survivors = thumbnailCache.filter { keep.contains($0.key) }
+        var retainedBytes = survivors.values.reduce(0) { $0 + Self.byteCost(of: $1.image) }
+        let rest = thumbnailCache
+            .filter { !keep.contains($0.key) }
+            .sorted { $0.value.sequence > $1.value.sequence }
+        for (url, entry) in rest {
+            let cost = Self.byteCost(of: entry.image)
+            guard survivors.count < countCap,
+                  retainedBytes + cost <= Self.drawerThumbnailByteBudget else { break }
+            survivors[url] = entry
+            retainedBytes += cost
+        }
+        guard survivors.count != thumbnailCache.count else { return }
+        thumbnailCache = survivors
+    }
+
+    /// A decoded bitmap's real byte size, which is what the budget is denominated in — the row's
+    /// `width × height × 4` is an estimate that ignores row padding.
+    private static func byteCost(of image: CGImage) -> Int {
+        image.bytesPerRow * image.height
+    }
+
+    /// Byte ceiling for drawer thumbnails, whatever the row count says. Thumbnails are decoded at
+    /// 300 pt, so a large folder's window is still megabytes: measured at 351 KiB per 300×300
+    /// picture, the count window alone is ~20 MiB.
+    private static let drawerThumbnailByteBudget = 24 * 1024 * 1024
+    private static let minimumDrawerThumbnailLimit = 48
+    private static let closedDrawerThumbnailLimit = 16
+
+    /// Drops drawer thumbnails the new list cannot show: files that are gone, and files whose bytes
+    /// changed at the same path since the thumbnail was decoded.
+    ///
+    /// Called before the drawer is rebuilt, so the cells that are about to be created ask for a
+    /// fresh thumbnail instead of being handed the old file's pixels.
+    private func pruneThumbnailCache() {
+        listedURLs = Set(session.items.map(\.url))
+        // Nothing retained, nothing to check: important on a folder of tens of thousands of items,
+        // where building the membership set is proportional to the list.
+        guard !thumbnailCache.isEmpty else { return }
+        guard !session.items.isEmpty else {
+            thumbnailCache.removeAll()
+            return
+        }
+        thumbnailCache = thumbnailCache.filter { url, delivered in
+            guard listedURLs.contains(url) else { return false }
+            return delivered.version == SourceFileIdentity.read(at: url).versionToken
+        }
+    }
     private var inFlightThumbnails: [URL: Bool] = [:]
     /// Retries that arrived while a request was already running for the same URL. Starting a second
     /// request instead is what the state machine has to prevent.
@@ -1565,6 +2267,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Chrome visibility
 
+    /// The shared chrome tick, for tests that check the surfaces share it.
+    var chromeTimerForTesting: Timer? { chromeTimer }
+
+    /// Stops the chrome tick. A closed viewer must not keep a repeating timer alive: it is
+    /// scheduled on the main run loop, which retains it, so without this every window this process
+    /// ever closed would leave a timer waking the run loop ten times a second forever. Measured in
+    /// the test suite, where a hundred viewers' worth of dead timers made late tests time out.
+    func stopChromeTimer() {
+        chromeTimer?.invalidate()
+        chromeTimer = nil
+    }
+
+    public override func viewWillDisappear() {
+        super.viewWillDisappear()
+        stopChromeTimer()
+    }
+
     private func startChromeTimer() {
         chromeTimer?.invalidate()
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -1576,30 +2295,219 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     private func tickChrome() {
         guard isViewLoaded else { return }
-        syncToolDockPresence()
-        if hover.update(at: Date().timeIntervalSinceReferenceDate) {
-            applyChromeVisibility()
+        syncChromePresence()
+        _ = chrome.update(at: Date().timeIntervalSinceReferenceDate)
+        // Compared against what was last *applied*, not against the model's own before/after
+        // diff: another entry point (an image load marking the HUD as described) can change the
+        // model between ticks, and a diff taken after that change cannot see it. Measured as a
+        // HUD that never appeared at all, because the load had already set `visible` before the
+        // tick that was supposed to apply it.
+        guard chrome.snapshot != appliedChromeSnapshot else { return }
+        applyChromeVisibility()
+    }
+
+    /// The dock, the HUD and the navigation controls all need to know whether there is an image;
+    /// every entry point that reads a chrome decision tells them first. Each model keeps its own
+    /// copy of that fact and its own rule about what to do with it.
+    private func syncChromePresence() {
+        let now = Date().timeIntervalSinceReferenceDate
+        let hasImage = viewerState.currentImage != nil
+        chrome.toolDock.setHasImage(hasImage, at: now)
+        chrome.navigation.setHasImage(hasImage, at: now)
+        // A first image has no previous and a last one has no next, so the control is not merely
+        // disabled: it is not there.
+        chrome.navigation.setAvailable(previous: session.canGoPrevious, next: session.canGoNext)
+        toolDock.setNavigationAvailable(previous: session.canGoPrevious, next: session.canGoNext)
+        floatingNavigation.setAvailable(previous: chrome.navigation.previous.available,
+                                        next: chrome.navigation.next.available)
+    }
+
+    /// The two strips that reveal the titlebar, in root coordinates. Zone A sits over the real
+    /// traffic-light controls, zone B is the rest of the top strip.
+    var titlebarRevealZones: (a: CGRect, b: CGRect) {
+        let lights = (view.window as? ViewerWindow)?.trafficLightsFrame
+            .map { rootView.convert($0, from: nil) }
+        var bounds = rootView.bounds
+        if let window = view.window {
+            let top = rootView.convert(CGPoint(x: 0, y: window.frame.height), from: nil).y
+            bounds.size.height = max(bounds.height, top - bounds.minY)
+        }
+        return TitlebarZoneGeometry.zones(in: bounds, trafficLights: lights)
+    }
+
+    /// A focus-follows-mouse utility may activate the window without sending a click.
+    func restoreImageInputFocus() { rootView.restoreCanvasFirstResponder() }
+
+    /// Fired when the window needs the titlebar mode applied to it (the window does not exist yet
+    /// when the view loads).
+    public var onTitlebarModeNeeded: (() -> Void)?
+
+    /// Applies the settings' titlebar mode to the window this view is in. Public because the window
+    /// controller calls it once the window exists.
+    public func applyTitlebarModeForWindow() { applyTitlebarMode() }
+
+    /// The window's own state changed in a way that affects the titlebar: re-apply the mode and the
+    /// current state, and re-evaluate the reasons not to hide.
+    func windowTitlebarContextChanged() {
+        guard let window = view.window as? ViewerWindow else { return }
+        window.applyTitlebarMode(effectiveTitlebarMode())
+        appliedTitlebarState = nil
+        refreshTitlebarBlocks()
+        applyTitlebarVisibility()
+        rootView.refreshWindowBoundaryTracking()
+        // A resize or full-screen transition can give the merged browser header a new height.
+        if viewerMode == .folderBrowser { alignBrowserToolbarWithTitlebar() }
+        _ = window.titlebarState
+    }
+
+    /// While the folder browser is up, the titlebar is pinned visible: the browser is a working
+    /// mode with its own top bar, and auto-hide would leave its toolbar under a bar that can hide
+    /// on top of it (or floating controls over it). The pin is a momentary mode statement, reset
+    /// when the browser leaves; it never changes the user's setting.
+    private var isFolderBrowserPinningTitlebar = false
+
+    private func effectiveTitlebarMode() -> ViewerWindow.TitlebarMode {
+        isFolderBrowserPinningTitlebar
+            ? .alwaysVisible
+            : ViewerWindow.TitlebarMode(settings.titlebar)
+    }
+
+    /// Recomputes the reasons the titlebar must stay: a drag in progress, a sheet, native full
+    /// screen. Called on every window event that can change one of them.
+    func refreshTitlebarBlocks() {
+        guard let window = view.window else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        chrome.titlebar.setBlocked(.sheet, window.attachedSheet != nil, at: now)
+        chrome.titlebar.setBlocked(.fullScreen, window.styleMask.contains(.fullScreen), at: now)
+        if window.styleMask.contains(.fullScreen), let viewerWindow = window as? ViewerWindow {
+            // The system owns the top strip in full screen.
+            viewerWindow.restoreSystemTitlebarControl()
         }
     }
 
-    /// The dock's state machine needs to know whether there is an image; every entry
-    /// point that reads a dock decision tells it first.
-    private func syncToolDockPresence() {
-        hover.toolDock.setHasImage(viewerState.currentImage != nil,
-                                   at: Date().timeIntervalSinceReferenceDate)
+    func setTitlebarBlocked(_ reason: TitlebarVisibilityModel.BlockReason, _ blocked: Bool) {
+        chrome.titlebar.setBlocked(reason, blocked, at: Date().timeIntervalSinceReferenceDate)
+        if !blocked { chrome.titlebar.update(at: Date().timeIntervalSinceReferenceDate) }
+        applyTitlebarVisibility()
     }
 
+    /// The window moved again; the drag is still going. The block lifts a beat after the last move,
+    /// which is the closest AppKit offers to "the drag ended" without swallowing the mouse.
+    func titlebarDragDidContinue() {
+        titlebarDragEndWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.setTitlebarBlocked(.windowDrag, false)
+            }
+        }
+        titlebarDragEndWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    private var titlebarDragEndWorkItem: DispatchWorkItem?
+
+    /// Applies the titlebar mode from the settings. Switching modes relayouts the window (the
+    /// content stops or starts reaching the top edge), so the viewport is re-fitted around the new
+    /// area exactly as a drawer pin does — Fit stays Fit, a manual zoom keeps its level.
+    private func applyTitlebarMode() {
+        guard let window = view.window as? ViewerWindow else { return }
+        let mode = effectiveTitlebarMode()
+        guard window.titlebarMode != mode else { return }
+        let previousCenter = canvas.viewport.normalizedCenter
+        let wasAtFit = canvas.viewport.isAtFit
+        window.applyTitlebarMode(mode)
+        chrome.titlebar.setAlwaysHidden(mode == .alwaysHidden, at: Date().timeIntervalSinceReferenceDate)
+        chrome.titlebar.setAutoHiding(mode == .autoHide,
+                                    at: Date().timeIntervalSinceReferenceDate)
+        chrome.titlebar.update(at: Date().timeIntervalSinceReferenceDate)
+        appliedTitlebarState = nil
+        view.layoutSubtreeIfNeeded()
+        var viewport = canvas.viewport
+        viewport.fitScale = ViewportState.fitScale(imagePixels: canvas.imagePixelSize,
+                                                  viewPoints: canvas.bounds.size)
+        if wasAtFit {
+            viewport.zoomScale = viewport.fitScale
+            viewport.normalizedCenter = CGPoint(x: 0.5, y: 0.5)
+        } else {
+            viewport.normalizedCenter = previousCenter
+            viewport.clampCenter(imagePixels: canvas.imagePixelSize,
+                                 viewPoints: canvas.bounds.size, backingScale: canvas.backingScale)
+        }
+        canvas.viewport = viewport
+        applyTitlebarVisibility()
+    }
+
+    /// The titlebar state the window is currently presenting.
+    private var appliedTitlebarState: TitlebarVisibilityModel.State?
+    /// Transitions the window actually applied. The acceptance evidence that a pointer sweep does
+    /// not re-issue the titlebar's transition is this number not moving.
+    var titlebarTransitionCount: Int { (view.window as? ViewerWindow)?.titlebarTransitionCount ?? 0 }
+
+
+
+    /// Target-state idempotent, like the dock's: this runs on every pointer move.
+    private func applyTitlebarVisibility() {
+        guard let window = view.window as? ViewerWindow else { return }
+        if drawerLayoutWindow !== window {
+            drawerTopConstraint?.isActive = false
+            // The image reaches behind an auto-hidden bar, but sidebar rows always stay below
+            // the native controls. This changes only the drawer, never the canvas geometry.
+            let top = NSLayoutConstraint(item: drawer, attribute: .top, relatedBy: .equal,
+                                         toItem: window.contentLayoutGuide, attribute: .top,
+                                         multiplier: 1, constant: 0)
+            top.isActive = true
+            drawerTopConstraint = top
+            drawerLayoutWindow = window
+        }
+        let state = chrome.titlebar.state
+        guard appliedTitlebarState != state else { return }
+        appliedTitlebarState = state
+        window.applyTitlebarState(state)
+        // Auto-hide changes only the native bar and its backing, never the canvas area.
+        view.layoutSubtreeIfNeeded()
+    }
+
+    /// The two canvas-edge strips that reveal the navigation controls, in root coordinates.
+    var floatingNavigationRevealZones: (previous: CGRect, next: CGRect) {
+        FloatingNavigationView.revealZones(canvasFrame: canvas.frame)
+    }
+
+    /// Applies the navigation model to the view, transition-counted like the dock so a pointer
+    /// sweep cannot re-issue a fade.
+    private func applyNavigationVisibility() {
+        let snapshot = chrome.snapshot
+        floatingNavigation.setVisible(previous: snapshot.previousNavigation,
+                                     next: snapshot.nextNavigation)
+        appliedNavigationSnapshot = (snapshot.previousNavigation, snapshot.nextNavigation)
+    }
+
+    private var appliedNavigationSnapshot: (previous: Bool, next: Bool)?
+
+    /// The chrome state the views are currently showing, so a tick can tell whether anything
+    /// needs re-applying.
+    private var appliedChromeSnapshot: ViewerChromeModel.Snapshot?
+    /// The dock visibility the views are currently showing, so a repeated request for the same
+    /// state does not re-issue the transition.
+    private var appliedDockVisible: Bool?
+
     private func applyChromeVisibility() {
-        syncToolDockPresence()
-        let snapshot = hover.snapshot
-        let immersive = hover.immersive
+        applyTitlebarVisibility()
+        // The folder browser is a mode, not an overlay: while it is up the image mode's chrome is
+        // off screen entirely, and the chrome timer — which keeps running — must not bring the dock
+        // or the HUD back over the gallery.
+        guard viewerMode == .image else { return }
+        let snapshot = chrome.snapshot
+        appliedChromeSnapshot = snapshot
+        let immersive = chrome.immersive
         // The tool dock auto-hides: it follows its own model, which already folds in
         // the pin, the pointer and the immersive state.
         setDockChrome(visible: !immersive && snapshot.toolDock)
-        setChrome(bottomBar, visible: !immersive && viewerState.currentImage != nil)
+        // The HUD auto-hides: it follows its own idle model, which already folds in the image's
+        // presence and the immersive state.
         setChrome(drawer, visible: snapshot.drawer && !immersive)
         setChrome(minimap, visible: snapshot.minimap && !immersive)
         setChrome(infoCard, visible: !immersive && isInfoCardVisible)
+        applyNavigationVisibility()
         if immersive { infoCardSuppressed = true } else if infoCardSuppressed {
             // Leaving immersive mode restores whatever the user had open.
             infoCardSuppressed = false
@@ -1611,7 +2519,9 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// re-fits around the new area. Because every consumer reads canvas bounds,
     /// nothing else needs to know about the drawer.
     private func applyDrawerLayout() {
-        let pinned = hover.drawerPinned
+        // An open drawer reserves canvas width; there is no hover-only overlay state left for the
+        // drawer to occupy, so the two are the same question.
+        let pinned = chrome.drawerOpen
         guard pinned != isDrawerReservingSpace else { return }
         isDrawerReservingSpace = pinned
 
@@ -1619,8 +2529,11 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         let previousCenter = canvas.viewport.normalizedCenter
         let wasAtFit = canvas.viewport.isAtFit
 
-        canvasLeadingToRoot?.isActive = !pinned
-        canvasLeadingToDrawer?.isActive = pinned
+        // Remove the old leading edge before installing its replacement. Closing the
+        // drawer otherwise briefly pins the canvas to both edges and breaks a constraint.
+        canvasLeadingToRoot?.isActive = false
+        canvasLeadingToDrawer?.isActive = false
+        (pinned ? canvasLeadingToDrawer : canvasLeadingToRoot)?.isActive = true
         // The canvas minimum has to fit the tool dock: a pinned drawer in a narrow
         // window would otherwise leave a canvas narrower than the dock, which then
         // overflows it and draws across the sidebar.
@@ -1693,7 +2606,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The slide is a layer transform, so the dock's frame never changes and the
     /// canvas keeps exactly the geometry it had while the dock was hidden. Reduce
     /// Motion collapses both the fade and the slide to nothing.
+    /// Transitions actually started. The acceptance evidence that a pointer sweep does not
+    /// restart the dock's animation is this number not moving.
+    private(set) var dockVisibilityTransitionCount = 0
+
     private func setDockChrome(visible: Bool) {
+        // Target-state idempotent. `applyChromeVisibility` runs on every pointer move, and the
+        // dock's visibility is derived from the hover model each time; without this guard the
+        // fade and the slide were re-issued on every event, so the dock never settled while the
+        // pointer was inside its reveal strip.
+        guard appliedDockVisible != visible else { return }
+        appliedDockVisible = visible
+        dockVisibilityTransitionCount += 1
         let reduceMotion = AccessibilityAppearance.reduceMotion
         let duration = AccessibilityAppearance.chromeAnimationDuration(reduceMotion: reduceMotion)
         let offset = ViewerToolDockView.hiddenOffset(reduceMotion: reduceMotion)
@@ -1728,7 +2652,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             // but interactive dock over the image.
             DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) { [weak self] in
                 MainActor.assumeIsolated {
-                    guard let self, !self.hover.toolDock.visible,
+                    guard let self, !self.chrome.toolDock.visible,
                           self.toolDock.alphaValue < 0.01 else { return }
                     self.toolDock.isHidden = true
                 }
@@ -1742,7 +2666,6 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// the app agree on what "the left edge" means.
     var zoneGeometry: ViewerZoneGeometry {
         ViewerZoneGeometry(topBarHeight: 0,
-                           hotZoneWidth: ThumbnailDrawerView.hotZoneWidth,
                            drawerWidth: drawerWidthConstraint?.constant ?? ThumbnailDrawerView.minimumWidth)
     }
 
@@ -1766,13 +2689,13 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// The dock's state, for diagnostics and tests.
     var toolDockVisibilityForTesting: (visible: Bool, pointerInZone: Bool, pinned: Bool,
                                        hasImage: Bool) {
-        (hover.toolDock.visible, hover.toolDock.pointerInZone, hover.toolDock.pinned,
-         hover.toolDock.hasImage)
+        (chrome.toolDock.visible, chrome.toolDock.pointerInZone, chrome.toolDock.pinned,
+         chrome.toolDock.hasImage)
     }
 
     func zone(forRootPoint point: CGPoint) -> ViewerPointerZone {
         zoneGeometry.zone(for: point, in: rootView.bounds,
-                          drawerVisible: hover.drawerVisible || hover.drawerPinned,
+                          drawerVisible: chrome.drawerVisible,
                           minimapRect: minimap.isHidden ? nil : minimap.frame)
     }
 
@@ -1780,25 +2703,37 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     /// tracking or from a test driving the same production path.
     func handlePointer(atRootPoint point: CGPoint) {
         let now = Date().timeIntervalSinceReferenceDate
-        hover.pointerMoved(at: now)
-        syncToolDockPresence()
-        hover.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
+        chrome.pointerMoved(at: now)
+        syncChromePresence()
+        chrome.toolDock.setPointer(inZone: toolDockRevealZone.contains(point), at: now)
+        let zones = floatingNavigationRevealZones
+        chrome.navigation.setPointer(previousSide: zones.previous.contains(point),
+                                     nextSide: zones.next.contains(point), at: now)
+        let titlebarZones = titlebarRevealZones
+        chrome.titlebar.setPointer(inTrafficLightsZone: titlebarZones.a.contains(point),
+                                   inTitlebarZone: titlebarZones.b.contains(point), at: now)
+        chrome.navigation.pointerOnPrevious = floatingNavigation.previousControl.frame
+            .insetBy(dx: -6, dy: -6)
+            .contains(rootView.convert(point, to: floatingNavigation))
+        chrome.navigation.pointerOnNext = floatingNavigation.nextControl.frame
+            .insetBy(dx: -6, dy: -6)
+            .contains(rootView.convert(point, to: floatingNavigation))
 
         switch zone(forRootPoint: point) {
-        case .topChrome, .leftEdgeHotZone:
-            // No chrome lives at the top any more; the standard titlebar is
-            // AppKit's. The left edge is the drawer's trigger region.
-            hover.pointerEnteredLeftEdge(at: now)
+        case .topChrome:
+            // No chrome lives at the top any more; the standard titlebar is AppKit's.
+            break
         case .drawerSurface:
-            // Keeping the pointer inside the drawer keeps it open.
-            hover.pointerEnteredDrawer(at: now)
+            // The pointer being over the drawer is activity, nothing more: it cannot open or
+            // close anything.
+            chrome.pointerOverDrawer(at: now)
         case .minimapSurface:
-            hover.zoomActivity(at: now)
+            chrome.zoomActivity(at: now)
         case .canvas:
-            hover.pointerExitedDrawer(at: now)
+            break
         }
 
-        hover.update(at: now)
+        chrome.update(at: now)
         applyChromeVisibility()
     }
 
@@ -1809,6 +2744,23 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     // MARK: - Commands
+
+    public func isCommandAvailable(_ command: ViewerCommand) -> Bool {
+        switch command {
+        case .nextImage: return session.canGoNext
+        case .previousImage: return session.canGoPrevious
+        case .randomImage: return session.items.count > 1
+        case .firstImage: return (session.currentIndex ?? 0) > 0
+        case .lastImage: return session.currentIndex.map { $0 < session.items.count - 1 } ?? false
+        case .copyFilePath, .revealInFinder, .moveToTrash, .moveToTrashWithoutConfirmation:
+            return session.currentItem != nil
+        case .open, .openFolder, .settings, .close, .toggleFullScreen, .toggleAlwaysOnTop:
+            return true
+        case .browseFolder, .toggleThumbnailDrawer, .toggleSortDirection:
+            return session.directory != nil
+        default: return viewerState.currentImage != nil && viewerMode == .image
+        }
+    }
 
     public func perform(_ command: ViewerCommand) {
         switch command {
@@ -1824,13 +2776,22 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .lastImage:
             pendingDirection = .forward
             session.goLast()
+        case .zoomIn:
+            canvas.zoomBy(factor: ViewerToolDockView.zoomStep)
+        case .zoomOut:
+            canvas.zoomBy(factor: 1 / ViewerToolDockView.zoomStep)
         case .zoomToFit:
+            // A zoom command is a user choice too, so a load that lands afterwards keeps it.
+            userMovedViewportWhileLoading = true
             canvas.setZoomToFit()
         case .zoomToFitWidth:
+            userMovedViewportWhileLoading = true
             canvas.setZoomToFitWidth()
         case .zoomActualPixels:
+            userMovedViewportWhileLoading = true
             canvas.setZoomToActualPixels()
         case .zoomDoubleFit:
+            userMovedViewportWhileLoading = true
             canvas.toggleFitAndDoubleFit()
         case .rotateClockwise:
             canvas.rotateClockwise()
@@ -1838,7 +2799,24 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             canvas.rotateCounterClockwise()
         case .toggleMirror:
             canvas.toggleMirror()
+        case .randomImage:
+            pendingDirection = .unknown
+            session.goRandom()
+        case .copyFilePath:
+            guard let url = session.currentItem?.url else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.path, forType: .string)
+        case .revealInFinder:
+            guard let url = session.currentItem?.url else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .toggleAlwaysOnTop:
+            guard let window = view.window else { return }
+            window.level = window.level == .floating ? .normal : .floating
+        case .openFolder:
+            NSApp.sendAction(#selector(AppDelegate.openFolder(_:)), to: NSApp.delegate, from: self)
         case .moveToTrash:
+            requestMoveCurrentToTrash()
+        case .moveToTrashWithoutConfirmation:
             moveCurrentToTrash()
         case .togglePlayback:
             if viewerState.isAnimated {
@@ -1852,20 +2830,34 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         case .previousPage:
             goToPage(-1)
         case .toggleImmersive:
-            hover.setImmersive(!hover.immersive, at: Date().timeIntervalSinceReferenceDate)
+            chrome.setImmersive(!chrome.immersive, at: Date().timeIntervalSinceReferenceDate)
             viewerState.toggleImmersive()
             applyChromeVisibility()
         case .toggleThumbnailDrawer:
-            toggleDrawerPinned()
+            // The command is the menu/keyboard spelling of the left-column button, so it follows the
+            // same routing: in the gallery the left column is the folder tree, and the drawer is not
+            // on screen there at all. Toggling the hidden drawer instead changed state the user
+            // could not see — measured as `drawerOpen false → true` while the browser was up, with
+            // the change only appearing after going back to the image.
+            toggleLeftColumn()
         case .showImageInfo:
             showImageInfo()
         case .toggleSortDirection:
             let settings = AppSettings.shared
             settings.sortDirection = settings.sortDirection == .ascending ? .descending : .ascending
             reloadWithCurrentSort()
-        case .open, .close, .settings, .toggleFullScreen:
-            // Handled by the app-level router.
-            NSApp.sendAction(#selector(NSDocumentController.newDocument(_:)), to: nil, from: nil)
+        case .copyImage:
+            copyImageToPasteboard()
+        case .browseFolder:
+            enterFolderBrowser()
+        case .close:
+            view.window?.performClose(nil)
+        case .toggleFullScreen:
+            view.window?.toggleFullScreen(nil)
+        case .open:
+            NSApp.sendAction(#selector(AppDelegate.openDocument(_:)), to: NSApp.delegate, from: self)
+        case .settings:
+            NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: NSApp.delegate, from: self)
         }
     }
 
@@ -1882,7 +2874,7 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
             if let frame = try? await decoder.decodeFrame(url, index: next) {
                 await MainActor.run {
                     self?.viewerState.apply(frame: frame)
-                    self?.refreshBottomBar()
+                    self?.refreshTitlebarReadout()
                 }
             }
         }
@@ -1894,6 +2886,35 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
         viewerState.errorMessage = message
         errorLabel.stringValue = message
         errorLabel.isHidden = false
+    }
+
+    private var pendingTrashConfirmation = false
+
+    private func requestMoveCurrentToTrash() {
+        guard settings.confirmBeforeTrash, let item = session.currentItem else {
+            moveCurrentToTrash()
+            return
+        }
+        guard !pendingTrashConfirmation else { return }
+        let confirmedVersion = SourceFileIdentity.read(at: item.url).versionToken
+        let alert = NSAlert()
+        alert.messageText = "将“\(item.displayName)”移到废纸篓？"
+        alert.informativeText = "可以从废纸篓恢复。⌘Delete 会直接移到废纸篓。"
+        alert.addButton(withTitle: "移到废纸篓")
+        alert.addButton(withTitle: "取消")
+        guard let window = view.window else { return }
+        pendingTrashConfirmation = true
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            self.pendingTrashConfirmation = false
+            guard response == .alertFirstButtonReturn,
+                  self.session.currentItem?.id == item.id else { return }
+            guard SourceFileIdentity.read(at: item.url).versionToken == confirmedVersion else {
+                self.presentTransientError("文件已发生变化，请重新确认移到废纸篓。")
+                return
+            }
+            self.moveCurrentToTrash()
+        }
     }
 
     private func moveCurrentToTrash() {
@@ -1943,11 +2964,18 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     // MARK: - Chrome refresh
 
-    private func refreshBottomBar() {
-        bottomBar.update(fields: settings.bottomFields, session: session,
-                         descriptor: viewerState.descriptor, viewport: canvas.viewport,
-                         metadata: viewerState.metadata,
-                         pageDescription: viewerState.pageDescription)
+    /// The picture's pixel size goes to the window's titlebar accessory; the file name is the window's
+    /// own title, which the native bar draws.
+    private func refreshTitlebarReadout() {
+        if let size = viewerState.descriptor?.displayPixelSize, size.width > 0, size.height > 0 {
+            onSizeReadoutChanged?("\(Int(size.width)) × \(Int(size.height))")
+        } else {
+            onSizeReadoutChanged?("")
+        }
+        // The dock's readouts come from the same two sources: one viewport and one folder session, so
+        // the two surfaces can never disagree about either number.
+        toolDock.setZoomPercent(canvas.viewport.zoomPercent)
+        toolDock.setPosition(session.positionDescription)
     }
 
     /// Viewport-only update: panning and zooming move the rectangle and must never
@@ -1995,9 +3023,17 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     struct ChromeSnapshot {
         var top: Bool
         var bottom: Bool
+        /// Whether each floating navigation control is being shown.
+        var previousNavigation: Bool
+        var nextNavigation: Bool
+        /// The auto-hiding titlebar's state, three-valued.
+        var titlebar: TitlebarVisibilityModel.State
         var drawer: Bool
         var minimap: Bool
         var drawerRows: Int
+        /// Canvas width the open drawer reserves. Zero when the canvas has the full width.
+        var drawerReservedWidth: CGFloat
+        var drawerWidth: CGFloat
         var canvasFrame: NSRect
         var zoomScale: CGFloat
         var fitScale: CGFloat
@@ -2016,13 +3052,19 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
 
     var chromeSnapshot: ChromeSnapshot {
         ChromeSnapshot(
-            top: false, bottom: !bottomBar.isHidden,
-            drawer: hover.snapshot.drawer, minimap: hover.snapshot.minimap,
+            top: (view.window as? ViewerWindow).map { $0.titlebarState == .full } ?? false,
+            bottom: false,
+            previousNavigation: chrome.snapshot.previousNavigation,
+            nextNavigation: chrome.snapshot.nextNavigation,
+            titlebar: chrome.snapshot.titlebar,
+            drawer: chrome.snapshot.drawer, minimap: chrome.snapshot.minimap,
             drawerRows: drawer.visibleRowCount,
+            drawerReservedWidth: isDrawerReservingSpace ? currentDrawerWidth : 0,
+            drawerWidth: currentDrawerWidth,
             canvasFrame: canvas.frame,
             zoomScale: canvas.viewport.zoomScale,
             fitScale: canvas.viewport.fitScale,
-            usesNativeSurface: bottomBar.usesNativeGlass || drawer.usesNativeGlass
+            usesNativeSurface: toolDock.usesNativeGlass || drawer.usesNativeGlass
                 || toolDock.usesNativeGlass || infoCard.usesNativeGlass,
             canvasView: canvas,
             drawerView: drawer,
@@ -2034,33 +3076,169 @@ public final class ViewerViewController: NSViewController, ViewerCommandHandling
     }
 
     func simulateImmersive(_ value: Bool) {
-        hover.setImmersive(value, at: Date().timeIntervalSinceReferenceDate)
+        chrome.setImmersive(value, at: Date().timeIntervalSinceReferenceDate)
         applyChromeVisibility()
     }
 
     func simulateZoomActivity() {
-        hover.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
-        hover.setZoomedIn(canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
+        chrome.zoomActivity(at: Date().timeIntervalSinceReferenceDate)
+        chrome.setZoomedIn(canvas.viewport.isZoomedIn, at: Date().timeIntervalSinceReferenceDate)
         applyChromeVisibility()
     }
 
     // MARK: - Key handling
 
     public override func keyDown(with event: NSEvent) {
+        // Escape is the browser's back key, and it takes precedence over the image mode's own
+        // Escape behaviour: leaving a mode is not the same gesture as leaving immersive mode, and
+        // the browser is the mode the user is in.
+        if event.keyCode == 53, viewerMode == .folderBrowser {
+            leaveFolderBrowser()
+            return
+        }
         if let command = ShortcutStore.shared.command(matching: event) {
             perform(command)
             return
         }
         switch event.keyCode {
         case 53: // Escape leaves immersive mode first, then is ignored.
-            if hover.immersive {
-                hover.setImmersive(false, at: Date().timeIntervalSinceReferenceDate)
+            if chrome.immersive {
+                chrome.setImmersive(false, at: Date().timeIntervalSinceReferenceDate)
                 viewerState.toggleImmersive()
                 applyChromeVisibility()
             }
+        case 36: // Return opens the current item, which is what it means in the gallery.
+            if viewerMode == .folderBrowser { leaveFolderBrowser() }
         default:
             super.keyDown(with: event)
         }
+    }
+}
+
+
+// MARK: - Folder browser host
+
+/// The folder browser reaches the viewer through this, and through nothing else: it cannot see the
+/// canvas, the dock, the drawer or the chrome model. That is what "the two modes do not share a
+/// presentation hierarchy" means in code rather than in a comment.
+extension ViewerViewController: FolderBrowserHost {
+
+    var galleryLayoutKind: GalleryLayoutKind {
+        get { galleryLayoutKindStorage }
+        set { galleryLayoutKindStorage = newValue }
+    }
+
+    var galleryThumbnailSize: CGFloat {
+        get { galleryThumbnailSizeStorage }
+        set { galleryThumbnailSizeStorage = GalleryLayout.clampThumbnailSize(newValue) }
+    }
+
+    /// Asks the shared thumbnail pipeline for a gallery thumbnail, at the size the gallery asked
+    /// for. The drawer's own path is separate only in *which view* it fills; the pipeline and its
+    /// cache are the same actor, so a thumbnail decoded for one mode is a hit in the other.
+    func requestGalleryThumbnail(for item: FolderItem, index: Int, maxPixelSize: Int,
+                                 completion: @escaping (Int, CGImage?, GalleryThumbnailSkip) -> Void) {
+        galleryThumbnailTasks[item.url.path]?.cancel()
+        let requestID = UUID()
+        galleryThumbnailRequestIDs[item.url.path] = requestID
+
+        // The drawer's rule, applied to the grid: the picture on screen is resampled from the bitmap
+        // the canvas already decoded rather than re-reading the whole compressed stream. That is what
+        // makes the drawer's own current cell instant, and it is the only way a grid cell can be
+        // filled at all for a file whose thumbnail would cost a whole-stream decode. The result is
+        // remembered at this size, so the grid and the drawer are free from then on.
+        //
+        // "On screen" is `displayedItem*`, not the session's selection: while a large file decodes
+        // — measured at ~20 s for a 1.9 GB PNG — the canvas still holds the *previous* picture, and
+        // resampling that for the newly selected file put another image's thumbnail in the cell
+        // (reported: the cell for a 48,000 × 32,000 PNG showed the JPEG that was open before it).
+        if item.url == displayedItemURL,
+           SourceFileIdentity.read(at: item.url).versionToken == displayedItemVersion,
+           let bitmap = viewerState.currentImage {
+            let preview = Task { [weak self] in
+                guard let self else { return }
+                let image = await self.thumbnails.previewAndRemember(from: bitmap, for: item.url,
+                                                                     maxPixelSize: maxPixelSize)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard !Task.isCancelled, self.galleryThumbnailRequestIDs[item.url.path] == requestID else { return }
+                    self.galleryThumbnailTasks[item.url.path] = nil
+                    self.galleryThumbnailRequestIDs[item.url.path] = nil
+                    completion(index, image, image == nil ? .failed : .none)
+                }
+            }
+            galleryThumbnailTasks[item.url.path] = preview
+            return
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            // An oversized source costs the same whole-stream decode at *any* target size — measured
+            // on a real 48,000 × 32,000 PNG: 18.4 s at 320 px, and the same at 64 px and with
+            // `kCGImageSourceSubsampleFactor` 16 — so a grid of them would start one per visible cell
+            // and spend minutes. The drawer already refuses to pay it; the grid now agrees, and the
+            // thumbnail appears as soon as the file is opened, because then its pixels are in hand.
+            if await self.probe.isOversized(item.url) {
+                // The cascade's third leg, before the placeholder: macOS usually has a thumbnail for a
+                // file the user has seen, and it costs 23 ms when it does.
+                let system = await self.thumbnails.systemThumbnail(for: item.url,
+                                                                   maxPixelSize: maxPixelSize)
+                await MainActor.run {
+                    guard !Task.isCancelled, self.galleryThumbnailRequestIDs[item.url.path] == requestID else { return }
+                    self.galleryThumbnailTasks[item.url.path] = nil
+                    self.galleryThumbnailRequestIDs[item.url.path] = nil
+                    if let system {
+                        completion(index, system, .none)
+                    } else {
+                        completion(index, nil, .oversized)
+                    }
+                }
+                return
+            }
+            let image = try? await self.thumbnails.thumbnail(for: item.url,
+                                                             maxPixelSize: maxPixelSize)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard !Task.isCancelled, self.galleryThumbnailRequestIDs[item.url.path] == requestID else { return }
+                self.galleryThumbnailTasks[item.url.path] = nil
+                self.galleryThumbnailRequestIDs[item.url.path] = nil
+                completion(index, image, image == nil ? .failed : .none)
+            }
+        }
+        galleryThumbnailTasks[item.url.path] = task
+    }
+
+    func cancelGalleryThumbnails() {
+        for task in galleryThumbnailTasks.values { task.cancel() }
+        galleryThumbnailTasks.removeAll()
+        galleryThumbnailRequestIDs.removeAll()
+    }
+
+    /// A folder was chosen in the tree: the gallery and the image viewer move to it together.
+    ///
+    /// This publishes a *directory*, so it cannot go through `open(url:)`, which takes a file and
+    /// scans its parent. It scans the chosen folder, hands the session the new list, and — because
+    /// the caller is the browser — leaves the mode alone.
+    func openFolder(_ url: URL) {
+        folderRequestsEnabled = true
+        directlyOpenedFile = nil
+        pendingDirectOpenURL = nil
+        let directory = folderAccessStore.directoryForOpening(url)
+        let generation = beginFolderRequest(directory)
+        clearFolderReadFailure()
+        Task { [weak self] in
+            await self?.readFolder(directory, generation: generation, selection: .first)
+        }
+    }
+
+    func directoryRequiringSelection(beforeReading url: URL) -> URL? {
+        folderAccessStore.directoryRequiringSelection(beforeReading: url)
+    }
+
+    /// A gallery item was opened: back to the image mode, showing that item.
+    func openGalleryItem(at index: Int) {
+        session.select(index: index)
+        leaveFolderBrowser()
     }
 }
 

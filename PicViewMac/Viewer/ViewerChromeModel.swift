@@ -1,0 +1,414 @@
+import Foundation
+import CoreGraphics
+
+/// Pure hover/idle state machine for the tool dock.
+///
+/// The dock auto-hides: it is on screen while the pointer is inside the invisible
+/// strip along the bottom centre of the image area, and while it is pinned. The
+/// delays are asymmetric on purpose — a short show delay keeps the dock feeling
+/// attached to the pointer, a longer hide delay keeps it from flickering when the
+/// pointer merely sweeps across the bottom edge.
+public struct ToolDockVisibilityModel: Sendable {
+    public struct Timing: Sendable {
+        public var showDelay: TimeInterval = 0.05
+        public var hideDelay: TimeInterval = 0.7
+
+        public init() {}
+    }
+
+    public var timing = Timing()
+    public var displayPolicy: ChromeDisplayPolicy = .automatic
+
+    public private(set) var visible = false
+    public private(set) var pinned = false
+
+    /// Whether a usable image is on screen. Without one the dock has nothing to act
+    /// on, so it stays away regardless of the pointer.
+    public private(set) var hasImage = false
+    /// Immersive mode takes the whole overlay chrome away. A pinned dock comes back
+    /// when the user leaves it.
+    public var immersive = false
+    /// Whether the pointer is inside the reveal strip.
+    public private(set) var pointerInZone = false
+
+    private var enteredAt: TimeInterval?
+    private var exitedAt: TimeInterval?
+
+    public init() {}
+
+    // MARK: - Inputs
+
+    /// The image appeared or went away. Appearing shows the dock briefly, so the
+    /// user discovers it, and then starts the usual hide countdown.
+    public mutating func setHasImage(_ value: Bool, at time: TimeInterval) {
+        guard value != hasImage else { return }
+        hasImage = value
+        if value {
+            visible = displayPolicy != .alwaysHidden
+            enteredAt = nil
+            exitedAt = time
+        } else {
+            visible = false
+            enteredAt = nil
+            exitedAt = nil
+        }
+    }
+
+    /// Pins or unpins. Unpinning falls back to the hover rules: if the pointer is
+    /// elsewhere, the dock closes after the usual delay.
+    public mutating func setPinned(_ value: Bool, at time: TimeInterval) {
+        pinned = value
+        if value {
+            visible = true
+            enteredAt = nil
+            exitedAt = nil
+        } else {
+            enteredAt = pointerInZone ? time : nil
+            exitedAt = pointerInZone ? nil : time
+        }
+    }
+
+    public mutating func setPointer(inZone inside: Bool, at time: TimeInterval) {
+        guard inside != pointerInZone else { return }
+        pointerInZone = inside
+        if inside {
+            enteredAt = time
+            exitedAt = nil
+        } else {
+            enteredAt = nil
+            exitedAt = time
+        }
+    }
+
+    public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
+        immersive = value
+        if value {
+            visible = false
+            enteredAt = nil
+            exitedAt = nil
+        } else if pinned {
+            visible = true
+            enteredAt = nil
+            exitedAt = nil
+        } else {
+            // Leaving immersive mode shows the dock again, then it hides as usual.
+            visible = true
+            enteredAt = nil
+            exitedAt = time
+        }
+    }
+
+    // MARK: - Evaluation
+
+    @discardableResult
+    public mutating func update(at time: TimeInterval) -> Bool {
+        let before = visible
+        if !hasImage || immersive || displayPolicy == .alwaysHidden {
+            visible = false
+        } else if pinned || displayPolicy == .alwaysVisible {
+            visible = true
+        } else if pointerInZone {
+            if let enteredAt, time - enteredAt >= timing.showDelay { visible = true }
+        } else if let exitedAt, time - exitedAt >= timing.hideDelay {
+            visible = false
+        }
+        return visible != before
+    }
+
+    public var snapshot: Bool { visible }
+}
+
+
+/// Pure hover/idle state machine for the floating previous/next controls.
+///
+/// Each side has its own zone and its own state: the pointer entering the left strip reveals the
+/// left control and says nothing about the right one. The spec allows the two to share a timing
+/// utility and requires them to be independent states, so this is one model with two sides rather
+/// than two models — the two sides cannot share a flag, because there is no flag to share.
+public struct FloatingNavigationVisibilityModel: Sendable {
+    public struct Timing: Sendable {
+        /// How long the control stays after the pointer leaves its strip. Long enough to travel
+        /// from the strip onto the button, short enough not to linger over the picture.
+        public var hideDelay: TimeInterval = 0.7
+
+        public init() {}
+    }
+
+    public struct Side: Equatable, Sendable {
+        public var pointerInside = false
+        public var visible = false
+        /// Whether there is somewhere to go on this side.
+        public var available = false
+        fileprivate var exitedAt: TimeInterval?
+    }
+
+    public var timing = Timing()
+    public private(set) var displayPolicy: ChromeDisplayPolicy = .automatic
+    public var hasImage = false
+    public var immersive = false
+    /// The pointer is over the control itself, which keeps it shown even when the pointer has left
+    /// the (narrower) reveal strip on its way to pressing it.
+    public var pointerOnPrevious = false
+    public var pointerOnNext = false
+    public private(set) var previous = Side()
+    public private(set) var next = Side()
+
+    public init() {}
+
+    public mutating func setDisplayPolicy(_ policy: ChromeDisplayPolicy, at time: TimeInterval) {
+        guard policy != displayPolicy else { return }
+        displayPolicy = policy
+        previous.exitedAt = previous.pointerInside ? nil : time
+        next.exitedAt = next.pointerInside ? nil : time
+        _ = update(at: time)
+    }
+
+    // MARK: - Inputs
+
+    /// The pointer's position relative to the two canvas-edge strips.
+    public mutating func setPointer(previousSide: Bool, nextSide: Bool, at time: TimeInterval) {
+        let canShow = hasImage && !immersive
+        var left = previous
+        var right = next
+        Self.updateSide(&left, inside: previousSide, at: time, canShow: canShow)
+        Self.updateSide(&right, inside: nextSide, at: time, canShow: canShow)
+        previous = left
+        next = right
+    }
+
+    /// Static so the inout `Side` is not an access to `self` while a method of `self` is on the
+    /// stack: passing `&self.previous` to a member function is an exclusivity violation even when
+    /// that function reads nothing else.
+    private static func updateSide(_ side: inout Side, inside: Bool, at time: TimeInterval,
+                                   canShow: Bool) {
+        guard inside != side.pointerInside else { return }
+        side.pointerInside = inside
+        side.exitedAt = inside ? nil : time
+        // Revealed at once, with no delay: this is an edge control, and a delay would mean the
+        // pointer arrives before the button does. `canShow` keeps a pointer that happens to be
+        // parked in the strip from showing a control there is nothing to show it for.
+        if inside, canShow { side.visible = true }
+    }
+
+    /// Availability is about the folder, not the pointer: a first image has no previous.
+    public mutating func setAvailable(previous: Bool, next: Bool) {
+        self.previous.available = previous
+        self.next.available = next
+        if !previous { self.previous.visible = false }
+        if !next { self.next.visible = false }
+    }
+
+    public mutating func setHasImage(_ value: Bool, at time: TimeInterval) {
+        guard value != hasImage else { return }
+        hasImage = value
+        if !value {
+            previous.visible = false
+            next.visible = false
+            previous.pointerInside = false
+            next.pointerInside = false
+            previous.exitedAt = nil
+            next.exitedAt = nil
+        }
+    }
+
+    public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
+        immersive = value
+        if value {
+            previous.visible = false
+            next.visible = false
+            // Entering immersive mode forgets the strip the pointer was already resting in, so
+            // chrome stays away until the pointer moves again — and leaving immersive mode does
+            // not immediately restore what the user asked to hide.
+            previous.pointerInside = false
+            next.pointerInside = false
+            previous.exitedAt = nil
+            next.exitedAt = nil
+        }
+    }
+
+    // MARK: - Evaluation
+
+    @discardableResult
+    public mutating func update(at time: TimeInterval) -> Bool {
+        let before = (previous.visible, next.visible)
+        var previousSide = previous
+        var nextSide = next
+        Self.settle(&previousSide, held: pointerOnPrevious, hasImage: hasImage,
+                    immersive: immersive, policy: displayPolicy, hideDelay: timing.hideDelay, at: time)
+        Self.settle(&nextSide, held: pointerOnNext, hasImage: hasImage,
+                    immersive: immersive, policy: displayPolicy, hideDelay: timing.hideDelay, at: time)
+        previous = previousSide
+        next = nextSide
+        return (previous.visible, next.visible) != before
+    }
+
+    private static func settle(_ side: inout Side, held: Bool, hasImage: Bool, immersive: Bool,
+                               policy: ChromeDisplayPolicy, hideDelay: TimeInterval, at time: TimeInterval) {
+        guard hasImage, !immersive, side.available, policy != .alwaysHidden else {
+            side.visible = false
+            return
+        }
+        if policy == .alwaysVisible || side.pointerInside || held {
+            side.visible = true
+            return
+        }
+        if let exitedAt = side.exitedAt, time - exitedAt >= hideDelay {
+            side.visible = false
+            side.exitedAt = nil
+        }
+    }
+
+    /// The pointer left both strips: the next hidden state has to be reached after the delay rather
+    /// than never, which is what this records.
+    public mutating func pointerLeftEverything(at time: TimeInterval) {
+        if !previous.pointerInside { previous.exitedAt = time }
+        if !next.pointerInside { next.exitedAt = time }
+    }
+
+    public var snapshot: (previous: Bool, next: Bool) {
+        (previous.visible, next.visible)
+    }
+}
+
+/// Pure hover/idle state machine for the viewer's overlay chrome. The window
+/// management strip is the standard AppKit titlebar and is always visible, so
+/// there is no top state left to track here.
+///
+/// The three surfaces it tracks — the thumbnail drawer, the minimap and the tool dock — are
+/// independent: each has its own inputs and its own rule. They share the tick that evaluates
+/// them and nothing else, so a pointer event that concerns one cannot move another.
+public struct ViewerChromeModel: Sendable {
+    public struct Timing: Sendable {
+        public var minimapIdleFadeDelay: TimeInterval = 1.5
+
+        public init() {}
+    }
+
+    public var timing = Timing()
+    /// The four overlay surfaces, each with its own state, its own inputs and its own rules.
+    /// They share this tick and nothing else: there is no single "chrome is visible" flag, and no
+    /// pointer event can move a surface whose rule does not mention the pointer.
+    public var toolDock = ToolDockVisibilityModel()
+    public var navigation = FloatingNavigationVisibilityModel()
+    /// The auto-hiding titlebar. Its own machine: the pointer's position over the image cannot move
+    /// it, and its two zones are its own.
+    public var titlebar = TitlebarVisibilityModel()
+
+    /// Whether the thumbnail drawer is open. Explicitly controlled — see `setDrawerOpen`.
+    ///
+    /// It used to open from a hover over the window's left edge, with its own open/close timers
+    /// running alongside a separate pinned flag. That is gone: a drawer that appears because the
+    /// pointer crossed the left edge is a drawer that appears by accident, and having two
+    /// authorities for one surface meant the timers and the flag could disagree. The state is now
+    /// exactly the user's choice, and the pointer cannot change it.
+    public private(set) var drawerOpen = false
+    public private(set) var minimapVisible = false
+
+    /// Immersive mode hides the viewer's overlay chrome. The standard titlebar and
+    /// the window itself are untouched.
+    public var immersive = false
+    /// Minimap is only permitted while the image is zoomed past Fit.
+    public var isZoomedIn = false
+    public var hideMinimap = false
+
+    /// Wall-clock time of the last pointer activity. Recorded so a pointer-driven rule has one
+    /// place to read it from; no current rule keys on it, which is the point — the drawer is not
+    /// a pointer-driven surface any more.
+    private var lastPointerActivity: TimeInterval = 0
+    private var lastMinimapActivity: TimeInterval = 0
+
+    public init() {}
+
+    // MARK: - Inputs
+
+    public mutating func pointerMoved(at time: TimeInterval) {
+        lastPointerActivity = time
+    }
+
+    /// The drawer's only entry point: the titlebar's sidebar button and the `缩略图抽屉` command
+    /// both land here, and nothing else may change it.
+    public mutating func setDrawerOpen(_ open: Bool, at time: TimeInterval) {
+        drawerOpen = open
+        lastPointerActivity = time
+    }
+
+    public mutating func toggleDrawer(at time: TimeInterval) {
+        setDrawerOpen(!drawerOpen, at: time)
+    }
+
+    /// The pointer is over the drawer's surface. Counts as activity — the drawer must not be
+    /// mistaken for the pointer having left the window — but cannot open or close anything.
+    public mutating func pointerOverDrawer(at time: TimeInterval) {
+        lastPointerActivity = time
+    }
+
+    public mutating func zoomActivity(at time: TimeInterval) {
+        lastMinimapActivity = time
+        lastPointerActivity = time
+    }
+
+    public mutating func setImmersive(_ value: Bool, at time: TimeInterval) {
+        immersive = value
+        toolDock.setImmersive(value, at: time)
+        navigation.setImmersive(value, at: time)
+        // Immersive mode blocks the titlebar's own hiding through the same mechanism a window drag
+        // and a sheet use, so there is one rule about when the bar may go away.
+        titlebar.setBlocked(.fullScreen, value, at: time)
+        // Immersive suppresses the drawer's *appearance* without forgetting the user's choice, so
+        // leaving immersive mode restores exactly the state they left.
+        if value { minimapVisible = false }
+    }
+
+    public mutating func setZoomedIn(_ value: Bool, at time: TimeInterval) {
+        isZoomedIn = value
+        if value { lastMinimapActivity = time } else { minimapVisible = false }
+    }
+
+    // MARK: - Evaluation
+
+    /// Recomputes visibility. Returns `true` when something changed and the
+    /// chrome needs to be re-rendered.
+    @discardableResult
+    public mutating func update(at time: TimeInterval) -> Bool {
+        let before = snapshot
+
+        if isZoomedIn && !hideMinimap {
+            minimapVisible = time - lastMinimapActivity <= timing.minimapIdleFadeDelay
+        } else {
+            minimapVisible = false
+        }
+
+        toolDock.update(at: time)
+        navigation.update(at: time)
+        titlebar.update(at: time)
+
+        return snapshot != before
+    }
+
+    /// The drawer as the user sees it: open, and not suppressed by immersive mode.
+    public var drawerVisible: Bool { drawerOpen && !immersive }
+
+    public var snapshot: Snapshot {
+        Snapshot(drawer: drawerVisible, minimap: minimapVisible, toolDock: toolDock.visible,
+                 previousNavigation: navigation.previous.visible,
+                 nextNavigation: navigation.next.visible,
+                 titlebar: titlebar.state)
+    }
+
+    public struct Snapshot: Equatable, Sendable {
+        public let drawer: Bool
+        public let minimap: Bool
+        public let toolDock: Bool
+        public let previousNavigation: Bool
+        public let nextNavigation: Bool
+        /// The auto-hiding titlebar's state. Not a Bool: there are three states, and two of them
+        /// look the same from the image's point of view.
+        public let titlebar: TitlebarVisibilityModel.State
+    }
+
+    /// Keyboard navigation must always work, even with all overlay chrome hidden.
+    public var chromeHidden: Bool {
+        !drawerVisible && !minimapVisible && !toolDock.visible
+            && !navigation.previous.visible && !navigation.next.visible
+    }
+}

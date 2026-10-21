@@ -3,7 +3,11 @@ import ImageIO
 
 /// Enumerates the current folder only (never subdirectories) and can fill in
 /// image dimensions lazily when dimension sorting is requested.
-public struct FolderScanner: Sendable {
+protocol FolderDirectoryScanning: Sendable {
+    func scan(directory: URL, excludingExtensions: Set<String>, includingURL: URL?) async throws -> [FolderItem]
+}
+
+public struct FolderScanner: Sendable, FolderDirectoryScanning {
     public init() {}
 
     public static let resourceKeys: [URLResourceKey] = [
@@ -16,13 +20,16 @@ public struct FolderScanner: Sendable {
         }.value
     }
 
-    public func scan(directory: URL) async throws -> [FolderItem] {
+    public func scan(directory: URL, excludingExtensions: Set<String> = [],
+                     includingURL: URL? = nil) async throws -> [FolderItem] {
         try await Task.detached(priority: .userInitiated) {
-            try Self.scanSynchronously(directory: directory)
+            try Self.scanSynchronously(directory: directory, excludingExtensions: excludingExtensions,
+                                       includingURL: includingURL)
         }.value
     }
 
-    static func scanSynchronously(directory: URL) throws -> [FolderItem] {
+    static func scanSynchronously(directory: URL, excludingExtensions: Set<String> = [],
+                                  includingURL: URL? = nil) throws -> [FolderItem] {
         let contents = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: resourceKeys,
@@ -31,6 +38,8 @@ public struct FolderScanner: Sendable {
         var items: [FolderItem] = []
         items.reserveCapacity(contents.count)
         for url in contents where SupportedImageTypes.isCandidate(url) {
+            if excludingExtensions.contains(url.pathExtension.lowercased()),
+               url.lastPathComponent != includingURL?.lastPathComponent { continue }
             let values = try? url.resourceValues(forKeys: Set(resourceKeys))
             if values?.isDirectory == true || values?.isPackage == true { continue }
             let identity = Self.identity(for: url)

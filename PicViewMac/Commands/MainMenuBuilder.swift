@@ -7,9 +7,9 @@ public enum MainMenuBuilder {
     public static func build(appName: String, shortcutStore: ShortcutStore) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(applicationMenu(appName: appName))
-        mainMenu.addItem(fileMenu())
+        mainMenu.addItem(fileMenu(shortcutStore: shortcutStore))
         mainMenu.addItem(viewMenu(shortcutStore: shortcutStore))
-        mainMenu.addItem(windowMenu())
+        mainMenu.addItem(windowMenu(shortcutStore: shortcutStore))
         return mainMenu
     }
 
@@ -27,14 +27,20 @@ public enum MainMenuBuilder {
         return item
     }
 
-    private static func fileMenu() -> NSMenuItem {
+    private static func fileMenu(shortcutStore: ShortcutStore) -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "文件")
         menu.addItem(withTitle: "打开…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
         menu.addItem(withTitle: "在新窗口中打开…", action: #selector(AppDelegate.openInNewWindow(_:)), keyEquivalent: "O")
+        menu.addItem(withTitle: "选择文件夹…", action: #selector(AppDelegate.openFolder(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "文件夹授权…", action: #selector(AppDelegate.showFolderAccess(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        add(menu, .copyFilePath, in: shortcutStore)
+        add(menu, .revealInFinder, in: shortcutStore)
         menu.addItem(.separator())
         menu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        menu.addItem(withTitle: "移到废纸篓", action: #selector(AppDelegate.moveToTrash(_:)), keyEquivalent: "\u{8}")
+        add(menu, .moveToTrash, in: shortcutStore)
+        add(menu, .moveToTrashWithoutConfirmation, in: shortcutStore)
         item.submenu = menu
         return item
     }
@@ -42,6 +48,10 @@ public enum MainMenuBuilder {
     private static func viewMenu(shortcutStore: ShortcutStore) -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "显示")
+        // The zoom group in the order macOS apps use: the two steps, then the fitted views.
+        add(menu, .zoomIn, in: shortcutStore)
+        add(menu, .zoomOut, in: shortcutStore)
+        menu.addItem(.separator())
         add(menu, .zoomToFit, in: shortcutStore)
         add(menu, .zoomToFitWidth, in: shortcutStore)
         add(menu, .zoomActualPixels, in: shortcutStore)
@@ -55,11 +65,13 @@ public enum MainMenuBuilder {
         add(menu, .previousImage, in: shortcutStore)
         add(menu, .firstImage, in: shortcutStore)
         add(menu, .lastImage, in: shortcutStore)
+        add(menu, .randomImage, in: shortcutStore)
         menu.addItem(.separator())
         add(menu, .nextPage, in: shortcutStore)
         add(menu, .previousPage, in: shortcutStore)
         add(menu, .togglePlayback, in: shortcutStore)
         menu.addItem(.separator())
+        add(menu, .browseFolder, in: shortcutStore)
         add(menu, .toggleThumbnailDrawer, in: shortcutStore)
         add(menu, .toggleImmersive, in: shortcutStore)
         add(menu, .showImageInfo, in: shortcutStore)
@@ -68,11 +80,12 @@ public enum MainMenuBuilder {
         return item
     }
 
-    private static func windowMenu() -> NSMenuItem {
+    private static func windowMenu(shortcutStore: ShortcutStore) -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "窗口")
         menu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         menu.addItem(withTitle: "缩放", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        add(menu, .toggleAlwaysOnTop, in: shortcutStore)
         menu.addItem(.separator())
         // Native full screen stays the standard macOS command.
         menu.addItem(withTitle: "进入全屏幕", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")

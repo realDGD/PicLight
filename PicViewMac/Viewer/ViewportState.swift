@@ -232,13 +232,23 @@ public struct ViewportState: Equatable, Sendable {
         clampCenter(imagePixels: imagePixels, viewPoints: viewPoints, backingScale: 1)
     }
 
+    /// Moves the picture by a delta the user asked for.
+    ///
+    /// One convention for both axes: **a positive delta moves the picture right and up** — the
+    /// direction the fingers (or the pointer) moved. `NSEvent.scrollingDelta*` is documented as
+    /// inverted to "feel like moving the content", and `NSEvent.delta*` on a mouse drag is the
+    /// pointer's own movement, so both sources mean the same thing here.
+    ///
+    /// The vertical sign used to be the opposite of the horizontal one (`+=` against `-=`), which made
+    /// two-finger panning in a zoomed view track the fingers horizontally and run backwards
+    /// vertically. Nothing pinned the absolute direction: the rotation tests deliberately avoided it.
     public mutating func pan(byViewDelta delta: CGSize, imagePixels: CGSize, viewPoints: CGSize) {
         let displayed = Self.displayedPixelSize(imagePixels, quarterTurns: normalizedQuarterTurns)
         let scaledWidth = displayed.width * zoomScale
         let scaledHeight = displayed.height * zoomScale
         guard scaledWidth > 0, scaledHeight > 0 else { return }
         normalizedCenter.x -= delta.width / scaledWidth
-        normalizedCenter.y += delta.height / scaledHeight
+        normalizedCenter.y -= delta.height / scaledHeight
         clampCenter(imagePixels: imagePixels, viewPoints: viewPoints, backingScale: 1)
     }
 

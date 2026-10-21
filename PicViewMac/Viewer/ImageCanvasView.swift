@@ -130,15 +130,48 @@ public final class ImageCanvasView: NSView {
     }
 
     public var wheelMode: WheelMode = .zoom { didSet { router.wheelMode = wheelMode } }
+    /// Which way a wheel pans; `.automatic` decides per event. See `WheelPanDirection`.
+    public var wheelPanDirection: WheelPanDirection = .automatic
+
+    /// Whether this event came from a wheel rather than a trackpad.
+    ///
+    /// `hasPreciseScrollingDeltas` cannot answer it: a smooth-scrolling mouse sends continuous events
+    /// exactly like a trackpad's, which is why a wheel kept feeling reversed after the first fix
+    /// (reported: "滚轮现在还是反的"). What a trackpad always has and a wheel never has is a *gesture
+    /// phase*: real two-finger scrolling arrives with `.began`/`.changed`/`.ended` and momentum, while a
+    /// wheel's events carry no phase at all. The setting overrides the guess either way.
+    nonisolated static func cameFromAWheel(phase: NSEvent.Phase, momentumPhase: NSEvent.Phase,
+                                           hasPreciseDeltas: Bool) -> Bool {
+        if phase != [] || momentumPhase != [] { return false }
+        return true
+    }
     public var swipeMode: SwipeMode = .smart { didSet { router.swipeMode = swipeMode } }
     public var doubleClickMode: DoubleClickMode = .fitDoubleFit
+    public var wheelZoomSensitivity: CGFloat = 0.0015 {
+        didSet { router.wheelZoomSensitivity = wheelZoomSensitivity }
+    }
 
     /// -1 previous, +1 next. The canvas never touches folder state itself.
     public var onNavigate: ((Int) -> Void)?
     public var onViewportChange: ((ViewportState) -> Void)?
+
+    /// Reports a viewport change the user asked for, so the publisher can tell it apart from the
+    /// fit the window performs on a new picture.
+    func noteUserViewportChange() {
+        onUserViewportChange?()
+    }
+
+    /// Fired when the *user* moves the viewport — a pinch, a wheel, a swipe, a drag, a zoom button —
+    /// and never for the fit the window performs on a new picture. The publisher needs the
+    /// difference: a picture that is still decoding may not throw away a zoom somebody asked for
+    /// while they waited (measured: ~20 s of waiting for a 1.9 GB PNG).
+    public var onUserViewportChange: (() -> Void)?
     public var onDoubleClickAction: (() -> Void)?
     public var onPointerActivity: (() -> Void)?
     public var onZoomChanged: (() -> Void)?
+    /// Supplies the right-click menu. The canvas does not build it: the commands belong to the
+    /// viewer, and a second copy of them here is exactly the duplication the spec forbids.
+    public var contextMenuProvider: (() -> NSMenu?)?
 
     public var backingScale: CGFloat { window?.backingScaleFactor ?? 2 }
 
@@ -163,12 +196,35 @@ public final class ImageCanvasView: NSView {
     /// Logical source size of the image being shown. Zero when nothing is loaded.
     public var imagePixelSize: CGSize { renderImage?.sourcePixelSize ?? .zero }
 
+    /// Recomputes the fit scale for the current geometry.
+    ///
+    /// Fit is *sticky*: a picture that was filling the window keeps filling it when the window (or the
+    /// canvas) changes size — the window is resized to the image when a file opens, and without this
+    /// the zoom stayed at the pre-resize fit and the picture sat with a margin all round. A zoom the
+    /// user chose is left exactly as it is.
     public func refit() {
-        guard renderImage != nil, bounds.width > 0, bounds.height > 0 else { return }
+        guard renderImage != nil, bounds.width > 0, bounds.height > 0 else {
+            GestureTrace.note("canvas.refit skipped (no image or no bounds)")
+            return
+        }
+        GestureTrace.note("canvas.refit wasAtFit=\(viewport.isAtFit) before=\(viewport.zoomScale)")
         var updated = viewport
+        let wasAtFit = viewport.isAtFit
         updated.fitScale = ViewportState.fitScale(imagePixels: imagePixelSize, viewPoints: bounds.size)
+        if wasAtFit { updated.zoomScale = updated.fitScale }
         updated.clampCenter(imagePixels: imagePixelSize, viewPoints: bounds.size, backingScale: backingScale)
         viewport = updated
+    }
+
+    /// Multiplies the zoom by `factor`, around the centre of the view.
+    ///
+    /// Goes through the same intent the wheel and pinch gestures produce, so the clamping rules
+    /// (never below a quarter of Fit, never above the 40× ceiling) and the "zoom is around a point"
+    /// behaviour are one implementation rather than a second one that can drift.
+    public func zoomBy(factor: CGFloat) {
+        noteUserViewportChange()
+        guard renderImage != nil, factor > 0, factor.isFinite else { return }
+        apply(.zoom(factor: factor, anchor: CGPoint(x: bounds.midX, y: bounds.midY)))
     }
 
     public func setZoomToFit() {
@@ -324,6 +380,9 @@ public final class ImageCanvasView: NSView {
 
     public override func scrollWheel(with event: NSEvent) {
         onPointerActivity?()
+        GestureTrace.note("canvas.scrollWheel d=\(event.scrollingDeltaX),\(event.scrollingDeltaY) "
+                          + "phase=\(event.phase.rawValue) precise=\(event.hasPreciseScrollingDeltas) "
+                          + "momentum=\(event.momentumPhase.rawValue)")
         let point = convert(event.locationInWindow, from: nil)
         let deltaX = event.scrollingDeltaX
         let deltaY = event.scrollingDeltaY
@@ -338,6 +397,15 @@ public final class ImageCanvasView: NSView {
         // vertical axis keeps the configured wheel behaviour in every state, so
         // zooming does not turn into panning once the image is enlarged.
         if abs(deltaX) > abs(deltaY) * 1.5 {
+            // A wheel's sideways axis is a pan, not a swipe. A swipe means "the next picture", which is
+            // a trackpad gesture; a tilt wheel pushed sideways is asking to move the picture, and in pan
+            // mode it must scroll like the vertical axis does instead of navigating away.
+            if treatsAsAWheel(event), router.wheelMode == .pan {
+                apply(router.routeWheel(deltaY: deltaY, deltaX: deltaX, anchor: point,
+                                        modifierZoomOut: event.modifierFlags.contains(.option),
+                                        isMouseWheel: true))
+                return
+            }
             if !isMomentum, event.phase == .began || event.phase == .mayBegin { router.beginGesture() }
             let intent = router.routeSwipe(
                 deltaX: deltaX, deltaY: deltaY, viewWidth: bounds.width,
@@ -352,15 +420,33 @@ public final class ImageCanvasView: NSView {
 
         let intent = router.routeWheel(
             deltaY: deltaY, deltaX: deltaX, anchor: point,
-            modifierZoomOut: event.modifierFlags.contains(.option)
+            modifierZoomOut: event.modifierFlags.contains(.option),
+            isMouseWheel: treatsAsAWheel(event)
         )
         apply(intent)
+    }
+
+    /// The device question, with the user's answer taking precedence over the detection.
+    nonisolated func treatsAsAWheel(_ event: NSEvent) -> Bool {
+        switch wheelPanDirection {
+        case .automatic:
+            return Self.cameFromAWheel(phase: event.phase, momentumPhase: event.momentumPhase,
+                                       hasPreciseDeltas: event.hasPreciseScrollingDeltas)
+        case .document:
+            return true
+        case .followGesture:
+            return false
+        }
     }
 
     public override func magnify(with event: NSEvent) {
         onPointerActivity?()
         let point = convert(event.locationInWindow, from: nil)
-        apply(router.routePinch(magnification: event.magnification, anchor: point))
+        let before = viewport.zoomScale
+        let intent = router.routePinch(magnification: event.magnification, anchor: point)
+        apply(intent)
+        GestureTrace.note("canvas.magnify magnification=\(event.magnification) at=(\(Int(point.x)),\(Int(point.y))) "
+                          + "intent=\(intent) zoom \(before) -> \(viewport.zoomScale) fit=\(viewport.fitScale)")
     }
 
     private func apply(_ intent: GestureIntent) {
@@ -368,6 +454,7 @@ public final class ImageCanvasView: NSView {
         case .none:
             break
         case let .zoom(factor, anchor):
+            noteUserViewportChange()
             var updated = viewport
             updated.zoom(to: updated.zoomScale * factor, around: anchor, viewPoints: bounds.size,
                          imagePixels: imagePixelSize,
@@ -376,6 +463,7 @@ public final class ImageCanvasView: NSView {
             viewport = updated
             onZoomChanged?()
         case let .pan(delta):
+            noteUserViewportChange()
             // Panning is not a zoom: reporting it as one made every drag re-evaluate the
             // whole-image decode level, which is the wrong job for a gesture that only
             // moves the viewport (spec §9.5 / the tile window owns pan).
@@ -389,13 +477,23 @@ public final class ImageCanvasView: NSView {
         }
     }
 
+    /// Right-click and control-click. `menu(for:)` is the hook AppKit itself uses, so the menu
+    /// appears on control-click as well as on a right-click, and it appears at the point of the
+    /// click with no extra event plumbing.
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        contextMenuProvider?() ?? super.menu(for: event)
+    }
+
     public override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         onPointerActivity?()
         if event.clickCount == 2 {
             switch doubleClickMode {
             case .fitDoubleFit: toggleFitAndDoubleFit()
             case .actualPixels: setZoomToActualPixels()
             case .toggleImmersive: onDoubleClickAction?()
+            case .none: break
+            case .closeWindow, .toggleFullScreen, .folderBrowser: onDoubleClickAction?()
             }
             return
         }
@@ -404,6 +502,7 @@ public final class ImageCanvasView: NSView {
 
     public override func mouseDragged(with event: NSEvent) {
         guard isDragging else { return }
+        noteUserViewportChange()
         var updated = viewport
         updated.pan(byViewDelta: CGSize(width: event.deltaX, height: event.deltaY),
                     imagePixels: imagePixelSize, viewPoints: bounds.size)

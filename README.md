@@ -1,8 +1,8 @@
 # PicLight
 
 A fast, native macOS image viewer with a Picview-style minimalist experience:
-the image is the focus, chrome appears on hover, and a left-edge drawer shows the
-current folder.
+the image is the focus, chrome follows configurable visibility policies, and a
+left thumbnail column shows the current folder when opened.
 
 - **Platform:** macOS 14 Sonoma and later
 - **Distribution:** independent `.app` / `.dmg` (no App Store, no paid Apple
@@ -27,13 +27,15 @@ The formula compiles Swift / C locally with CLT, reuses the checked icon and Met
 resources, and ad-hoc signs the app. It needs no paid Developer ID certificate.
 See the [installation guide](docs/release/unsigned-installation.md) for tap trust,
 the system `/Applications/PicLight.app` entry, updates and the limits of local signing.
+The final settings and folder implementation is integrated alongside bounded animation;
+see the [integration Agent Note](.agents/notes/implemented/2026-10-21-settings-main-integration.md).
 
 ## Build and run
 
 ```bash
 swift build                 # debug build
 swift run                   # launch the viewer
-swift test                  # XCTest suite; requires Xcode's XCTest
+swift test                  # complete regression suite; report the actual count
 xcodebuild -scheme PicViewMac -destination 'platform=macOS' test   # same suite
 ```
 
@@ -44,9 +46,25 @@ Release artifacts:
 ./scripts/make-dmg.sh       # dist/PicLight-0.1.0.dmg
 ```
 
-Downloaded bundles are ad-hoc signed without Apple notarization; the per-app
-**Open Anyway** path is documented in
-`docs/release/unsigned-installation.md`.
+The product bundle is `PicLight`; the SwiftPM package and executable target remain
+`PicViewMac`. Build requirements and the maintained command reference are in the
+[development guide](docs/development.md).
+
+## AI-assisted development
+
+Start with [AGENTS.md](AGENTS.md). It routes feature work, bug fixes, verification
+and review to the relevant project skills without loading every historical plan.
+The [workflow index](.agents/README.md) links the skills, decision records and task
+templates; the [testing guide](docs/testing.md) maps changes to focused tests,
+native interaction checks and artifact validation.
+
+```bash
+python3 scripts/check-agent-docs.py
+```
+
+Downloaded bundles are ad-hoc signed without Apple notarization. The per-app
+**Open Anyway** path is documented in the
+[installation guide](docs/release/unsigned-installation.md).
 
 ## Acceptance runner
 
@@ -56,10 +74,14 @@ prints a pass/fail report. It exists because the behavior that matters most here
 unit tests alone:
 
 ```bash
-PICVIEW_SELFTEST=/path/to/photo.jpg dist/PicLight.app/Contents/MacOS/PicLight
+PICVIEW_SELFTEST=/path/to/acceptance-image.jpg dist/PicLight.app/Contents/MacOS/PicLight
 ```
 
-It ends with `=== ALL PASSED ===` or a list of failures.
+It ends with `=== ALL PASSED ===` or a list of failures. Its assertions require a
+specific image color/orientation layout; check that the chosen input matches the
+assertions before using the runner as acceptance evidence. See the
+[testing guide](docs/testing.md) for the recorded fixture limitation and the
+separate native-use checks.
 
 ## Test fixtures
 
@@ -83,18 +105,19 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   invisible strip along the bottom of the image area, and stays put when pinned
   with the pin control at its right-hand end. Hovering enlarges a button and lifts
   its neighbours, pressing dips it, and neither moves the image by a pixel.
-- Left-edge hover drawer with large single-column thumbnails, always-visible
-  filenames and current-item highlighting; it overlays the image and never
-  reflows it.
-- Zoom navigator minimap that only exists while `zoom > Fit`.
+- Left thumbnail column with large single-column thumbnails, always-visible
+  filenames and current-item highlighting; while open, it reserves canvas width
+  and keeps Fit or the manual viewport consistent with the available area.
+- Independent Show / Hide / Auto policies for the native titlebar, bottom tools
+  and navigation arrows; auto-hide never moves the canvas. The zoom navigator
+  minimap can be disabled in Settings → Appearance.
+- [Folder access management](docs/folder-access.md): add/remove/reselect saved
+  directories, restore bookmarks on launch, check actual readability, and retry
+  failed browsing while preserving an explicitly opened image.
 - Pointer-centered wheel zoom, pinch always zooms, drag pan, and a smart
   trackpad swipe that pans first and switches images at the edge.
-- Formats: BMP, GIF, ICO, PNG/APNG, JPG/JPEG, TIF/TIFF, WebP — including animated GIF,
+- Formats: BMP, GIF, ICO, PNG, JPG/JPEG, TIF/TIFF, WebP — including animated GIF,
   animated WebP and multi-page TIFF.
-- Animation follows source frame durations and the selected loop policy, with three
-  reusable frame slots or a budget-limited complete cache for small animations.
-  See the [animation Agent Note](.agents/notes/implemented/2026-10-20-bounded-animation-playback.md)
-  for the resource limits and verification scope.
 - EXIF orientation is honored for display without ever rewriting the file;
   rotation and mirroring are view-only.
 - Color-managed SDR rendering (sRGB and Display P3 preserved through decode).
@@ -113,8 +136,23 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   "正在解码…" while the first frame of a big file is still being decoded.
 - Folder watching with debounced rescans that preserve the current file by
   identity, and Move to Trash with smart next/previous selection.
-- Settings in a fixed 560×560 window, with customizable viewer shortcuts and
-  conflict rejection.
+- Settings in a fixed 560×560 window, with configurable wheel zoom sensitivity,
+  double-click actions (including folder grid, close and native full screen),
+  loop browsing, last-window quit behavior and new-window always-on-top defaults.
+- Copy file path (⌃⌘C), reveal in Finder (⌘Return), choose a browsing folder,
+  random image (R) and toggle current-window always-on-top (⌘X).
+- Optional Trash confirmation for Delete; ⌘Delete directly moves to Trash.
+  Extension exclusions refresh the current folder while allowing explicit file opens.
+- Customizable viewer shortcuts with conflict rejection, Clear All and Restore
+  Defaults; cleared bindings stay cleared across launches.
+- Settings → Files and Cache shows disk and pipeline memory cache occupancy,
+  clears thumbnails across viewers, and reveals the cache in Finder. The same tab
+  provides directory selection and explains folder access permissions.
+- Settings → File Associations lets you select supported formats and
+  make the running `PicLight.app` their default opener. It shows the system's
+  current default app for each format, groups JPG/JPEG and TIF/TIFF, and reports
+  failures per format. Changes apply only after clicking the apply button;
+  command-line development runs cannot change associations.
 
 ## Architecture
 
@@ -125,6 +163,7 @@ PicViewMac/
 ├── Folder/       scanning, sorting, session, directory watching
 ├── Imaging/      decode, caches, thumbnails, animation clock, WebP parity
 ├── Viewer/       canvas, viewport, gestures, hover chrome, minimap
+├── Gallery/      folder grid, folder tree and image/browser transitions
 ├── Sidebar/      virtualized thumbnail drawer
 ├── Metadata/     metadata reading and the read-only info panel
 ├── Settings/     typed settings, shortcuts, settings UI
@@ -167,8 +206,7 @@ only the tiles the viewport needs plus a ring, and draws them over the bounded p
 revisiting a far region costs another pass, and the backend serves PNG that is 8-bit and not
 interlaced — other formats keep the proxy path.
 
-Daily packaging validates and copies the precompiled icon and Metal library.
-Changed resource inputs or targets require an explicit refresh with the resource
-compiler tools; ordinary CLT builds do not invoke them. A bare development run
-can compile the shipped shader source at first use. See the
-[installation and build guide](docs/release/unsigned-installation.md).
+Daily packaging validates and copies the precompiled icon and Metal library;
+changed resource inputs require an explicit refresh with the resource compiler
+toolchain. A bare development run can compile the shipped shader source at first
+use. See the [development guide](docs/development.md) for both workflows.
