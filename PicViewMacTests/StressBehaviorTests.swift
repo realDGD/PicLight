@@ -76,7 +76,7 @@ final class StressBehaviorTests: XCTestCase {
                        "cache cost is the real decoded byte size per the spec")
         XCTAssertGreaterThan(cost, 0)
 
-        let key = DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)
+        let key = DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native)
         cache.store(head: head, for: key)
         XCTAssertNotNil(cache.head(for: key))
     }
@@ -88,19 +88,19 @@ final class StressBehaviorTests: XCTestCase {
                                                                     target: .fullResolution)
         let other = try await decoder.decodeFirstDisplayableFrame(Fixtures.url("static.bmp"),
                                                                   target: .fullResolution)
-        cache.store(head: current, for: DecodeCacheKey(url: Fixtures.url("static.png"), level: .native))
-        cache.store(head: other, for: DecodeCacheKey(url: Fixtures.url("static.bmp"), level: .native))
+        cache.store(head: current, for: DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native))
+        cache.store(head: other, for: DecodeCacheKey(url: Fixtures.url("static.bmp"), version: "v", level: .native))
         // The coordinator marks the shown image; memory pressure keeps only that one.
-        cache.setCurrent(DecodeCacheKey(url: Fixtures.url("static.png"), level: .native))
+        cache.setCurrent(DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native))
 
         NotificationCenter.default.post(name: .decodeCacheMemoryPressure, object: nil)
 
-        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)),
+        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native)),
                         "the currently shown image survives memory pressure")
-        XCTAssertNil(cache.head(for: DecodeCacheKey(url: Fixtures.url("static.bmp"), level: .native)),
+        XCTAssertNil(cache.head(for: DecodeCacheKey(url: Fixtures.url("static.bmp"), version: "v", level: .native)),
                      "non-current entries are purged under memory pressure")
-        cache.store(head: current, for: DecodeCacheKey(url: Fixtures.url("static.png"), level: .native))
-        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: Fixtures.url("static.png"), level: .native)))
+        cache.store(head: current, for: DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native))
+        XCTAssertNotNil(cache.head(for: DecodeCacheKey(url: Fixtures.url("static.png"), version: "v", level: .native)))
     }
 
     @MainActor

@@ -136,12 +136,154 @@ if [ -x "$BINARY" ]; then
     fi
 fi
 
+# -------------------------------------------------------------------- app icon
+# A bundle can carry one icon mechanism and not the other, so each is checked
+# separately: Assets.car + CFBundleIconName is the macOS 26/27 path (the Icon
+# Composer icon stack, from which the system renders the light, dark, clear and
+# tinted appearances), a loose .icns + CFBundleIconFile is the macOS 14/15 path.
+# Then LaunchServices' own record for the bundle — the one the Dock and
+# IconServices read — and finally what AppKit actually hands out. See
+# Resources/AppIcon/README.md.
+ICON_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null || true)
+ICON_FILE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$APP/Contents/Info.plist" 2>/dev/null || true)
+ASSET_CAR="$APP/Contents/Resources/Assets.car"
+
+if [ -n "$ICON_NAME" ] && [ -f "$ASSET_CAR" ]; then
+    CAR_INFO=$(xcrun assetutil --info "$ASSET_CAR" 2>/dev/null || true)
+    if grep -q '"AssetType" : "IconImageStack"' <<<"$CAR_INFO"; then
+        pass "Assets.car carries an icon stack (macOS 26/27 path)"
+    else
+        fail "Assets.car has no icon stack; macOS 26/27 would fall back to the .icns"
+    fi
+    if grep -q "\"Name\" : \"$ICON_NAME\"" <<<"$CAR_INFO"; then
+        pass "Assets.car defines the icon named '$ICON_NAME' (CFBundleIconName)"
+    else
+        fail "Assets.car does not define '$ICON_NAME', the name CFBundleIconName asks for"
+    fi
+    if grep -q '"PixelHeight" : 1024' <<<"$CAR_INFO"; then
+        pass "Assets.car carries flat renditions up to 1024 px (macOS 14/15 path)"
+    else
+        fail "Assets.car has no 1024 px flat rendition"
+    fi
+elif [ "${PICLIGHT_ALLOW_LOOSE_ICON:-0}" = "1" ]; then
+    echo "SKIPPED: no Assets.car — development build (PICLIGHT_ALLOW_LOOSE_ICON=1)."
+    echo "         macOS 26/27 then draw the loose .icns in their own generic material."
+else
+    fail "no Assets.car / CFBundleIconName: macOS 26/27 would not get the native icon"
+fi
+
+if [ -z "$ICON_FILE" ]; then
+    fail "Info.plist has no CFBundleIconFile: macOS 14/15 would get no icon"
+elif [ ! -f "$APP/Contents/Resources/$ICON_FILE.icns" ]; then
+    fail "CFBundleIconFile is '$ICON_FILE' but Resources/$ICON_FILE.icns is missing"
+else
+    ICON_WORK="$(mktemp -d)"
+    if iconutil -c iconset "$APP/Contents/Resources/$ICON_FILE.icns" -o "$ICON_WORK/x.iconset" >/dev/null 2>&1; then
+        MISSING=""
+        for rendition in icon_16x16.png icon_16x16@2x.png icon_32x32.png icon_32x32@2x.png \
+                         icon_128x128.png icon_128x128@2x.png icon_256x256.png icon_256x256@2x.png \
+                         icon_512x512.png icon_512x512@2x.png; do
+            [ -f "$ICON_WORK/x.iconset/$rendition" ] || MISSING="$MISSING $rendition"
+        done
+        if [ -z "$MISSING" ]; then
+            pass "loose $ICON_FILE.icns carries all 10 renditions (16–1024 px)"
+        else
+            fail "loose .icns is missing:$MISSING"
+        fi
+        BIGGEST=$(sips -g pixelWidth -g pixelHeight "$ICON_WORK/x.iconset/icon_512x512@2x.png" 2>/dev/null \
+            | awk '/pixelWidth/{w=$2} /pixelHeight/{h=$2} END{print w"x"h}')
+        if [ "$BIGGEST" = "1024x1024" ]; then
+            pass "largest loose rendition is 1024x1024"
+        else
+            fail "largest loose rendition is '$BIGGEST', expected 1024x1024"
+        fi
+    else
+        fail "cannot unpack Resources/$ICON_FILE.icns with iconutil"
+    fi
+    rm -rf "$ICON_WORK"
+fi
+
+# LaunchServices' record for this bundle. If the icon is not in here, no number of
+# files under Contents/Resources changes what the Dock draws.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+if [ -x "$LSREGISTER" ]; then
+    "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
+    # awk must read the whole dump: the pipeline runs under `pipefail`, and
+    # exiting early would kill lsregister with SIGPIPE and fail the script.
+    LS_RECORD=$("$LSREGISTER" -dump 2>/dev/null | awk -v p="$APP" '
+        !inside && /^path: / && index($0, p) > 0 { inside = 1; print; next }
+        inside && /^-{10,}/ { inside = 0 }
+        inside { print }')
+    if [ -z "$LS_RECORD" ]; then
+        note "LaunchServices has no record for $APP; icon metadata not checked"
+    else
+        if grep -qE "^iconName: +$ICON_NAME$" <<<"$LS_RECORD"; then
+            pass "LaunchServices reads iconName '$ICON_NAME' from the bundle"
+        else
+            fail "LaunchServices iconName is not '$ICON_NAME':$(grep '^iconName:' <<<"$LS_RECORD" || true)"
+        fi
+        if grep -qE "^icons: +Contents/Resources/$ICON_FILE\.icns$" <<<"$LS_RECORD"; then
+            pass "LaunchServices resolves the loose icon Contents/Resources/$ICON_FILE.icns"
+        else
+            fail "LaunchServices resolves the loose icon as:$(grep '^icons:' <<<"$LS_RECORD" || true)"
+        fi
+        ICON_FLAGS=$(grep '^icon flags:' <<<"$LS_RECORD" || true)
+        if [ -z "$ICON_FLAGS" ]; then
+            note "LaunchServices record carries no icon flags line"
+        elif grep -q 'supports-asset-catalog' <<<"$ICON_FLAGS"; then
+            pass "LaunchServices marks the icon as asset-catalog backed"
+        else
+            fail "LaunchServices does not see an asset-catalog icon: $ICON_FLAGS"
+        fi
+    fi
+fi
+
+# What AppKit hands out — the artwork the Dock and ⌘-Tab paint. Informational:
+# iconservicesd caches per path, and a path it first saw without an icon (or saw
+# before a rebuild) can keep answering with the generic placeholder, so this can
+# report the placeholder for a bundle whose icon is demonstrably packaged. The
+# copy below has no such history.
+PROBE_WORK="$(mktemp -d)"
+PROBE_COPY="$PROBE_WORK/$APP_NAME-icon-probe.app"
+PROBE_NONE="$PROBE_WORK/no-icon-here.app"
+if cp -R "$APP" "$PROBE_COPY" 2>/dev/null; then
+    PROBE_OUT="$(swift "$ROOT/scripts/icon-probe.swift" 256 "$PROBE_COPY" "$PROBE_NONE" 2>/dev/null || true)"
+    probe_sha() {
+        awk -v p="path=$2" '$0 ~ /^sha=/ && index($0, p) > 0 { split($1, kv, "="); print kv[2] }' \
+            <<<"$PROBE_OUT"
+    }
+    COPY_SHA=$(probe_sha "$PROBE_OUT" "$PROBE_COPY")
+    NONE_SHA=$(probe_sha "$PROBE_OUT" "$PROBE_NONE")
+    if [ -z "$COPY_SHA" ]; then
+        note "icon probe did not run (AppKit or a window server unavailable?)"
+    elif [ "$COPY_SHA" = "$NONE_SHA" ]; then
+        note "IconServices hands a fresh copy the generic icon ($COPY_SHA)."
+        note "     Usually the per-path cache; check again after a moment or from a copy elsewhere."
+    else
+        pass "IconServices resolves a branded icon for a fresh copy of the bundle"
+    fi
+fi
+rm -rf "$PROBE_WORK"
+
 # --------------------------------------------------------------- build version
 BUILD_INFO=$(otool -l "$BINARY" | awk '/LC_BUILD_VERSION/{flag=1} flag&&/minos/{print $2; exit}')
 if [ "$BUILD_INFO" = "$EXPECTED_MINOS" ]; then
     pass "Mach-O deployment target is macOS $EXPECTED_MINOS"
 else
     fail "Mach-O deployment target is '$BUILD_INFO', expected '$EXPECTED_MINOS'"
+fi
+
+# AppKit reads the SDK version recorded here to choose the design language. A binary that says
+# `sdk 14.0` — what SwiftPM links by default, because it passes the deployment target as the
+# platform version — keeps every system control (the toolbar slider, the sort popup, the folder
+# outline) in the pre-26 compatibility look, with no Liquid Glass, however new the OS is. Package.swift
+# names the build SDK for exactly this reason; this is the check that it stayed named.
+BUILD_SDK=$(otool -l "$BINARY" | awk '/LC_BUILD_VERSION/{flag=1} flag&&/sdk/{print $2; exit}')
+SDK_MAJOR="${BUILD_SDK%%.*}"
+if [ -n "$SDK_MAJOR" ] && [ "$SDK_MAJOR" -ge 26 ] 2>/dev/null; then
+    pass "Mach-O build SDK is macOS $BUILD_SDK (the macOS 26 design is adopted)"
+else
+    fail "Mach-O build SDK is '$BUILD_SDK'; AppKit needs >= 26.0 to leave the pre-26 look"
 fi
 
 # ------------------------------------------------------------- fixture freedom
@@ -189,6 +331,16 @@ if [ -n "$DMG" ] && [ -f "$DMG" ]; then
             pass "mounted bundle version is $EXPECTED_VERSION"
         else
             fail "mounted bundle version is '$MOUNTED_VERSION'"
+        fi
+
+        # The icon has to survive the DMG round trip, not only the build.
+        MOUNTED_ICONS=0
+        [ -n "$ICON_NAME" ] && [ -f "$MOUNT_POINT/$APP_NAME.app/Contents/Resources/Assets.car" ] && MOUNTED_ICONS=$((MOUNTED_ICONS + 1))
+        [ -n "$ICON_FILE" ] && [ -f "$MOUNT_POINT/$APP_NAME.app/Contents/Resources/$ICON_FILE.icns" ] && MOUNTED_ICONS=$((MOUNTED_ICONS + 1))
+        if [ "$MOUNTED_ICONS" -eq 2 ]; then
+            pass "mounted bundle carries both icon resources (Assets.car + $ICON_FILE.icns)"
+        else
+            fail "mounted bundle is missing icon resources (found $MOUNTED_ICONS of 2)"
         fi
 
         if [ -n "$SELFTEST_IMAGE" ] && [ -f "$SELFTEST_IMAGE" ]; then

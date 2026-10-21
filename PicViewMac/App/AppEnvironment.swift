@@ -8,6 +8,7 @@ public final class AppEnvironment {
     public let settings = AppSettings.shared
     public let shortcuts = ShortcutStore.shared
     public let fileOpener = FileOpenCoordinator()
+    let folderAccess = FolderAccessStore.shared
 
     private var windowControllers: [ViewerWindowController] = []
 
@@ -49,19 +50,50 @@ public final class AppEnvironment {
         newViewerWindow(show: true)
     }
 
+    /// The window a file belongs in when one of them is still empty.
+    ///
+    /// An empty viewer is a placeholder the user is looking at — the window the app opens with, before
+    /// anything is in it. A file opened there belongs *in it*, whether it arrived from Finder, from the
+    /// Open panel or by drag and drop, and whatever the "打开文件" setting says: that setting is about
+    /// what to do when a picture is already on screen, and honouring it here left the empty window
+    /// stranded beside a new one (reported: opening a file from the empty window always produced a
+    /// second window).
+    ///
+    /// A window that is *loading* is not empty: its picture is on its way, and replacing it would throw
+    /// away a decode the user is waiting for.
+    private func emptyViewerWindow() -> ViewerWindowController? {
+        // "Empty placeholder" is narrow on purpose: a window that has already been handed a file is not
+        // one, even in the moment before its picture arrives — otherwise the second file of a multi-file
+        // open would land in the window the first one is still loading into (measured: three opens, one
+        // window, and only the last file visible).
+        let candidates = windowControllers.filter {
+            $0.window?.isVisible == true && !$0.isShowingPicture && !$0.hasReceivedFileRequest
+        }
+        if let key = candidates.first(where: { $0.window?.isKeyWindow == true }) { return key }
+        return candidates.first
+    }
+
     public func open(url: URL, behavior: OpenBehavior? = nil) {
+        if let empty = emptyViewerWindow() {
+            empty.noteFileRequested()
+            empty.open(url: url)
+            return
+        }
         let resolved = behavior ?? openBehaviorOverride ?? settings.openBehavior
         switch resolved {
         case .newWindow:
             // Created without showing: `open(url:)` presents it, so a file open
             // never flashes an empty window first.
             let controller = newViewerWindow(show: false)
+            controller.noteFileRequested()
             controller.open(url: url)
         case .reuseCurrent:
             if let controller = mostRecentViewer {
+                controller.noteFileRequested()
                 controller.open(url: url)
             } else {
                 let controller = newViewerWindow(show: false)
+                controller.noteFileRequested()
                 controller.open(url: url)
             }
         }

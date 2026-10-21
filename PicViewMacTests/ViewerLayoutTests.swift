@@ -35,18 +35,22 @@ final class ViewerLayoutTests: XCTestCase {
 
     // MARK: - Titlebar
 
-    func testViewerUsesTheStandardVisibleTitlebar() throws {
+    /// The default is the auto-hiding titlebar: still a standard titled window with the real
+    /// controls, with the content reaching the top edge and the bar itself away.
+    func testViewerUsesTheStandardTitlebarInItsDefaultAutoHideMode() throws {
         let (controller, _) = try makeViewer()
         defer { controller.close() }
-        guard let window = controller.window else { return XCTFail("no window") }
+        guard let window = controller.window as? ViewerWindow else { return XCTFail("no window") }
 
         XCTAssertTrue(window.styleMask.contains(.titled))
-        XCTAssertFalse(window.styleMask.contains(.fullSizeContentView),
-                       "content must start below the titlebar")
-        XCTAssertEqual(window.titleVisibility, .visible)
-        XCTAssertFalse(window.titlebarAppearsTransparent)
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView),
+                      "auto-hide lets the content reach the top edge")
+        XCTAssertEqual(window.titlebarMode, .autoHide)
+        XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertTrue(window.titlebarAppearsTransparent)
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            XCTAssertNotNil(window.standardWindowButton(button))
+            XCTAssertNotNil(window.standardWindowButton(button),
+                            "the real controls, not a drawn replacement")
         }
         XCTAssertEqual(window.title, "PicLight", "no image: the app name is the title")
     }
@@ -63,12 +67,15 @@ final class ViewerLayoutTests: XCTestCase {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         XCTAssertFalse(viewer.chromeViewsForTesting.keys.contains("topBar"),
-                       "there is no viewer-owned top bar any more")
-        // The viewer's own chrome never reaches into the titlebar band: the content
-        // view starts below it.
+                       "there is no viewer-owned top bar")
+        // In auto-hide mode the content reaches the top of the window, so there is no titlebar band
+        // for the viewer's chrome to stay out of — and no fake titlebar view among the chrome.
         guard let content = controller.window?.contentView else { return XCTFail("no content") }
         let titlebarHeight = controller.window!.frame.height - content.frame.height
-        XCTAssertGreaterThan(titlebarHeight, 0, "the standard titlebar occupies real space")
+        XCTAssertEqual(titlebarHeight, 0, accuracy: 0.5,
+                       "the content view spans the whole window in auto-hide mode")
+        XCTAssertFalse(viewer.chromeViewsForTesting.values.contains { $0 is NSTitlebarAccessoryViewController },
+                       "no viewer-owned titlebar accessory")
     }
 
     // MARK: - Tool dock
@@ -78,22 +85,22 @@ final class ViewerLayoutTests: XCTestCase {
         defer { controller.close() }
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
         XCTAssertEqual(dock.commands,
-                       [.rotateClockwise, .toggleMirror, .zoomToFit, .zoomToFitWidth,
-                        .previousImage, .nextImage, .zoomActualPixels, .moveToTrash,
-                        .showImageInfo])
+                       [.zoomOut, .zoomIn, .zoomToFit, .zoomToFitWidth, .zoomActualPixels,
+                        .previousImage, .nextImage,
+                        .rotateClockwise, .toggleMirror, .moveToTrash,
+                        .browseFolder, .toggleThumbnailDrawer, .showImageInfo])
     }
 
     /// Adjustments first, then moving through the folder, then the zoom and file
     /// actions - with the navigation pair sitting in the middle of the dock.
     func testDockUsesTheRequestedZoomSymbols() {
-        let symbols = ViewerToolDockView.toolDefinitions
-        XCTAssertEqual(symbols.first { $0.command == .zoomToFit }?.symbol,
+        XCTAssertEqual(ViewerToolDockView.fitSymbol,
                        "arrow.down.left.and.arrow.up.right.rectangle")
-        XCTAssertEqual(symbols.first { $0.command == .zoomToFitWidth }?.symbol,
-                       "arrow.left.and.right.square")
-        // Both must actually resolve on this system.
-        for name in ["arrow.down.left.and.arrow.up.right.rectangle", "arrow.left.and.right.square"] {
-            XCTAssertNotNil(NSImage(systemSymbolName: name, accessibilityDescription: nil), name)
+        XCTAssertEqual(ViewerToolDockView.fitWidthSymbol, "arrow.left.and.right.square")
+        // Every symbol the dock declares must actually resolve on this system.
+        for item in ViewerToolDockView.layout {
+            guard case let .command(symbol, _, _) = item else { continue }
+            XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), symbol)
         }
     }
 
@@ -106,18 +113,20 @@ final class ViewerLayoutTests: XCTestCase {
         let nextIndex = try XCTUnwrap(commands.firstIndex(of: .nextImage))
         XCTAssertEqual(nextIndex, previousIndex + 1, "the navigation pair is adjacent")
 
-        let centre = Double(commands.count - 1) / 2
-        let pairCentre = Double(previousIndex + nextIndex) / 2
-        XCTAssertLessThanOrEqual(abs(pairCentre - centre), 1.0,
-                                 "the pair sits within one slot of the dock's centre "
-                                   + "(\(pairCentre) vs \(centre))")
+        // The pair sits inside the navigation group, with the zoom group before it and the image
+        // actions after. The dock used to be one flat strip with the pair in the middle; the
+        // redesign gives it four groups, so the contract is the group's position, not the centre.
+        let zoomGroup = try XCTUnwrap(commands.firstIndex(of: .zoomToFit))
+        let firstImageAction = try XCTUnwrap(commands.firstIndex(of: .rotateClockwise))
+        XCTAssertLessThan(zoomGroup, previousIndex, "zoom leads")
+        XCTAssertLessThan(nextIndex, firstImageAction, "navigation precedes the image actions")
+        XCTAssertEqual(nextIndex, previousIndex + 1, "and the pair is adjacent")
 
         // Group separators, drawn as arranged subviews that are not buttons.
         let separators = dock.subviews.compactMap { $0 as? NSStackView }
             .flatMap { $0.arrangedSubviews.filter { $0 is NSBox } }
-        XCTAssertEqual(separators.count, 3,
-                       "one before the pair, one before the zoom group, one before the pin")
-        _ = centre
+        XCTAssertEqual(separators.count, 4,
+                       "one between each pair of groups, plus the pin's own")
     }
 
     /// Presence and enabled state are not enough: a button with no icon renders as
@@ -276,13 +285,13 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertEqual(canvas.frame.width, rootWidth, accuracy: 1,
                        "unpinned: the canvas owns the whole content area")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(canvas.frame.width, rootWidth - drawerWidth, accuracy: 1,
                        "pinned: the canvas is the remaining area")
         XCTAssertEqual(canvas.frame.minX, drawerWidth, accuracy: 1)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(canvas.frame.width, rootWidth, accuracy: 1,
                        "unpinning restores the full width")
@@ -319,7 +328,7 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertEqual(unpinnedFit, canvas.bounds.width / canvas.imagePixelSize.width,
                        accuracy: 0.01, "width binds in this geometry")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         let pinnedFit = viewer.viewerState.viewport.fitScale
         XCTAssertEqual(canvas.bounds.width, 400 - viewer.currentDrawerWidth, accuracy: 1)
@@ -350,12 +359,12 @@ final class ViewerLayoutTests: XCTestCase {
         let minimap = try XCTUnwrap(viewer.chromeViewsForTesting["minimap"])
         let infoCard = try XCTUnwrap(viewer.chromeViewsForTesting["infoCard"])
         let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"])
-        let bottomBar = try XCTUnwrap(viewer.chromeViewsForTesting["bottomBar"])
+
 
         func checkAnchors(_ label: String) {
             let canvasFrame = canvas.frame
             for (name, view) in [("minimap", minimap), ("infoCard", infoCard),
-                                 ("toolDock", dock), ("bottomBar", bottomBar)] {
+                                 ("toolDock", dock)] {
                 XCTAssertGreaterThanOrEqual(view.frame.minX, canvasFrame.minX - 1,
                                             "\(label): \(name) must sit inside the canvas area")
             }
@@ -369,7 +378,7 @@ final class ViewerLayoutTests: XCTestCase {
 
         settle()
         checkAnchors("unpinned")
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.6)
         checkAnchors("pinned")
     }
@@ -380,7 +389,7 @@ final class ViewerLayoutTests: XCTestCase {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         loadImage(viewer)
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.6)
 
         guard let window = controller.window else { return XCTFail("no window") }
@@ -421,7 +430,7 @@ final class ViewerLayoutTests: XCTestCase {
         XCTAssertGreaterThan(canvas.imagePixelSize.width * zoomBefore,
                              canvas.bounds.width - viewer.currentDrawerWidth)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(viewer.viewerState.viewport.zoomScale, zoomBefore, accuracy: 0.0001,
                        "pinning must not silently reset a manual zoom")
@@ -429,7 +438,7 @@ final class ViewerLayoutTests: XCTestCase {
                        "the focal point is preserved across the re-layout")
         XCTAssertEqual(viewer.viewerState.viewport.normalizedCenter.y, 0.5, accuracy: 0.02)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(viewer.viewerState.viewport.zoomScale, zoomBefore, accuracy: 0.0001,
                        "unpinning also keeps the manual zoom")
@@ -446,14 +455,14 @@ final class ViewerLayoutTests: XCTestCase {
         guard let window = controller.window else { return XCTFail("no window") }
         XCTAssertEqual(window.minSize.width, ViewerWindow.defaultMinimumSize.width, accuracy: 1)
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertGreaterThan(window.minSize.width, ViewerWindow.defaultMinimumSize.width,
                              "pinned, the minimum width must still leave room for the image")
         XCTAssertGreaterThanOrEqual(window.minSize.width - viewer.currentDrawerWidth, 320,
                                     "at least 320 pt of canvas remains at the minimum size")
 
-        viewer.toggleDrawerPinForTesting()
+        viewer.toggleDrawerForTesting()
         settle(0.5)
         XCTAssertEqual(window.minSize.width, ViewerWindow.defaultMinimumSize.width, accuracy: 1)
     }
@@ -778,11 +787,29 @@ final class DrawerTitlebarButtonTests: XCTestCase {
     /// The first version put the button inside a container view with no intrinsic
     /// size: the titlebar laid that container out zero-width and clipped the button
     /// away, so it existed but could not be seen.
+    ///
+    /// It now also leaves with the titlebar — a hidden bar must not leave a lone control
+    /// floating over the image, so the accessory is taken out of the titlebar entirely —
+    /// so the size check is made with the bar revealed, which is the state in which the
+    /// button is meant to be clickable.
     func testTitlebarDrawerButtonHasARealOnScreenSize() throws {
         let (controller, viewer) = try makeViewer()
         defer { controller.close() }
         controller.window?.layoutIfNeeded()
-        let accessory = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first)
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertTrue(controller.window?.titlebarAccessoryViewControllers.isEmpty ?? false,
+                      "with the bar away neither accessory is in the titlebar at all")
+
+        // Reveal the bar, which is where the button is meant to be used.
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        controller.window?.layoutIfNeeded()
+
+        let accessory = try XCTUnwrap(
+            controller.window?.titlebarAccessoryViewControllers.first { $0.layoutAttribute == .leading },
+            "the revealed bar carries the drawer accessory")
         let accessoryView = accessory.view
         XCTAssertGreaterThan(accessoryView.frame.width, 0,
                              "a zero-width accessory is invisible in the titlebar")
@@ -790,7 +817,6 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         XCTAssertFalse(accessoryView.isHidden)
         XCTAssertFalse(accessory.isHidden)
         // Everything the user needs to click is inside that frame.
-        let button = try XCTUnwrap(controller.drawerTitlebarButton)
         let buttonInWindow = button.convert(button.bounds, to: nil)
         let accessoryInWindow = accessoryView.convert(accessoryView.bounds, to: nil)
         XCTAssertGreaterThan(buttonInWindow.width, 0)
@@ -806,12 +832,23 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         defer { controller.close() }
         let button = try XCTUnwrap(controller.drawerTitlebarButton,
                                    "the titlebar needs the drawer control")
-        XCTAssertTrue(button.isDescendant(of: controller.window!.contentView!)
-                      || controller.window?.titlebarAccessoryViewControllers.isEmpty == false,
-                      "the button lives in a titlebar accessory, not in the content area")
-        XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.count, 1)
-        XCTAssertEqual(controller.window?.titlebarAccessoryViewControllers.first?.layoutAttribute,
-                       .leading, "it sits next to the traffic lights")
+        // Reveal the bar: that is when the accessory is in the titlebar (it is taken out while
+        // the bar is away, so nothing can float over the content).
+        let zones = viewer.titlebarRevealZones
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: zones.b.midX, y: zones.b.midY), to: nil))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        XCTAssertFalse(button.isDescendant(of: controller.window!.contentView!),
+                       "the button lives in a titlebar accessory, not in the content area")
+        // Two accessories now: this one at the leading edge, and the native pixel-size readout at the
+        // trailing one. The button must be the leading one, next to the traffic lights.
+        let accessories = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers)
+        XCTAssertEqual(accessories.count, 2, "the drawer control and the size readout")
+        let leading = accessories.first { $0.layoutAttribute == .leading }
+        XCTAssertEqual(leading?.view, button, "the button sits next to the traffic lights")
+        XCTAssertEqual(controller.sizeReadoutTextForTesting.isEmpty, true,
+                       "and the size readout is empty until a picture is on screen")
         XCTAssertNotNil(button.image)
         XCTAssertEqual(button.toolTip, "打开左栏")
         _ = viewer
@@ -825,14 +862,14 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         XCTAssertFalse(viewer.chromeSnapshot.drawer, "the drawer starts closed")
         button.performClick(nil)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertTrue(viewer.isDrawerPinned, "clicking opens the drawer and holds it")
+        XCTAssertTrue(viewer.isDrawerOpen, "clicking opens the drawer and holds it")
         XCTAssertTrue(viewer.chromeSnapshot.drawer)
         XCTAssertEqual(button.toolTip, "关闭左栏")
         XCTAssertEqual(button.contentTintColor, .controlAccentColor)
 
         button.performClick(nil)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertFalse(viewer.isDrawerPinned, "clicking again closes it")
+        XCTAssertFalse(viewer.isDrawerOpen, "clicking again closes it")
         XCTAssertEqual(button.toolTip, "打开左栏")
     }
 
@@ -854,11 +891,11 @@ final class DrawerTitlebarButtonTests: XCTestCase {
         defer { controller.close() }
         viewer.perform(.toggleThumbnailDrawer)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertTrue(viewer.isDrawerPinned)
+        XCTAssertTrue(viewer.isDrawerOpen)
         XCTAssertEqual(controller.drawerTitlebarButton?.toolTip, "关闭左栏")
         viewer.perform(.toggleThumbnailDrawer)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertFalse(viewer.isDrawerPinned)
+        XCTAssertFalse(viewer.isDrawerOpen)
     }
 }
 

@@ -61,22 +61,50 @@ public enum MetalLibraryLocator {
     /// A release build always carries `default.metallib` (scripts/build-release.sh
     /// refuses to package without it), so the source path only runs in development on
     /// a machine without the Xcode Metal toolchain. It compiles the *shipped .metal
-    /// file*, not a string literal in code, and only once per process.
+    /// file*, not a string literal in code, and only once per process — the cache below is what
+    /// makes that true: without it every canvas paid for the Metal front end again (measured: one
+    /// full test run compiled the shader 241 times, which stretched the run from 466 s to 858 s
+    /// and starved the tile tests' upload deadlines into 30–80 s timeouts).
     public static func defaultLibrary(device: MTLDevice) -> MTLLibrary? {
+        let key = ObjectIdentifier(device)
+        libraryLock.lock()
+        let cached = cachedLibraries[key]
+        libraryLock.unlock()
+        if let cached { return cached }
+
         guard let bundle = resourceBundle() else { return nil }
-        if let compiled = try? device.makeDefaultLibrary(bundle: bundle) { return compiled }
-        guard let source = shaderSource(bundle: bundle) else { return nil }
-        FileHandle.standardError.write(
-            "MetalLibraryLocator: no compiled default.metallib in the resource bundle; "
-            .data(using: .utf8)!)
-        FileHandle.standardError.write(
-            "compiling the shipped ImageShaders.metal at first use (install the Metal toolchain "
-            .data(using: .utf8)!)
-        FileHandle.standardError.write(
-            "with `xcodebuild -downloadComponent MetalToolchain` to package a compiled library)\n"
-            .data(using: .utf8)!)
-        return try? device.makeLibrary(source: source, options: nil)
+        let library: MTLLibrary?
+        if let compiled = try? device.makeDefaultLibrary(bundle: bundle) {
+            library = compiled
+        } else if let source = shaderSource(bundle: bundle) {
+            FileHandle.standardError.write(
+                "MetalLibraryLocator: no compiled default.metallib in the resource bundle; "
+                .data(using: .utf8)!)
+            FileHandle.standardError.write(
+                "compiling the shipped ImageShaders.metal at first use (install the Metal toolchain "
+                .data(using: .utf8)!)
+            FileHandle.standardError.write(
+                "with `xcodebuild -downloadComponent MetalToolchain` to package a compiled library)\n"
+                .data(using: .utf8)!)
+            library = try? device.makeLibrary(source: source, options: nil)
+        } else {
+            library = nil
+        }
+
+        if let library {
+            libraryLock.lock()
+            cachedLibraries[key] = library
+            libraryLock.unlock()
+        }
+        return library
     }
+
+    /// One library per device: a `MTLLibrary` belongs to the device that made it, so two GPUs
+    /// must never share one. Guarded because `defaultLibrary` is called from wherever a canvas is
+    /// built, and the compile itself runs outside the lock — a rare double compile is harmless,
+    /// a multi-second critical section would not be.
+    private static let libraryLock = NSLock()
+    nonisolated(unsafe) private static var cachedLibraries: [ObjectIdentifier: MTLLibrary] = [:]
 }
 
 /// Anchor for `Bundle(for:)`: the bundle that contains this module's code.

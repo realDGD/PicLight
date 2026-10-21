@@ -34,7 +34,11 @@ public final class ViewerState {
         return "\(pageIndex + 1) / \(descriptor.pageCount)"
     }
 
-    public func apply(head: DecodedImageHead) {
+    /// - Parameter startsFitted: whether this head is a *new* picture rather than a new decode of the
+    ///   one on screen. A resize changes the decode level and arrives as another head; re-fitting
+    ///   there would undo the zoom the user chose. A new picture, on the other hand, always starts
+    ///   fitted to the window.
+    public func apply(head: DecodedImageHead, startsFitted: Bool = true) {
         descriptor = head.descriptor
         metadata = head.metadata
         currentImage = head.image
@@ -42,10 +46,24 @@ public final class ViewerState {
         pageIndex = 0
         errorMessage = nil
         playback = head.descriptor.animated ? .playing : .staticImage
-        fitScaleForCurrentImage()
+        // The zoom itself is applied by the view, which is what knows the canvas size: setting it here
+        // from `viewport.fitScale` used the *previous* image's fit scale, which left a new picture
+        // smaller than the window (or kept the old picture's zoom).
+        viewport = ViewportState(fitScale: viewport.fitScale, zoomScale: viewport.fitScale,
+                                 normalizedCenter: CGPoint(x: 0.5, y: 0.5))
+        if startsFitted { wantsFitOnNextPublish = true }
         onImageChanged?()
         onPlaybackChanged?()
     }
+
+    /// Whether the publisher should fit the new image to the canvas. Clears the request.
+    public func consumeFitRequest() -> Bool {
+        defer { wantsFitOnNextPublish = false }
+        return wantsFitOnNextPublish
+    }
+
+    /// Set when a picture arrives that the user did not choose a zoom for. See `apply(head:startsFitted:)`.
+    private var wantsFitOnNextPublish = false
 
     public func apply(frame: DecodedFrame) {
         currentImage = frame.image
@@ -117,16 +135,6 @@ public final class ViewerState {
     public func updateFitScale(imagePixels: CGSize, viewPoints: CGSize) {
         viewport.fitScale = fitScaleFor(imagePixels: imagePixels, viewPoints: viewPoints)
         viewport.clampCenter(imagePixels: imagePixels, viewPoints: viewPoints, backingScale: 1)
-    }
-
-    private func fitScaleForCurrentImage() {
-        guard let descriptor else { return }
-        viewport = ViewportState(
-            fitScale: viewport.fitScale,
-            zoomScale: viewport.fitScale,
-            normalizedCenter: CGPoint(x: 0.5, y: 0.5)
-        )
-        _ = descriptor
     }
 
     public func setZoomToFit(imagePixels: CGSize, viewPoints: CGSize) {

@@ -149,7 +149,87 @@ final class NativeTileCacheInvariantTests: XCTestCase {
         XCTAssertEqual(cache.count, 0)
         XCTAssertEqual(cache.byteCount, 0)
         XCTAssertEqual(cache.pinnedKeys, [])
+        XCTAssertEqual(cache.sourceVersionCountForTesting, 0,
+                       "the version records describe tiles; with no tiles they must go too")
         assertInvariants(cache, "after removeAll")
+    }
+
+    // MARK: - The source-version map is bounded
+
+    /// The map is keyed by path and the viewer keeps browsing, so an entry that outlives its tiles
+    /// would be one record per image ever opened — an unbounded leak sitting behind a bounded
+    /// cache. A record may only survive while its tiles do, which bounds the map by the cache's own
+    /// byte budget rather than by how many images the user looks at.
+    func testVersionRecordsDoNotAccumulateForSourcesWhoseTilesAreGone() {
+        // Three tiles of budget, browsed across two hundred files: every tile is evicted on
+        // schedule, so anything left over is a record with nothing to describe.
+        let oneTile = tile(x: 0).byteCost
+        let cache = NativeTileCache(totalCostLimit: oneTile * 3)
+        for index in 0..<200 {
+            let path = "/tmp/browsed-\(index).png"
+            cache.setSourceVersion("v1", for: path)
+            cache.store(tile(path: path, x: 0))
+            XCTAssertLessThanOrEqual(cache.sourceVersionCountForTesting, 4,
+                                     "file \(index) left version records behind: "
+                                     + "\(cache.sourceVersionCountForTesting)")
+        }
+        XCTAssertGreaterThan(cache.evictionCount, 100,
+                             "the scenario must really be evicting, or it proves nothing")
+        assertInvariants(cache, "after browsing")
+    }
+
+    /// …but a record whose tiles are still resident is what makes a re-request warm, so it stays.
+    func testAVersionRecordSurvivesWhileItsTilesDo() {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        cache.setSourceVersion("v1", for: "/tmp/kept.png")
+        cache.store(tile(path: "/tmp/kept.png", x: 0))
+
+        cache.setSourceVersion("v1", for: "/tmp/visiting.png")
+
+        XCTAssertEqual(cache.sourceVersionCountForTesting, 2,
+                       "the resident source keeps its record alongside the current one")
+        XCTAssertEqual(cache.sourceVersion(for: "/tmp/kept.png"), "v1")
+        XCTAssertEqual(cache.sourceVersion(for: "/tmp/visiting.png"), "v1")
+    }
+
+    /// Purging another source drops that source's records with its tiles.
+    func testPurgingASourceDropsItsVersionRecord() {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        cache.setSourceVersion("v1", for: "/tmp/gone.png")
+        cache.setSourceVersion("v1", for: "/tmp/kept.png")
+        cache.store(tile(path: "/tmp/gone.png", x: 0))
+        cache.store(tile(path: "/tmp/kept.png", x: 0))
+
+        cache.purge(exceptSourcePath: "/tmp/kept.png")
+
+        XCTAssertNil(cache.sourceVersion(for: "/tmp/gone.png"),
+                     "a source with no tiles has no identity to remember")
+        XCTAssertEqual(cache.sourceVersion(for: "/tmp/kept.png"), "v1")
+    }
+
+    /// A version change is not a licence to leave the old record behind either.
+    func testAVersionChangeKeepsOneRecordPerPath() {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        cache.setSourceVersion("v1", for: "/tmp/photo.png")
+        cache.store(tile(path: "/tmp/photo.png", x: 0))
+        for version in ["v2", "v3", "v4"] { cache.setSourceVersion(version, for: "/tmp/photo.png") }
+        XCTAssertEqual(cache.sourceVersionCountForTesting, 1, "one path, one record")
+        XCTAssertEqual(cache.sourceVersion(for: "/tmp/photo.png"), "v4")
+    }
+
+    /// Stated where it can be checked: when a version change removes a tile, it removes the pin
+    /// that was protecting it in the same breath.
+    func testAVersionChangeTakesThePinWithTheTile() {
+        let cache = NativeTileCache(totalCostLimit: 8 * 1024 * 1024)
+        cache.setSourceVersion("v1", for: "/tmp/photo.png")
+        cache.store(tile(path: "/tmp/photo.png", x: 0))
+        cache.pin([key(x: 0, path: "/tmp/photo.png")])
+        XCTAssertTrue(cache.pinnedKeys.isSubset(of: cache.keysForTesting))
+
+        cache.setSourceVersion("v2", for: "/tmp/photo.png")
+
+        XCTAssertEqual(cache.pinnedKeys, [], "a pin may not outlive the tile it protected")
+        assertInvariants(cache, "after a version change with a pin")
     }
 
     /// The version check removes tiles too, so it has to keep the same books as the

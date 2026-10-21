@@ -1,0 +1,531 @@
+import XCTest
+import AppKit
+@testable import PicViewMac
+
+/// The folder browser as a mode: entering and leaving, what it shares with the image viewer, and
+/// what it deliberately does not.
+@MainActor
+final class FolderBrowserModeTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        TestAppKit.ensureApplication()
+    }
+
+    private func makeFolder(_ count: Int,
+                            subfolders: Int = 0) throws -> (directory: URL,
+                                                            controller: ViewerWindowController,
+                                                            viewer: ViewerViewController) {
+        let directory = try Fixtures.makeScratchDirectory("folder-browser")
+        for index in 0..<count {
+            try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                             to: directory.appendingPathComponent("img\(index).png"))
+        }
+        for index in 0..<subfolders {
+            try FileManager.default.createDirectory(
+                at: directory.appendingPathComponent("sub\(index)"),
+                withIntermediateDirectories: true)
+        }
+        let controller = ViewerWindowController()
+        TestAppKit.presentOffScreen(controller)
+        let viewer = controller.viewerViewController
+        controller.showWindow(nil)
+        _ = viewer.view
+        viewer.open(url: directory.appendingPathComponent("img0.png"))
+        waitForImage(viewer)
+        return (directory, controller, viewer)
+    }
+
+    @discardableResult
+    private func waitForImage(_ viewer: ViewerViewController, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while viewer.viewerState.currentImage == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        return viewer.viewerState.currentImage != nil
+    }
+
+    private func settle(_ seconds: TimeInterval = 0.3) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    private func cleanup(_ directory: URL, _ controller: ViewerWindowController) {
+        controller.close()
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    // MARK: - Entering and leaving
+
+    /// The command the dock's grid button and the context menu both carry enters the mode.
+    func testTheBrowseFolderCommandEntersTheMode() throws {
+        let (directory, controller, viewer) = try makeFolder(3)
+        defer { cleanup(directory, controller) }
+        XCTAssertEqual(viewer.viewerMode, .image)
+
+        viewer.perform(.browseFolder)
+
+        XCTAssertEqual(viewer.viewerMode, .folderBrowser)
+        XCTAssertFalse(viewer.folderBrowserContainerForTesting.isHidden)
+        XCTAssertNotNil(viewer.folderBrowserForTesting, "the browser is built on demand")
+    }
+
+    /// It is a real mode, not an overlay: the image mode's views are off screen while it is up.
+    func testItIsAModeNotAnOverlay() throws {
+        let (directory, controller, viewer) = try makeFolder(3)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle()
+
+        XCTAssertTrue(viewer.isImageModeHidden)
+        for name in ["canvas", "toolDock", "infoCard", "drawer", "floatingNavigation"] {
+            let chrome = try XCTUnwrap(viewer.chromeViewsForTesting[name])
+            XCTAssertTrue(chrome.isHidden, "\(name) belongs to image mode and must be away")
+        }
+        // And the gallery is not the drawer: it is a different view, in a different container.
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        XCTAssertFalse(browser.view.isDescendant(of: viewer.chromeViewsForTesting["drawer"]!),
+                       "the browser must not be the drawer wearing a bigger hat")
+    }
+
+    /// The chrome timer keeps running while the browser is up; it must not bring the dock or the
+    /// HUD back over the gallery.
+    func testTheChromeTimerDoesNotRepaintImageChromeOverTheGallery() throws {
+        let (directory, controller, viewer) = try makeFolder(3)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.3)
+        // Several timer ticks: the tick interval is 0.1 s.
+        settle(0.6)
+
+        for name in ["toolDock", "infoCard", "canvas"] {
+            XCTAssertTrue(try XCTUnwrap(viewer.chromeViewsForTesting[name]).isHidden, name)
+        }
+    }
+
+    /// Back returns to image mode and comes back to the *same* image, without re-decoding it.
+    func testBackReturnsToTheSameImageWithoutReDecodingIt() throws {
+        let (directory, controller, viewer) = try makeFolder(3)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.nextImage)
+        waitForImage(viewer)
+        let item = try XCTUnwrap(viewer.session.currentItem)
+        let bitmap = try XCTUnwrap(viewer.viewerState.currentImage)
+        let viewport = viewer.canvasViewportForTesting
+
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        browser.view.backControl.sendAction(browser.view.backControl.action!,
+                                            to: browser.view.backControl.target)
+        settle()
+
+        XCTAssertEqual(viewer.viewerMode, .image)
+        XCTAssertEqual(viewer.session.currentItem?.url, item.url, "the selection is preserved")
+        XCTAssertTrue(viewer.viewerState.currentImage === bitmap,
+                      "leaving the browser must not re-decode the image it never stopped showing")
+        XCTAssertEqual(viewer.canvasViewportForTesting.normalizedCenter.x,
+                       viewport.normalizedCenter.x, accuracy: 1e-9,
+                       "and the viewport comes back where it was")
+        XCTAssertFalse(viewer.isImageModeHidden)
+    }
+
+    /// The mode is a separate presentation hierarchy: the browser cannot see the image mode's
+    /// views. Checked by structure rather than by reading the source.
+    func testTheTwoModesDoNotShareAViewHierarchy() throws {
+        let (directory, controller, viewer) = try makeFolder(3)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let imageModeViews = viewer.chromeViewsForTesting.values.filter {
+            $0 !== viewer.folderBrowserContainerForTesting
+        }
+        for chrome in imageModeViews {
+            for candidate in [browser.view, browser.view.gallery, browser.view.treeSidebar] {
+                XCTAssertFalse(candidate.isDescendant(of: chrome),
+                               "the browser must not be inside image mode's views")
+                XCTAssertFalse(chrome.isDescendant(of: candidate))
+            }
+        }
+    }
+
+    // MARK: - Shared state
+
+    /// The session's index is the one both modes use, so a selection made in the gallery is what
+    /// the image mode comes back to.
+    func testSelectionIsSharedWithTheSession() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+
+        browser.select(2)
+        XCTAssertEqual(viewer.session.currentIndex, 2, "one index, shared")
+        // Captured by URL rather than by name: the folder is watched, and a rescan may re-sort the
+        // list under a slow run. What the test is about is that the *file* survives the trip.
+        let selected = try XCTUnwrap(viewer.session.currentItem).url
+
+        browser.view.backControl.sendAction(browser.view.backControl.action!,
+                                            to: browser.view.backControl.target)
+        waitForImage(viewer)
+        XCTAssertEqual(viewer.session.currentItem?.url, selected,
+                       "and the image mode shows the selection")
+    }
+
+    /// Double-click opens the item and returns to the image: the same path Return takes.
+    func testOpeningAGalleryItemReturnsToImageMode() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+
+        browser.view.gallery.onItemOpened?(3)
+        waitForImage(viewer)
+
+        XCTAssertEqual(viewer.viewerMode, .image, "opening an item leaves the browser")
+        XCTAssertEqual(viewer.session.currentIndex, 3)
+    }
+
+    /// Entering the browser merges the mode's top bar into the titlebar: one row, the browser's
+    /// toolbar with the traffic lights and the drawer button in it, and the bar never auto-hides.
+    func testTheTitlebarStaysVisibleWhileBrowsing() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        XCTAssertEqual(window.titlebarMode, .autoHide, "precondition: the default is auto-hide")
+
+        viewer.perform(.browseFolder)
+        settle(0.5)
+
+        XCTAssertEqual(viewer.viewerMode, .folderBrowser)
+        XCTAssertTrue(window.isTopBarMergedWithContent,
+                      "browsing merges the browser's top bar into the titlebar strip")
+        XCTAssertTrue(window.styleMask.contains(.fullSizeContentView),
+                      "the content reaches the top so the browser's toolbar occupies the strip")
+        XCTAssertTrue(window.titlebarAppearsTransparent,
+                      "the native bar is transparent: the toolbar is what the user sees")
+        XCTAssertEqual(window.titleVisibility, .hidden)
+        XCTAssertEqual(window.titlebarMode, .alwaysVisible,
+                       "browsing pins the titlebar so it never auto-hides")
+
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 200,
+                       "the toolbar starts after the visible sidebar in the merged row")
+
+        // Pointer away and idle: the merged bar must not hide.
+        viewer.simulatePointer(atWindowPoint: viewer.view.convert(
+            CGPoint(x: viewer.view.bounds.midX, y: viewer.view.bounds.midY), to: nil))
+        settle(TitlebarVisibilityModel.Timing().hideDelay + 0.5)
+        XCTAssertEqual(window.titlebarState, .full,
+                       "the titlebar does not auto-hide while the browser is up")
+        XCTAssertFalse(controller.drawerTitlebarButton?.isHidden ?? true,
+                       "and the drawer button stays in the merged row")
+
+        // Leaving restores the user's mode and gives the strip back to the titlebar.
+        let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                                    modifierFlags: [], timestamp: 0,
+                                                    windowNumber: 0, context: nil,
+                                                    characters: "\u{1b}",
+                                                    charactersIgnoringModifiers: "\u{1b}",
+                                                    isARepeat: false, keyCode: 53))
+        viewer.keyDown(with: escape)
+        settle(0.5)
+        XCTAssertEqual(viewer.viewerMode, .image)
+        XCTAssertFalse(window.isTopBarMergedWithContent)
+        XCTAssertEqual(browser.view.toolbarLeadingEdgeForTesting, 200)
+        XCTAssertEqual(window.titlebarMode, .autoHide,
+                       "leaving the browser hands the titlebar back to the user's setting")
+    }
+
+    /// The merged row's controls must not sit on top of each other: the toolbar's first control
+    /// starts after the traffic lights and the drawer button that share the row.
+    func testTheMergedRowKeepsTheToolbarClearOfTheNativeControls() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        controller.window?.layoutIfNeeded()
+
+        let back = browser.view.backControl
+        let backFrame = back.convert(back.bounds, to: nil)
+        let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        let lightsFrame = try XCTUnwrap(lights.first?.superview).convert(
+            lights.dropFirst().reduce(lights[0].frame) { $0.union($1.frame) }, to: nil)
+        let drawer = try XCTUnwrap(controller.drawerTitlebarButton)
+        let drawerFrame = drawer.convert(drawer.bounds, to: nil)
+
+        for (name, frame) in [("traffic lights", lightsFrame), ("drawer button", drawerFrame)] {
+            let overlap = frame.intersection(backFrame)
+            XCTAssertTrue(overlap.isNull || overlap.width <= 0 || overlap.height <= 0,
+                          "the toolbar's back control must not overlap the \(name) "
+                          + "(back \(backFrame), \(name) \(frame))")
+        }
+        // And they really do share the row.
+        XCTAssertEqual(backFrame.midY, lightsFrame.midY, accuracy: 12,
+                       "the toolbar and the native controls are one row")
+    }
+
+    // MARK: - The merged row's alignment, the left column and the background
+
+    /// The browser's top bar is the titlebar row, so its controls must sit on the same line as the
+    /// native ones. Centring them in the taller toolbar row left them about six points lower.
+    func testTheMergedRowControlsLineUpWithTheNativeControls() throws {
+        let (directory, controller, viewer) = try makeFolder(3, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        controller.window?.layoutIfNeeded()
+
+        let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        let lightsMidY = try XCTUnwrap(lights.first?.superview).convert(
+            lights.dropFirst().reduce(lights[0].frame) { $0.union($1.frame) }, to: nil).midY
+        let drawer = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertEqual(drawer.convert(drawer.bounds, to: nil).midY, lightsMidY, accuracy: 1,
+                       "the left-column button is on the titlebar's line")
+        for (name, view) in [("back control", browser.view.backControl as NSView),
+                             ("size slider", browser.view.thumbnailSizeSlider)] {
+            XCTAssertEqual(view.convert(view.bounds, to: nil).midY, lightsMidY, accuracy: 1.5,
+                           "\(name) must line up with the native controls, not sit below them")
+        }
+        _ = controller
+    }
+
+    /// The titlebar's left-column button drives this mode's left column — the folder tree — not the
+    /// thumbnail drawer, which is not on screen while the browser is up.
+    func testTheLeftColumnButtonTogglesTheFolderTreeWhileBrowsing() throws {
+        let (directory, controller, viewer) = try makeFolder(3, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let button = try XCTUnwrap(controller.drawerTitlebarButton)
+        XCTAssertTrue(browser.view.isSidebarVisible, "the tree starts visible")
+
+        button.performClick(nil)
+        settle(0.4)
+        XCTAssertFalse(browser.view.isSidebarVisible, "the button closes the folder tree")
+        XCTAssertFalse(viewer.isDrawerOpen, "and does not reach for the thumbnail drawer")
+        XCTAssertEqual(button.toolTip, "打开左栏")
+        _ = window
+
+        button.performClick(nil)
+        settle(0.4)
+        XCTAssertTrue(browser.view.isSidebarVisible, "and it opens the tree again")
+        XCTAssertFalse(viewer.isDrawerOpen)
+
+        // Leaving the browser gives the button back to the drawer.
+        let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                                    modifierFlags: [], timestamp: 0,
+                                                    windowNumber: 0, context: nil,
+                                                    characters: "\u{1b}",
+                                                    charactersIgnoringModifiers: "\u{1b}",
+                                                    isARepeat: false, keyCode: 53))
+        viewer.keyDown(with: escape)
+        settle(0.5)
+        XCTAssertEqual(viewer.viewerMode, .image)
+        button.performClick(nil)
+        settle(0.4)
+        XCTAssertTrue(viewer.isDrawerOpen, "in the image mode the button is the drawer control again")
+    }
+
+    /// The browser paints its own background: transparent surfaces let remnants of the image mode's
+    /// canvas show through.
+    func testTheBrowserPaintsItsOwnOpaqueBackground() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+
+        XCTAssertTrue(browser.view.isOpaque, "the browser view fills its own background")
+        XCTAssertTrue(browser.view.galleryScrollView.drawsBackground,
+                      "the gallery's scroll view is not a window onto the image behind it")
+        // The sidebar is a native source list: vibrant material over the browser's opaque
+        // background, with a clear outline on top — the material is what keeps it from showing the
+        // image behind, not an opaque outline colour.
+        XCTAssertTrue(browser.view.treeSidebar.usesSidebarMaterialForTesting,
+                      "the folder tree draws over a sidebar material")
+    }
+
+    func testEscapeLeavesTheBrowserAndKeepsTheSelection() throws {
+        let (directory, controller, viewer) = try makeFolder(4)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        browser.select(1)
+
+        let escape = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                                    modifierFlags: [], timestamp: 0,
+                                                    windowNumber: 0, context: nil,
+                                                    characters: "\\u{1b}", charactersIgnoringModifiers: "\\u{1b}",
+                                                    isARepeat: false, keyCode: 53))
+        viewer.keyDown(with: escape)
+        settle()
+
+        XCTAssertEqual(viewer.viewerMode, .image)
+        XCTAssertEqual(viewer.session.currentIndex, 1, "Escape keeps the current selection")
+    }
+
+    /// Sorting is one shared order: changing it in the gallery changes the order the image mode
+    /// navigates in, with no second sort state anywhere.
+    func testTheGalleryAndTheImageViewerShareOneSortOrder() throws {
+try SharedSettingsScope.preservingSort {
+
+            let (directory, controller, viewer) = try makeFolder(5)
+            defer { cleanup(directory, controller) }
+            let original = AppSettings.shared.sortKey
+            defer { AppSettings.shared.sortKey = original }
+
+            viewer.perform(.browseFolder)
+            settle()
+            let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+            browser.view.onSortKeyChanged?(.fileSize)
+            settle()
+
+            XCTAssertEqual(AppSettings.shared.sortKey, .fileSize)
+            // The image mode's own navigation now follows that order, because it reads the same list.
+            let names = viewer.session.items.map(\.displayName)
+            XCTAssertEqual(names, ImageSort.sort(viewer.session.items, by: .fileSize,
+                                                 direction: AppSettings.shared.sortDirection)
+                .map(\.displayName))
+
+}
+}
+
+    // MARK: - The folder tree
+
+    /// The tree is rooted at the current folder — the folder being browsed — and the current folder
+    /// is highlighted. Its parent folders are deliberately not part of the tree.
+    func testTheTreeIsRootedAtTheCurrentFolder() throws {
+        let (directory, controller, viewer) = try makeFolder(3, subfolders: 2)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let sidebar = browser.view.treeSidebar
+
+        XCTAssertGreaterThan(sidebar.visibleRowCount, 0, "the tree has rows")
+        XCTAssertEqual(sidebar.selectedPath, directory.resolvingSymlinksInPath().path,
+                       "the current folder is the highlighted row")
+        let names = (0..<sidebar.visibleRowCount).compactMap { sidebar.renderedName(at: $0) }
+        XCTAssertEqual(names.first, "上一级",
+                       "the only way up is the one row that leads back to the parent")
+        XCTAssertEqual(sidebar.upRowPath, directory.deletingLastPathComponent().path)
+        XCTAssertEqual(names.dropFirst().first, directory.lastPathComponent,
+                       "and the browsed folder is the root of the tree below it")
+        XCTAssertTrue(names.contains("sub0"), "with the folders inside it listed")
+        XCTAssertFalse(names.contains(directory.deletingLastPathComponent().lastPathComponent),
+                       "the parent itself is not a row")
+    }
+
+    /// The tree is rooted at the folder being browsed, so the one row that leads back to where it
+    /// came from is the way up.
+    func testTheUpRowNavigatesToTheParentFolder() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        let sub = directory.appendingPathComponent("sub0")
+        try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                         to: sub.appendingPathComponent("only.png"))
+
+        // Browse the subfolder, so the parent is one level up.
+        viewer.open(url: sub.appendingPathComponent("only.png"))
+        let deadline = Date().addingTimeInterval(10)
+        while viewer.session.currentItem?.url != sub.appendingPathComponent("only.png").resolvingSymlinksInPath(),
+              Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        let sidebar = browser.view.treeSidebar
+        XCTAssertEqual(sidebar.renderedName(at: 0), "上一级")
+        XCTAssertEqual(sidebar.upRowPath, directory.resolvingSymlinksInPath().path)
+        XCTAssertEqual(viewer.session.directory?.resolvingSymlinksInPath().path,
+                       sub.resolvingSymlinksInPath().path, "precondition: the subfolder is browsed")
+
+        // Click it, which is what a user does.
+        sidebar.outlineView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        let upDeadline = Date().addingTimeInterval(10)
+        while viewer.session.directory?.resolvingSymlinksInPath().path
+                != directory.resolvingSymlinksInPath().path,
+              Date() < upDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertEqual(viewer.session.directory?.resolvingSymlinksInPath().path,
+                       directory.resolvingSymlinksInPath().path,
+                       "the up row opens the parent folder")
+    }
+
+    /// The merged top bar is exactly the titlebar's height, not a thicker band with the controls
+    /// near its top edge.
+    func testTheMergedTopBarIsAsTallAsTheTitlebar() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        viewer.perform(.browseFolder)
+        settle(0.5)
+        let window = try XCTUnwrap(viewer.view.window as? ViewerWindow)
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        controller.window?.layoutIfNeeded()
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        XCTAssertGreaterThan(titlebarHeight, 0)
+        XCTAssertEqual(browser.view.toolbarHeightForTesting ?? -1, titlebarHeight, accuracy: 0.5,
+                       "the bar is the titlebar's height")
+        XCTAssertEqual(browser.view.toolbarVerticalOffsetForTesting ?? -1, 0, accuracy: 0.5,
+                       "so there is nothing left to offset")
+    }
+
+    /// The dock carries the folder-browser control, with the icon the design names.
+    func testTheDockCarriesTheFolderBrowserControl() throws {
+        let (directory, controller, viewer) = try makeFolder(2, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        let dock = try XCTUnwrap(viewer.chromeViewsForTesting["toolDock"] as? ViewerToolDockView)
+        XCTAssertTrue(dock.commands.contains(.browseFolder))
+        let button = try XCTUnwrap(dock.commandButtons.first { $0.toolTip == "浏览文件夹" })
+        XCTAssertEqual(button.symbolName, ViewerToolDockView.browserSymbol)
+        XCTAssertEqual(ViewerToolDockView.browserSymbol, "square.grid.3x3.square")
+
+        button.performClick(nil)
+        settle(0.6)
+        XCTAssertEqual(viewer.viewerMode, .folderBrowser, "and it enters the browser")
+    }
+
+    /// Clicking a folder moves the gallery and the image viewer to it, and the browser stays open.
+    func testClickingAFolderMovesTheGalleryAndKeepsTheBrowserOpen() throws {
+        let (directory, controller, viewer) = try makeFolder(3, subfolders: 1)
+        defer { cleanup(directory, controller) }
+        let subfolder = directory.appendingPathComponent("sub0")
+        try FileManager.default.copyItem(at: Fixtures.url("static.png"),
+                                         to: subfolder.appendingPathComponent("only.png"))
+
+        viewer.perform(.browseFolder)
+        settle()
+        let browser = try XCTUnwrap(viewer.folderBrowserForTesting)
+        browser.view.onFolderChosen?(subfolder)
+        settle(0.6)
+
+        XCTAssertEqual(viewer.viewerMode, .folderBrowser, "the browser stays open")
+        XCTAssertEqual(viewer.session.items.map(\.displayName), ["only.png"],
+                       "the gallery moved to the chosen folder")
+        XCTAssertEqual(viewer.session.directory?.standardizedFileURL.path,
+                       subfolder.standardizedFileURL.path)
+    }
+
+    /// A viewer that never opens the browser never builds one.
+    func testTheBrowserIsBuiltOnDemand() throws {
+        let (directory, controller, viewer) = try makeFolder(2)
+        defer { cleanup(directory, controller) }
+        XCTAssertNil(viewer.folderBrowserForTesting)
+        XCTAssertEqual(viewer.folderBrowserContainerForTesting.subviews.count, 0)
+    }
+}

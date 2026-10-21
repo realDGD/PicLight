@@ -43,15 +43,19 @@ public struct ShortcutDefinition: Codable, Hashable, Sendable {
     }
 
     public init(key: String, modifiers: ModifierSet) {
-        self.key = key.lowercased()
+        self.key = Self.normalizedKey(key)
         self.modifiers = modifiers
     }
 
     public init?(event: NSEvent) {
         guard let characters = event.charactersIgnoringModifiers?.lowercased(),
               !characters.isEmpty else { return nil }
-        self.key = characters
+        self.key = Self.normalizedKey(characters)
         self.modifiers = ModifierSet(eventFlags: event.modifierFlags)
+    }
+
+    private static func normalizedKey(_ key: String) -> String {
+        key == String(UnicodeScalar(NSDeleteFunctionKey)!) ? "\u{7f}" : key.lowercased()
     }
 
     public var displayString: String {
@@ -106,6 +110,11 @@ public final class ShortcutStore {
         .previousImage: ShortcutDefinition(key: String(UnicodeScalar(NSLeftArrowFunctionKey)!), modifiers: []),
         .firstImage: ShortcutDefinition(key: String(UnicodeScalar(NSHomeFunctionKey)!), modifiers: []),
         .lastImage: ShortcutDefinition(key: String(UnicodeScalar(NSEndFunctionKey)!), modifiers: []),
+        // The two zoom steps carry the conventional system shortcuts. `=` is what the key event
+        // reports for both ⌘= and ⇧⌘= (AppKit matches on `charactersIgnoringModifiers`), so one
+        // binding covers the ⌘+ people actually press.
+        .zoomIn: ShortcutDefinition(key: "=", modifiers: [.command]),
+        .zoomOut: ShortcutDefinition(key: "-", modifiers: [.command]),
         .zoomToFit: ShortcutDefinition(key: "0", modifiers: [.command]),
         .zoomToFitWidth: ShortcutDefinition(key: "3", modifiers: [.command]),
         .zoomActualPixels: ShortcutDefinition(key: "1", modifiers: [.command]),
@@ -113,7 +122,12 @@ public final class ShortcutStore {
         .rotateClockwise: ShortcutDefinition(key: "r", modifiers: [.command]),
         .rotateCounterClockwise: ShortcutDefinition(key: "r", modifiers: [.command, .shift]),
         .toggleMirror: ShortcutDefinition(key: "m", modifiers: [.command]),
-        .moveToTrash: ShortcutDefinition(key: "\u{7f}", modifiers: [.command]),
+        .moveToTrash: ShortcutDefinition(key: "\u{7f}", modifiers: []),
+        .moveToTrashWithoutConfirmation: ShortcutDefinition(key: "\u{7f}", modifiers: [.command]),
+        .copyFilePath: ShortcutDefinition(key: "c", modifiers: [.command, .control]),
+        .revealInFinder: ShortcutDefinition(key: "\r", modifiers: [.command]),
+        .randomImage: ShortcutDefinition(key: "r", modifiers: []),
+        .toggleAlwaysOnTop: ShortcutDefinition(key: "x", modifiers: [.command]),
         .togglePlayback: ShortcutDefinition(key: " ", modifiers: []),
         .nextPage: ShortcutDefinition(key: String(UnicodeScalar(NSPageDownFunctionKey)!), modifiers: []),
         .previousPage: ShortcutDefinition(key: String(UnicodeScalar(NSPageUpFunctionKey)!), modifiers: []),
@@ -124,6 +138,21 @@ public final class ShortcutStore {
     ]
 
     private static let storageKey = "customShortcuts"
+
+    private struct StoredBindings: Codable {
+        let version: Int
+        let bindings: [String: ShortcutDefinition]
+    }
+
+    public func clearAll() {
+        bindings.removeAll()
+        save()
+    }
+
+    public func restoreDefaults() {
+        bindings = Self.defaultBindings
+        save()
+    }
 
     public func shortcut(for command: ViewerCommand) -> ShortcutDefinition? {
         bindings[command]
@@ -152,10 +181,27 @@ public final class ShortcutStore {
     }
 
     private func load() {
-        guard let data = defaults.data(forKey: Self.storageKey),
-              let stored = try? JSONDecoder().decode([String: ShortcutDefinition].self, from: data) else { return }
+        guard let data = defaults.data(forKey: Self.storageKey) else { return }
+        let stored: [String: ShortcutDefinition]
+        let legacy: Bool
+        if let snapshot = try? JSONDecoder().decode(StoredBindings.self, from: data), snapshot.version == 1 {
+            bindings.removeAll()
+            stored = snapshot.bindings
+            legacy = false
+        } else if let old = try? JSONDecoder().decode([String: ShortcutDefinition].self, from: data) {
+            stored = old
+            legacy = true
+        } else { return }
         for (rawCommand, shortcut) in stored {
             guard let command = ViewerCommand(rawValue: rawCommand) else { continue }
+            if legacy, command == .moveToTrash,
+               shortcut == Self.defaultBindings[.moveToTrashWithoutConfirmation] { continue }
+            guard !command.isFixedSystemShortcut else { continue }
+            if legacy {
+                for (other, binding) in bindings where other != command && binding == shortcut {
+                    bindings.removeValue(forKey: other)
+                }
+            }
             bindings[command] = shortcut
         }
     }
@@ -163,7 +209,7 @@ public final class ShortcutStore {
     private func save() {
         var encodable: [String: ShortcutDefinition] = [:]
         for (command, shortcut) in bindings { encodable[command.rawValue] = shortcut }
-        guard let data = try? JSONEncoder().encode(encodable) else { return }
+        guard let data = try? JSONEncoder().encode(StoredBindings(version: 1, bindings: encodable)) else { return }
         defaults.set(data, forKey: Self.storageKey)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
