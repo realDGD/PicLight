@@ -7,8 +7,8 @@ left thumbnail column shows the current folder when opened.
 - **Platform:** macOS 14 Sonoma and later
 - **Distribution:** independent `.app` / `.dmg` (no App Store, no paid Apple
   Developer Program required for v0.1)
-- **Status:** v0.1 implementation — see `docs/release/v0.1-checklist.md` for what
-  is verified and what still needs a human
+- **Status:** v0.1 implementation — see the [release checklist](docs/release/v0.1-checklist.md)
+  for verification tied to a revision and the deferred usage checks
 
 ## Install with Homebrew from source
 
@@ -136,7 +136,8 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   "正在解码…" while the first frame of a big file is still being decoded.
 - Folder watching with debounced rescans that preserve the current file by
   identity, and Move to Trash with smart next/previous selection.
-- Settings in a fixed 560×560 window, with configurable wheel zoom sensitivity,
+- Native settings with six top-level panes and six viewer categories, fixed width
+  and pane-dependent height, with configurable wheel zoom sensitivity,
   double-click actions (including folder grid, close and native full screen),
   loop browsing, last-window quit behavior and new-window always-on-top defaults.
 - Copy file path (⌃⌘C), reveal in Finder (⌘Return), choose a browsing folder,
@@ -145,9 +146,9 @@ swift scripts/make-fixtures.swift PicViewMacTests/Fixtures
   Extension exclusions refresh the current folder while allowing explicit file opens.
 - Customizable viewer shortcuts with conflict rejection, Clear All and Restore
   Defaults; cleared bindings stay cleared across launches.
-- Settings → Files and Cache shows disk and pipeline memory cache occupancy,
-  clears thumbnails across viewers, and reveals the cache in Finder. The same tab
-  provides directory selection and explains folder access permissions.
+- Settings → Advanced shows disk and pipeline memory cache occupancy,
+  clears thumbnails across viewers, and reveals the cache in Finder.
+  Settings → Viewer → Open provides the folder authorization list and permission guide.
 - Settings → File Associations lets you select supported formats and
   make the running `PicLight.app` their default opener. It shows the system's
   current default app for each format, groups JPG/JPEG and TIF/TIFF, and reports
@@ -194,7 +195,7 @@ the first push**, because rewriting history afterwards is far more disruptive.
 
 ## Known gaps
 
-Tracked in `docs/release/v0.1-checklist.md`. In short: the visual/interaction
+Tracked in the [release checklist](docs/release/v0.1-checklist.md). The visual/interaction
 matrix (Mission Control, tiling, Stage Manager, native Full Screen, third-party
 window managers), a visual pass on Light/Dark and accessibility appearance, and
 an Instruments memory profile all still need a human at a display.
