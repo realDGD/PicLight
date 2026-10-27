@@ -504,7 +504,8 @@ public final class ImageCanvasView: NSView {
         guard isDragging else { return }
         noteUserViewportChange()
         var updated = viewport
-        updated.pan(byViewDelta: CGSize(width: event.deltaX, height: event.deltaY),
+        // Mouse deltas use y-down device space; the unflipped canvas pans in y-up view space.
+        updated.pan(byViewDelta: CGSize(width: event.deltaX, height: -event.deltaY),
                     imagePixels: imagePixelSize, viewPoints: bounds.size)
         viewport = updated
     }

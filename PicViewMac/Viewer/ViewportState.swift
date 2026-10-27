@@ -235,9 +235,9 @@ public struct ViewportState: Equatable, Sendable {
     /// Moves the picture by a delta the user asked for.
     ///
     /// One convention for both axes: **a positive delta moves the picture right and up** — the
-    /// direction the fingers (or the pointer) moved. `NSEvent.scrollingDelta*` is documented as
-    /// inverted to "feel like moving the content", and `NSEvent.delta*` on a mouse drag is the
-    /// pointer's own movement, so both sources mean the same thing here.
+    /// direction the fingers (or the pointer) moved in y-up view space. Callers convert event
+    /// coordinates before panning: mouse-drag `NSEvent.deltaY` uses y-down device space and must
+    /// be negated; scroll events follow the direction chosen by the gesture router.
     ///
     /// The vertical sign used to be the opposite of the horizontal one (`+=` against `-=`), which made
     /// two-finger panning in a zoomed view track the fingers horizontally and run backwards

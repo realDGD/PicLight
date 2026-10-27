@@ -3,12 +3,12 @@ import AppKit
 import CoreGraphics
 @testable import PicViewMac
 
-/// Panning follows the gesture on both axes, through the whole path: event → router → viewport.
+/// Panning follows the gesture on both axes, from mouse or scroll events through the viewport.
 ///
 /// The vertical sign used to be the mirror of the horizontal one, so a two-finger pan in a zoomed
 /// view tracked the fingers sideways and ran backwards up and down. The absolute direction had never
 /// been pinned — the rotation tests only ever asserted that a drag moves content the *same* way at
-/// every rotation. These tests pin it, with synthesized scroll events (`CGEvent` → `NSEvent`, which
+/// every rotation. These tests pin it, with synthesized mouse and scroll events (`CGEvent` → `NSEvent`, which
 /// is the same event the window delivers) so the sign cannot drift again.
 @MainActor
 final class CanvasPanDirectionTests: XCTestCase {
@@ -55,6 +55,66 @@ final class CanvasPanDirectionTests: XCTestCase {
         // events carry none.
         cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(NSEvent.Phase.began.rawValue))
         return try XCTUnwrap(NSEvent(cgEvent: cg))
+    }
+
+    func testMouseDraggingUpAndDownFollowsThePointer() throws {
+        try assertMouseDragFollowsPointer(deltas: [CGSize(width: 0, height: -40),
+                                                  CGSize(width: 0, height: 40)])
+    }
+
+    func testMouseDraggingLeftAndRightFollowsThePointer() throws {
+        try assertMouseDragFollowsPointer(deltas: [CGSize(width: -40, height: 0),
+                                                  CGSize(width: 40, height: 0)])
+    }
+
+    func testDiagonalMouseDraggingFollowsThePointer() throws {
+        try assertMouseDragFollowsPointer(deltas: [CGSize(width: 30, height: -40),
+                                                  CGSize(width: -30, height: 40)])
+    }
+
+    private func assertMouseDragFollowsPointer(deltas: [CGSize],
+                                              file: StaticString = #filePath, line: UInt = #line) throws {
+        let canvas = makeCanvas()
+        let down = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: CGPoint(x: 400, y: 300), modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        let up = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp, location: CGPoint(x: 400, y: 300), modifierFlags: [],
+            timestamp: 1, windowNumber: 0, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
+        for turn in 0..<4 {
+            for mirrored in [false, true] {
+                for zoom: CGFloat in [0.75, 2] {
+                    for delta in deltas {
+                        canvas.viewport = ViewportState(fitScale: 0.15, zoomScale: zoom,
+                                                        viewRotationQuarterTurns: turn,
+                                                        mirroredHorizontally: mirrored)
+                        let cg = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged,
+                                                       mouseCursorPosition: .zero, mouseButton: .left))
+                        cg.setIntegerValueField(.mouseEventDeltaX, value: Int64(delta.width))
+                        cg.setIntegerValueField(.mouseEventDeltaY, value: Int64(delta.height))
+                        let drag = try XCTUnwrap(NSEvent(cgEvent: cg))
+                        XCTAssertEqual(drag.deltaX, delta.width)
+                        XCTAssertEqual(drag.deltaY, delta.height)
+
+                        // Measure a source point's displacement through the render transform.
+                        // Mouse deltas use y-down device space; this canvas uses y-up view space.
+                        let reference = CGPoint(x: 100, y: -50)
+                        let before = reference.applying(canvas.viewport.imageToViewTransform(
+                            sourcePixelSize: source, viewSize: canvas.bounds.size))
+                        canvas.mouseDown(with: down)
+                        canvas.mouseDragged(with: drag)
+                        canvas.mouseUp(with: up)
+                        let after = reference.applying(canvas.viewport.imageToViewTransform(
+                            sourcePixelSize: source, viewSize: canvas.bounds.size))
+                        let context = "turn \(turn), mirrored \(mirrored), zoom \(zoom), delta \(delta)"
+                        XCTAssertEqual(after.x - before.x, delta.width, accuracy: 0.001,
+                                       context, file: file, line: line)
+                        XCTAssertEqual(after.y - before.y, -delta.height, accuracy: 0.001,
+                                       context, file: file, line: line)
+                    }
+                }
+            }
+        }
     }
 
     /// A vertical gesture moves the picture vertically, in the direction of the gesture.
